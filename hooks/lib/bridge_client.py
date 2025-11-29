@@ -1,13 +1,18 @@
 """
 Bridge Client - Used by hook scripts to communicate with bridge server
 """
+import os
 import json
 import urllib.request
 import urllib.error
 import logging
 from typing import Optional, Dict, Any, List
 
-from .config import BRIDGE_URL, BRIDGE_SECRET, NOTIFY_TIMEOUT
+# Import config - try relative first, then absolute
+try:
+    from .config import BRIDGE_URL, BRIDGE_SECRET, NOTIFY_TIMEOUT
+except ImportError:
+    from config import BRIDGE_URL, BRIDGE_SECRET, NOTIFY_TIMEOUT
 
 logger = logging.getLogger(__name__)
 
