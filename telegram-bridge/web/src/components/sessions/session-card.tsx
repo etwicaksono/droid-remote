@@ -33,7 +33,6 @@ export function SessionCard({ session }: SessionCardProps) {
 
     respond({
       sessionId: session.id,
-      requestId: session.pending_request.id,
       response: message,
     })
     setMessage('')
@@ -41,13 +40,13 @@ export function SessionCard({ session }: SessionCardProps) {
 
   const handleApprove = () => {
     if (session.pending_request) {
-      approve({ sessionId: session.id, requestId: session.pending_request.id })
+      approve({ sessionId: session.id })
     }
   }
 
   const handleDeny = () => {
     if (session.pending_request) {
-      deny({ sessionId: session.id, requestId: session.pending_request.id })
+      deny({ sessionId: session.id })
     }
   }
 
@@ -97,7 +96,7 @@ export function SessionCard({ session }: SessionCardProps) {
           </div>
         )}
 
-        {session.status === 'waiting' && (
+        {(session.status === 'waiting' || hasPendingRequest) && (
           <form className="flex gap-2" onSubmit={handleSubmit}>
             <Input
               className="flex-1"
@@ -105,7 +104,7 @@ export function SessionCard({ session }: SessionCardProps) {
               value={message}
               onChange={(e) => setMessage(e.target.value)}
             />
-            <Button disabled={!message.trim()} type="submit">
+            <Button disabled={!message.trim() || !hasPendingRequest} type="submit">
               Send
             </Button>
           </form>
