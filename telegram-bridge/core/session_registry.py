@@ -26,20 +26,6 @@ class SessionRegistry:
     def __init__(self):
         self._sessions: Dict[str, Session] = {}
         self._lock = Lock()
-        self._listeners: List[callable] = []
-    
-    def add_listener(self, callback: callable):
-        """Add a callback to be notified on session changes"""
-        self._listeners.append(callback)
-    
-    def _notify_listeners(self):
-        """Notify all listeners of session changes"""
-        sessions = self.get_all()
-        for listener in self._listeners:
-            try:
-                listener(sessions)
-            except Exception as e:
-                logger.error(f"Error notifying listener: {e}")
     
     def register(
         self,
@@ -75,7 +61,6 @@ class SessionRegistry:
                 self._sessions[session_id] = session
                 logger.info(f"Registered new session: {session_id} ({name})")
             
-            self._notify_listeners()
             return session
     
     def get(self, session_id: str) -> Optional[Session]:
@@ -126,7 +111,6 @@ class SessionRegistry:
                     setattr(session, key, value)
             
             session.last_activity = datetime.utcnow()
-            self._notify_listeners()
             return session
     
     def update_status(self, session_id: str, status: SessionStatus) -> Optional[Session]:
@@ -147,7 +131,6 @@ class SessionRegistry:
             if session_id in self._sessions:
                 del self._sessions[session_id]
                 logger.info(f"Removed session: {session_id}")
-                self._notify_listeners()
                 return True
             return False
     
@@ -165,9 +148,6 @@ class SessionRegistry:
             for session_id in stale_ids:
                 del self._sessions[session_id]
                 logger.info(f"Cleared stale session: {session_id}")
-            
-            if stale_ids:
-                self._notify_listeners()
 
 
 # Global instance

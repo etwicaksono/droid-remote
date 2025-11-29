@@ -123,21 +123,6 @@ def create_socketio_server() -> socketio.AsyncServer:
         sessions = session_registry.get_all()
         return [s.model_dump() for s in sessions]
     
-    # Register session registry listener to broadcast updates
-    def on_sessions_change(sessions):
-        """Broadcast session updates to all clients"""
-        import asyncio
-        try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                asyncio.create_task(
-                    sio.emit("sessions_update", [s.model_dump() for s in sessions])
-                )
-        except Exception as e:
-            logger.error(f"Error broadcasting session update: {e}")
-    
-    session_registry.add_listener(on_sessions_change)
-    
     return sio
 
 

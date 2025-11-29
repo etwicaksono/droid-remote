@@ -1,0 +1,10 @@
+2025-11-29 15:05:37,699 - root - INFO - Logging configured: level=INFO, file=logs/bridge.log
+2025-11-29 15:05:37,853 - __main__ - INFO - Starting server on 127.0.0.1:8765
+2025-11-29 15:05:38,058 - __main__ - INFO - Starting Telegram-Droid Bridge Server...
+2025-11-29 15:05:38,058 - __main__ - INFO - Telegram bot initialized
+2025-11-29 15:05:38,058 - __main__ - INFO - Bridge server started successfully
+2025-11-29 15:05:38,058 - bot.telegram_bot - INFO - Starting Telegram bot...
+2025-11-29 15:05:39,440 - bot.telegram_bot - INFO - Telegram bot started successfully
+2025-11-29 15:06:31,475 - core.session_registry - INFO - Registered new session: test-session-001 (test-project)
+2025-11-29 15:08:40,724 - root - INFO - Logging configured: level=INFO, file=logs/bridge.log
+2025-11-29 15:08:40,757 - __main__ - INFO - Starting server on 127.0.0.1:8765
