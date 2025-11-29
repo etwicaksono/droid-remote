@@ -39,6 +39,7 @@ class Task:
     project_dir: str
     session_id: Optional[str] = None  # For continuing sessions
     autonomy_level: str = "high"  # low, medium, high
+    model: Optional[str] = None  # Model to use (e.g., claude-sonnet-4-20250514)
     status: TaskStatus = TaskStatus.PENDING
     result: Optional[TaskResult] = None
     created_at: datetime = field(default_factory=datetime.utcnow)
@@ -64,6 +65,7 @@ class TaskExecutor:
         project_dir: str,
         session_id: Optional[str] = None,
         autonomy_level: str = "high",
+        model: Optional[str] = None,
         on_progress: Optional[Callable[[str], None]] = None
     ) -> TaskResult:
         """
@@ -75,6 +77,7 @@ class TaskExecutor:
             project_dir: Working directory for droid
             session_id: Optional session ID to continue
             autonomy_level: low, medium, or high
+            model: Optional model ID (e.g., claude-sonnet-4-20250514)
             on_progress: Optional callback for progress updates
         
         Returns:
@@ -90,7 +93,8 @@ class TaskExecutor:
             prompt=prompt,
             project_dir=project_dir,
             session_id=session_id,
-            autonomy_level=autonomy_level
+            autonomy_level=autonomy_level,
+            model=model
         )
         self._tasks[task_id] = task
         
@@ -135,6 +139,10 @@ class TaskExecutor:
         
         # Build command
         cmd = ["droid", "exec"]
+        
+        # Add model if specified
+        if task.model:
+            cmd.extend(["--model", task.model])
         
         # Add autonomy level
         if task.autonomy_level:
@@ -206,7 +214,8 @@ class TaskExecutor:
         prompt: str,
         project_dir: str,
         session_id: Optional[str] = None,
-        autonomy_level: str = "high"
+        autonomy_level: str = "high",
+        model: Optional[str] = None
     ) -> AsyncIterator[Dict[str, Any]]:
         """
         Execute task with streaming output (stream-json format).
@@ -220,11 +229,15 @@ class TaskExecutor:
             prompt=prompt,
             project_dir=project_dir,
             session_id=session_id,
-            autonomy_level=autonomy_level
+            autonomy_level=autonomy_level,
+            model=model
         )
         self._tasks[task_id] = task
         
         cmd = ["droid", "exec"]
+        
+        if task.model:
+            cmd.extend(["--model", task.model])
         
         if task.autonomy_level:
             cmd.extend(["--auto", task.autonomy_level])

@@ -262,7 +262,8 @@ async def execute_task(data: TaskExecuteRequest, request: Request):
         prompt=data.prompt,
         project_dir=data.project_dir,
         session_id=data.session_id,
-        autonomy_level=data.autonomy_level
+        autonomy_level=data.autonomy_level,
+        model=data.model
     )
     
     # Notify completion

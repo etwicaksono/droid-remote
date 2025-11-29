@@ -110,6 +110,7 @@ class TaskExecuteRequest(BaseModel):
     project_dir: str
     session_id: Optional[str] = None  # For continuing sessions
     autonomy_level: str = "high"  # low, medium, high
+    model: Optional[str] = None  # Model ID (e.g., claude-sonnet-4-20250514)
     streaming: bool = False  # Use stream-json format
 
 

@@ -29,6 +29,7 @@ from .commands import (
     status_command,
     switch_command,
     setproject_command,
+    setmodel_command,
     done_command,
     stopall_command,
     broadcast_command
@@ -159,6 +160,7 @@ class TelegramBotManager:
         app.add_handler(CommandHandler("status", status_command, filters=user_filter))
         app.add_handler(CommandHandler("switch", switch_command, filters=user_filter))
         app.add_handler(CommandHandler("setproject", setproject_command, filters=user_filter))
+        app.add_handler(CommandHandler("setmodel", setmodel_command, filters=user_filter))
         app.add_handler(CommandHandler("done", done_command, filters=user_filter))
         app.add_handler(CommandHandler("stopall", stopall_command, filters=user_filter))
         app.add_handler(CommandHandler("broadcast", broadcast_command, filters=user_filter))
@@ -308,9 +310,13 @@ class TelegramBotManager:
                 )
                 return
         
+        # Get model from user settings
+        model = context.user_data.get("model")
+        
         # Send acknowledgment
+        model_info = f"\nModel: {model}" if model else ""
         status_msg = await update.message.reply_text(
-            f"Executing task in: {project_dir}\n\nPrompt: {prompt[:100]}..."
+            f"Executing task in: {project_dir}{model_info}\n\nPrompt: {prompt[:100]}..."
         )
         
         try:
@@ -320,7 +326,8 @@ class TelegramBotManager:
                 task_id=task_id,
                 prompt=prompt,
                 project_dir=project_dir,
-                autonomy_level="high"
+                autonomy_level="high",
+                model=model
             )
             
             # Format result

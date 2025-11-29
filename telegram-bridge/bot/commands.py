@@ -22,6 +22,7 @@ async def setup_commands(application) -> None:
         BotCommand("status", "Check status of all sessions"),
         BotCommand("switch", "Switch active session"),
         BotCommand("setproject", "Set project directory for tasks"),
+        BotCommand("setmodel", "Set model for task execution"),
         BotCommand("done", "Signal current session to stop"),
         BotCommand("stopall", "Stop all sessions"),
         BotCommand("broadcast", "Send message to all waiting sessions"),
@@ -286,3 +287,30 @@ async def setproject_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
         f"Project directory set to:\n{project_dir}\n\n"
         "New tasks will be executed in this directory."
     )
+
+
+async def setmodel_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /setmodel command"""
+    args = context.args
+    
+    if not args:
+        current = context.user_data.get("model", "Default (from settings)")
+        await update.message.reply_text(
+            f"Current model: {current}\n\n"
+            "Usage: /setmodel <model_id>\n"
+            "Examples:\n"
+            "  /setmodel claude-sonnet-4-20250514\n"
+            "  /setmodel gpt-5-2025-08-07\n"
+            "  /setmodel default (use Factory settings)"
+        )
+        return
+    
+    model = args[0].strip()
+    
+    if model.lower() == "default":
+        # Clear model to use default
+        context.user_data.pop("model", None)
+        await update.message.reply_text("Model reset to default (from Factory settings)")
+    else:
+        context.user_data["model"] = model
+        await update.message.reply_text(f"Model set to: {model}")
