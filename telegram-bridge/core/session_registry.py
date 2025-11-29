@@ -33,7 +33,7 @@ class SessionRegistry:
         project_dir: str,
         name: Optional[str] = None
     ) -> Session:
-        """Register or update a session"""
+        """Register or update a session (deduplicated by project_dir)"""
         import os
         
         with self._lock:
@@ -42,12 +42,28 @@ class SessionRegistry:
             if not name:
                 name = os.path.basename(project_dir) or "unknown"
             
+            # Check for existing session with same project_dir (different session_id)
+            # This handles the case where Droid restarts and gets a new session_id
+            existing_by_project = None
+            if project_dir:
+                for sid, sess in list(self._sessions.items()):
+                    if sess.project_dir == project_dir and sid != session_id:
+                        existing_by_project = sid
+                        break
+            
+            # Remove old session for same project if exists
+            if existing_by_project:
+                del self._sessions[existing_by_project]
+                logger.info(f"Removed old session {existing_by_project} for project {project_dir}")
+            
             if session_id in self._sessions:
                 # Update existing session
                 session = self._sessions[session_id]
                 session.last_activity = now
                 session.name = name
                 session.project_dir = project_dir
+                session.status = SessionStatus.RUNNING
+                session.pending_request = None
                 logger.info(f"Updated session: {session_id} ({name})")
             else:
                 # Create new session
