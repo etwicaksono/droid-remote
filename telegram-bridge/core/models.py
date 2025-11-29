@@ -92,7 +92,7 @@ class WaitResponse(BaseModel):
 
 
 class RespondRequest(BaseModel):
-    request_id: str
+    request_id: Optional[str] = None
     response: str
 
 
