@@ -1,0 +1,103 @@
+"""
+Pydantic models for the bridge server
+"""
+from datetime import datetime
+from typing import Optional, List, Dict, Any
+from pydantic import BaseModel, Field
+from enum import Enum
+
+
+class SessionStatus(str, Enum):
+    RUNNING = "running"
+    WAITING = "waiting"
+    STOPPED = "stopped"
+
+
+class NotificationType(str, Enum):
+    INFO = "info"
+    WARNING = "warning"
+    ERROR = "error"
+    SUCCESS = "success"
+    PERMISSION = "permission"
+    STOP = "stop"
+    START = "start"
+
+
+class Button(BaseModel):
+    text: str
+    callback: str
+
+
+class PendingRequest(BaseModel):
+    id: str
+    type: NotificationType
+    message: str
+    tool_name: Optional[str] = None
+    tool_input: Optional[Dict[str, Any]] = None
+    buttons: List[Button] = Field(default_factory=list)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    telegram_message_id: Optional[int] = None
+
+
+class Session(BaseModel):
+    id: str
+    name: str
+    project_dir: str
+    status: SessionStatus = SessionStatus.RUNNING
+    started_at: datetime = Field(default_factory=datetime.utcnow)
+    last_activity: datetime = Field(default_factory=datetime.utcnow)
+    pending_request: Optional[PendingRequest] = None
+
+    class Config:
+        use_enum_values = True
+
+
+class Notification(BaseModel):
+    session_id: str
+    session_name: str
+    message: str
+    type: NotificationType = NotificationType.INFO
+    buttons: List[Button] = Field(default_factory=list)
+
+
+# API Request/Response Models
+
+class RegisterSessionRequest(BaseModel):
+    session_id: str
+    project_dir: str
+    session_name: Optional[str] = None
+
+
+class UpdateSessionRequest(BaseModel):
+    status: Optional[SessionStatus] = None
+    pending_request: Optional[PendingRequest] = None
+
+
+class NotifyRequest(BaseModel):
+    session_name: str
+    message: str
+    type: NotificationType = NotificationType.INFO
+    buttons: List[Button] = Field(default_factory=list)
+
+
+class WaitRequest(BaseModel):
+    request_id: str
+    timeout: int = 300
+
+
+class WaitResponse(BaseModel):
+    response: Optional[str] = None
+    timeout: bool = False
+    has_response: bool = False
+
+
+class RespondRequest(BaseModel):
+    request_id: str
+    response: str
+
+
+class HealthResponse(BaseModel):
+    status: str = "healthy"
+    active_sessions: int = 0
+    bot_connected: bool = False
+    version: str = "1.0.0"
