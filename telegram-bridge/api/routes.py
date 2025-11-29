@@ -50,13 +50,20 @@ async def health_check(request: Request):
 
 
 @router.post("/sessions/register", dependencies=[Depends(verify_secret)])
-async def register_session(data: RegisterSessionRequest):
+async def register_session(data: RegisterSessionRequest, request: Request):
     """Register or update a Droid session"""
     session = session_registry.register(
         session_id=data.session_id,
         project_dir=data.project_dir,
         name=data.session_name
     )
+    
+    # Emit sessions_update
+    sio = getattr(request.app.state, "sio", None)
+    if sio:
+        sessions = session_registry.get_all()
+        await sio.emit("sessions_update", [s.model_dump() for s in sessions])
+    
     return {"success": True, "session": session.model_dump()}
 
 
@@ -72,11 +79,11 @@ async def get_session(session_id: str):
     session = session_registry.get(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
-    return session.model_dump()
+    return session.model_dump(mode='json')
 
 
 @router.patch("/sessions/{session_id}", dependencies=[Depends(verify_secret)])
-async def update_session(session_id: str, data: UpdateSessionRequest):
+async def update_session(session_id: str, data: UpdateSessionRequest, request: Request):
     """Update session attributes"""
     session = session_registry.get(session_id)
     if not session:
@@ -85,7 +92,13 @@ async def update_session(session_id: str, data: UpdateSessionRequest):
     update_data = data.model_dump(exclude_unset=True)
     session = session_registry.update(session_id, **update_data)
     
-    return {"success": True, "session": session.model_dump()}
+    # Emit sessions_update
+    sio = getattr(request.app.state, "sio", None)
+    if sio:
+        sessions = session_registry.get_all()
+        await sio.emit("sessions_update", [s.model_dump(mode='json') for s in sessions])
+    
+    return {"success": True, "session": session.model_dump(mode='json')}
 
 
 @router.delete("/sessions/{session_id}", dependencies=[Depends(verify_secret)])
@@ -139,7 +152,7 @@ async def notify_session(session_id: str, data: NotifyRequest, request: Request)
             pending.telegram_message_id = message_id
             session_registry.set_pending_request(session_id, pending)
     
-    # Emit Socket.IO event
+    # Emit Socket.IO events
     sio = getattr(request.app.state, "sio", None)
     if sio:
         await sio.emit("notification", {
@@ -149,6 +162,9 @@ async def notify_session(session_id: str, data: NotifyRequest, request: Request)
             "type": data.type.value if hasattr(data.type, 'value') else data.type,
             "request_id": request_id
         })
+        # Also emit sessions_update so Web UI refreshes
+        sessions = session_registry.get_all()
+        await sio.emit("sessions_update", [s.model_dump(mode='json') for s in sessions])
     
     return {"success": True, "request_id": request_id}
 
