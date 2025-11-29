@@ -13,9 +13,9 @@ interface ServerToClientEvents {
 interface ClientToServerEvents {
   subscribe: (data: { sessionId: string }) => void
   unsubscribe: (data: { sessionId: string }) => void
-  respond: (data: { sessionId: string; requestId: string; response: string }) => void
-  approve: (data: { sessionId: string; requestId: string }) => void
-  deny: (data: { sessionId: string; requestId: string }) => void
+  respond: (data: { sessionId: string; requestId?: string; response: string }) => void
+  approve: (data: { sessionId: string; requestId?: string }) => void
+  deny: (data: { sessionId: string; requestId?: string }) => void
   get_sessions: () => void
 }
 
