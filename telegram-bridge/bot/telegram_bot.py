@@ -323,7 +323,6 @@ class TelegramBotManager:
             message = await self.application.bot.send_message(
                 chat_id=self.chat_id,
                 text=notification.message,
-                parse_mode="Markdown",
                 reply_markup=keyboard
             )
             
