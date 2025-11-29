@@ -101,3 +101,23 @@ class HealthResponse(BaseModel):
     active_sessions: int = 0
     bot_connected: bool = False
     version: str = "1.0.0"
+
+
+# Task Execution Models (droid exec)
+
+class TaskExecuteRequest(BaseModel):
+    prompt: str
+    project_dir: str
+    session_id: Optional[str] = None  # For continuing sessions
+    autonomy_level: str = "high"  # low, medium, high
+    streaming: bool = False  # Use stream-json format
+
+
+class TaskResponse(BaseModel):
+    success: bool
+    result: str
+    task_id: str
+    session_id: Optional[str] = None
+    duration_ms: int = 0
+    num_turns: int = 0
+    error: Optional[str] = None

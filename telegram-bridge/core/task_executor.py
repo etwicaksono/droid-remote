@@ -1,0 +1,317 @@
+"""
+Task Executor - Spawns and manages droid exec processes
+"""
+import os
+import json
+import asyncio
+import logging
+from typing import Optional, Dict, Any, Callable, AsyncIterator
+from dataclasses import dataclass, field
+from datetime import datetime
+from enum import Enum
+
+logger = logging.getLogger(__name__)
+
+
+class TaskStatus(Enum):
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+@dataclass
+class TaskResult:
+    success: bool
+    result: str
+    session_id: Optional[str] = None
+    duration_ms: int = 0
+    num_turns: int = 0
+    error: Optional[str] = None
+    raw_output: Optional[Dict[str, Any]] = None
+
+
+@dataclass
+class Task:
+    id: str
+    prompt: str
+    project_dir: str
+    session_id: Optional[str] = None  # For continuing sessions
+    autonomy_level: str = "high"  # low, medium, high
+    status: TaskStatus = TaskStatus.PENDING
+    result: Optional[TaskResult] = None
+    created_at: datetime = field(default_factory=datetime.utcnow)
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    process: Optional[asyncio.subprocess.Process] = None
+
+
+class TaskExecutor:
+    """
+    Executes tasks using droid exec (headless mode).
+    Manages session continuity and result parsing.
+    """
+    
+    def __init__(self):
+        self._tasks: Dict[str, Task] = {}
+        self._session_map: Dict[str, str] = {}  # project_dir -> session_id
+    
+    async def execute_task(
+        self,
+        task_id: str,
+        prompt: str,
+        project_dir: str,
+        session_id: Optional[str] = None,
+        autonomy_level: str = "high",
+        on_progress: Optional[Callable[[str], None]] = None
+    ) -> TaskResult:
+        """
+        Execute a task using droid exec.
+        
+        Args:
+            task_id: Unique task identifier
+            prompt: The task/prompt to execute
+            project_dir: Working directory for droid
+            session_id: Optional session ID to continue
+            autonomy_level: low, medium, or high
+            on_progress: Optional callback for progress updates
+        
+        Returns:
+            TaskResult with success status and output
+        """
+        # Use stored session_id if available for this project
+        if not session_id and project_dir in self._session_map:
+            session_id = self._session_map[project_dir]
+            logger.info(f"Continuing session {session_id} for {project_dir}")
+        
+        task = Task(
+            id=task_id,
+            prompt=prompt,
+            project_dir=project_dir,
+            session_id=session_id,
+            autonomy_level=autonomy_level
+        )
+        self._tasks[task_id] = task
+        
+        try:
+            task.status = TaskStatus.RUNNING
+            task.started_at = datetime.utcnow()
+            
+            result = await self._run_droid_exec(task, on_progress)
+            
+            task.status = TaskStatus.COMPLETED if result.success else TaskStatus.FAILED
+            task.result = result
+            task.completed_at = datetime.utcnow()
+            
+            # Store session_id for future continuation
+            if result.session_id:
+                self._session_map[project_dir] = result.session_id
+                logger.info(f"Stored session {result.session_id} for {project_dir}")
+            
+            return result
+            
+        except asyncio.CancelledError:
+            task.status = TaskStatus.CANCELLED
+            task.completed_at = datetime.utcnow()
+            raise
+        except Exception as e:
+            logger.exception(f"Task {task_id} failed with exception")
+            task.status = TaskStatus.FAILED
+            task.completed_at = datetime.utcnow()
+            task.result = TaskResult(
+                success=False,
+                result="",
+                error=str(e)
+            )
+            return task.result
+    
+    async def _run_droid_exec(
+        self,
+        task: Task,
+        on_progress: Optional[Callable[[str], None]] = None
+    ) -> TaskResult:
+        """Run droid exec and parse output."""
+        
+        # Build command
+        cmd = ["droid", "exec"]
+        
+        # Add autonomy level
+        if task.autonomy_level:
+            cmd.extend(["--auto", task.autonomy_level])
+        
+        # Add session ID for continuation
+        if task.session_id:
+            cmd.extend(["--session-id", task.session_id])
+        
+        # Add working directory
+        cmd.extend(["--cwd", task.project_dir])
+        
+        # Use JSON output for structured parsing
+        cmd.extend(["--output-format", "json"])
+        
+        # Add the prompt
+        cmd.append(task.prompt)
+        
+        logger.info(f"Executing: {' '.join(cmd)}")
+        
+        # Run the command
+        process = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            cwd=task.project_dir
+        )
+        task.process = process
+        
+        stdout, stderr = await process.communicate()
+        
+        stdout_str = stdout.decode("utf-8", errors="replace").strip()
+        stderr_str = stderr.decode("utf-8", errors="replace").strip()
+        
+        logger.info(f"droid exec exit code: {process.returncode}")
+        
+        if stderr_str:
+            logger.warning(f"droid exec stderr: {stderr_str}")
+        
+        # Parse JSON output
+        if stdout_str:
+            try:
+                output = json.loads(stdout_str)
+                return TaskResult(
+                    success=not output.get("is_error", False),
+                    result=output.get("result", ""),
+                    session_id=output.get("session_id"),
+                    duration_ms=output.get("duration_ms", 0),
+                    num_turns=output.get("num_turns", 0),
+                    raw_output=output
+                )
+            except json.JSONDecodeError:
+                # Non-JSON output (shouldn't happen with --output-format json)
+                return TaskResult(
+                    success=process.returncode == 0,
+                    result=stdout_str,
+                    error=stderr_str if process.returncode != 0 else None
+                )
+        else:
+            return TaskResult(
+                success=False,
+                result="",
+                error=stderr_str or "No output from droid exec"
+            )
+    
+    async def execute_task_streaming(
+        self,
+        task_id: str,
+        prompt: str,
+        project_dir: str,
+        session_id: Optional[str] = None,
+        autonomy_level: str = "high"
+    ) -> AsyncIterator[Dict[str, Any]]:
+        """
+        Execute task with streaming output (stream-json format).
+        Yields events as they occur.
+        """
+        if not session_id and project_dir in self._session_map:
+            session_id = self._session_map[project_dir]
+        
+        task = Task(
+            id=task_id,
+            prompt=prompt,
+            project_dir=project_dir,
+            session_id=session_id,
+            autonomy_level=autonomy_level
+        )
+        self._tasks[task_id] = task
+        
+        cmd = ["droid", "exec"]
+        
+        if task.autonomy_level:
+            cmd.extend(["--auto", task.autonomy_level])
+        
+        if task.session_id:
+            cmd.extend(["--session-id", task.session_id])
+        
+        cmd.extend(["--cwd", task.project_dir])
+        cmd.extend(["--output-format", "stream-json"])
+        cmd.append(task.prompt)
+        
+        logger.info(f"Executing (streaming): {' '.join(cmd)}")
+        
+        task.status = TaskStatus.RUNNING
+        task.started_at = datetime.utcnow()
+        
+        process = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            cwd=task.project_dir
+        )
+        task.process = process
+        
+        final_result = None
+        
+        async for line in process.stdout:
+            line_str = line.decode("utf-8", errors="replace").strip()
+            if not line_str:
+                continue
+            
+            try:
+                event = json.loads(line_str)
+                yield event
+                
+                # Capture completion event
+                if event.get("type") == "completion":
+                    final_result = event
+                    # Store session_id
+                    if event.get("session_id"):
+                        self._session_map[project_dir] = event["session_id"]
+                
+            except json.JSONDecodeError:
+                yield {"type": "raw", "content": line_str}
+        
+        await process.wait()
+        
+        task.completed_at = datetime.utcnow()
+        task.status = TaskStatus.COMPLETED if process.returncode == 0 else TaskStatus.FAILED
+        
+        if final_result:
+            task.result = TaskResult(
+                success=process.returncode == 0,
+                result=final_result.get("finalText", ""),
+                session_id=final_result.get("session_id"),
+                duration_ms=final_result.get("durationMs", 0),
+                num_turns=final_result.get("numTurns", 0)
+            )
+    
+    def cancel_task(self, task_id: str) -> bool:
+        """Cancel a running task."""
+        task = self._tasks.get(task_id)
+        if not task or task.status != TaskStatus.RUNNING:
+            return False
+        
+        if task.process:
+            task.process.terminate()
+            task.status = TaskStatus.CANCELLED
+            return True
+        
+        return False
+    
+    def get_task(self, task_id: str) -> Optional[Task]:
+        """Get task by ID."""
+        return self._tasks.get(task_id)
+    
+    def get_session_id(self, project_dir: str) -> Optional[str]:
+        """Get stored session ID for a project."""
+        return self._session_map.get(project_dir)
+    
+    def clear_session(self, project_dir: str) -> bool:
+        """Clear stored session for a project (start fresh)."""
+        if project_dir in self._session_map:
+            del self._session_map[project_dir]
+            return True
+        return False
+
+
+# Global instance
+task_executor = TaskExecutor()

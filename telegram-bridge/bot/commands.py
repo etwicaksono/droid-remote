@@ -21,6 +21,7 @@ async def setup_commands(application) -> None:
         BotCommand("sessions", "List all active sessions"),
         BotCommand("status", "Check status of all sessions"),
         BotCommand("switch", "Switch active session"),
+        BotCommand("setproject", "Set project directory for tasks"),
         BotCommand("done", "Signal current session to stop"),
         BotCommand("stopall", "Stop all sessions"),
         BotCommand("broadcast", "Send message to all waiting sessions"),
@@ -246,7 +247,7 @@ async def broadcast_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     waiting = session_registry.get_waiting_sessions()
     
     if not waiting:
-        await update.message.reply_text("📋 No waiting sessions")
+        await update.message.reply_text("No waiting sessions")
         return
     
     count = 0
@@ -254,6 +255,34 @@ async def broadcast_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         message_queue.deliver_response(session.id, None, message)
         count += 1
     
+    await update.message.reply_text(f"Broadcast sent to {count} session(s):\n{message}")
+
+
+async def setproject_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /setproject command"""
+    import os
+    args = context.args
+    
+    if not args:
+        current = context.user_data.get("project_dir", "Not set")
+        await update.message.reply_text(
+            f"Current project: {current}\n\n"
+            "Usage: /setproject <path>\n"
+            "Example: /setproject D:/Project/my-app"
+        )
+        return
+    
+    project_dir = " ".join(args)
+    
+    # Validate path exists
+    if not os.path.isdir(project_dir):
+        await update.message.reply_text(f"Directory not found: {project_dir}")
+        return
+    
+    # Store in user data
+    context.user_data["project_dir"] = project_dir
+    
     await update.message.reply_text(
-        f"✅ Broadcast sent to {count} session(s):\n{message}"
+        f"Project directory set to:\n{project_dir}\n\n"
+        "New tasks will be executed in this directory."
     )

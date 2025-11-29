@@ -19,6 +19,7 @@ from telegram.ext import (
 
 from core.session_registry import SessionRegistry, session_registry
 from core.message_queue import message_queue
+from core.task_executor import task_executor
 from core.models import Session, Notification, NotificationType, PendingRequest, SessionStatus
 from .commands import (
     setup_commands,
@@ -27,6 +28,7 @@ from .commands import (
     sessions_command,
     status_command,
     switch_command,
+    setproject_command,
     done_command,
     stopall_command,
     broadcast_command
@@ -156,6 +158,7 @@ class TelegramBotManager:
         app.add_handler(CommandHandler("sessions", sessions_command, filters=user_filter))
         app.add_handler(CommandHandler("status", status_command, filters=user_filter))
         app.add_handler(CommandHandler("switch", switch_command, filters=user_filter))
+        app.add_handler(CommandHandler("setproject", setproject_command, filters=user_filter))
         app.add_handler(CommandHandler("done", done_command, filters=user_filter))
         app.add_handler(CommandHandler("stopall", stopall_command, filters=user_filter))
         app.add_handler(CommandHandler("broadcast", broadcast_command, filters=user_filter))
@@ -238,7 +241,7 @@ class TelegramBotManager:
             await query.answer(f"Active: {session.name}")
     
     async def _handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle text messages (responses to Droid)"""
+        """Handle text messages (responses to Droid or new tasks)"""
         text = update.message.text.strip()
         user_id = update.effective_user.id
         
@@ -262,7 +265,7 @@ class TelegramBotManager:
                 session = self.registry.get_by_name(session_ref)
             
             if not session:
-                await update.message.reply_text(f"❌ Session not found: {session_ref}")
+                await update.message.reply_text(f"Session not found: {session_ref}")
                 return
         else:
             # Use active session or find waiting session
@@ -277,19 +280,64 @@ class TelegramBotManager:
                 session = waiting[0] if waiting else None
             
             if not session:
-                await update.message.reply_text(
-                    "❌ No active session. Use /sessions to see available sessions."
-                )
+                # No waiting session - execute as new task using droid exec
+                await self._execute_new_task(update, context, message)
                 return
         
-        # Deliver the message
+        # Deliver the message to waiting session
         message_queue.deliver_response(session.id, None, message)
         self.registry.update_status(session.id, SessionStatus.RUNNING)
         
-        await update.message.reply_text(
-            f"✅ Sent to *{session.name}*",
-            parse_mode="Markdown"
+        await update.message.reply_text(f"Sent to {session.name}")
+    
+    async def _execute_new_task(self, update: Update, context: ContextTypes.DEFAULT_TYPE, prompt: str):
+        """Execute a new task using droid exec"""
+        import uuid
+        
+        # Get project directory from context or use default
+        project_dir = context.user_data.get("project_dir")
+        
+        if not project_dir:
+            # Try to get from last active session
+            sessions = self.registry.get_all()
+            if sessions:
+                project_dir = sessions[-1].project_dir
+            else:
+                await update.message.reply_text(
+                    "No project directory set. Use /setproject <path> first."
+                )
+                return
+        
+        # Send acknowledgment
+        status_msg = await update.message.reply_text(
+            f"Executing task in: {project_dir}\n\nPrompt: {prompt[:100]}..."
         )
+        
+        try:
+            # Execute the task
+            task_id = str(uuid.uuid4())
+            result = await task_executor.execute_task(
+                task_id=task_id,
+                prompt=prompt,
+                project_dir=project_dir,
+                autonomy_level="high"
+            )
+            
+            # Format result
+            if result.success:
+                response_text = f"Task completed ({result.duration_ms}ms)\n\n{result.result}"
+            else:
+                response_text = f"Task failed\n\nError: {result.error or 'Unknown error'}"
+            
+            # Truncate if too long for Telegram (4096 char limit)
+            if len(response_text) > 4000:
+                response_text = response_text[:4000] + "\n\n... (truncated)"
+            
+            await status_msg.edit_text(response_text)
+            
+        except Exception as e:
+            logger.error(f"Task execution failed: {e}")
+            await status_msg.edit_text(f"Task execution failed: {str(e)}")
     
     async def _handle_error(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle errors"""

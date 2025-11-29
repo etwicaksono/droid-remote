@@ -9,6 +9,7 @@ from fastapi import APIRouter, HTTPException, Request, Depends, Header
 
 from core.session_registry import session_registry
 from core.message_queue import message_queue
+from core.task_executor import task_executor
 from core.models import (
     Session,
     SessionStatus,
@@ -21,7 +22,9 @@ from core.models import (
     WaitResponse,
     RespondRequest,
     HealthResponse,
-    Button
+    Button,
+    TaskExecuteRequest,
+    TaskResponse
 )
 
 logger = logging.getLogger(__name__)
@@ -231,4 +234,66 @@ async def respond_to_session(session_id: str, data: RespondRequest, request: Req
             "request_id": data.request_id
         })
     
+    return {"success": success}
+
+
+# Task Execution Endpoints (droid exec)
+
+@router.post("/tasks/execute", response_model=TaskResponse)
+async def execute_task(data: TaskExecuteRequest, request: Request):
+    """
+    Execute a task using droid exec (headless mode).
+    Returns the result and session_id for continuation.
+    """
+    task_id = str(uuid.uuid4())
+    
+    # Notify that task is starting
+    sio = getattr(request.app.state, "sio", None)
+    if sio:
+        await sio.emit("task_started", {
+            "task_id": task_id,
+            "project_dir": data.project_dir,
+            "prompt": data.prompt
+        })
+    
+    # Execute the task
+    result = await task_executor.execute_task(
+        task_id=task_id,
+        prompt=data.prompt,
+        project_dir=data.project_dir,
+        session_id=data.session_id,
+        autonomy_level=data.autonomy_level
+    )
+    
+    # Notify completion
+    if sio:
+        await sio.emit("task_completed", {
+            "task_id": task_id,
+            "success": result.success,
+            "result": result.result[:500] if result.result else "",  # Truncate for event
+            "session_id": result.session_id
+        })
+    
+    return TaskResponse(
+        success=result.success,
+        result=result.result,
+        task_id=task_id,
+        session_id=result.session_id,
+        duration_ms=result.duration_ms,
+        num_turns=result.num_turns,
+        error=result.error
+    )
+
+
+@router.get("/tasks/{project_dir:path}/session")
+async def get_project_session(project_dir: str):
+    """Get the stored session ID for a project (for continuation)."""
+    session_id = task_executor.get_session_id(project_dir)
+    return {"session_id": session_id}
+
+
+@router.delete("/tasks/{project_dir:path}/session")
+async def clear_project_session(project_dir: str):
+    """Clear the stored session for a project (start fresh)."""
+    success = task_executor.clear_session(project_dir)
     return {"success": success}

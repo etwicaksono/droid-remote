@@ -3,26 +3,22 @@
 Stop Hook Script
 
 Receives: JSON via stdin with session/transcript info
-Action: 
-  1. Send completion notification to Telegram
-  2. Wait for user response (with timeout)
-  3. If user sends new instruction, return it to Droid
-Output: 
-  - JSON with decision: "block" + reason (to continue with new instruction)
-  - Exit code 0 (to let Droid stop normally)
+Action: Send completion notification to Telegram (notification only, no blocking)
+Output: Exit code 0 (allow Droid to stop)
+
+Note: For continuing work, use the Telegram bot's task execution feature
+which uses 'droid exec' for reliable programmatic control.
 """
 import os
 import sys
 import json
-import uuid
 import logging
 
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "lib"))
 
-from bridge_client import register_session, notify, wait_for_response, update_session_status
+from bridge_client import register_session, notify, update_session_status
 from formatters import format_session_name, format_stop_message
-from config import DEFAULT_TIMEOUT
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -37,7 +33,7 @@ def main():
     
     # Check if we're already in a stop hook loop
     if input_data.get("stop_hook_active", False):
-        logger.info("Stop hook already active, allowing stop to prevent loop")
+        logger.info("Stop hook already active, allowing stop")
         sys.exit(0)
     
     # Extract session info
@@ -47,7 +43,6 @@ def main():
     
     # Register/update session
     register_session(session_id, project_dir, session_name)
-    update_session_status(session_id, "waiting")
     
     # Get summary if available
     summary = input_data.get("summary")
@@ -60,38 +55,13 @@ def main():
         session_name=session_name,
         message=message,
         notification_type="stop",
-        buttons=[
-            {"text": "✅ Done", "callback": "done"},
-            {"text": "📋 Status", "callback": "status"}
-        ]
+        buttons=[]  # No buttons - use Telegram to send new tasks via droid exec
     )
     
-    # Wait for user response
-    request_id = str(uuid.uuid4())
-    response = wait_for_response(
-        session_id=session_id,
-        request_id=request_id,
-        timeout=DEFAULT_TIMEOUT
-    )
-    
-    if response is None:
-        logger.info("Timeout waiting for response, allowing stop")
-        update_session_status(session_id, "stopped")
-        sys.exit(0)
-    
-    response_lower = response.lower().strip()
-    
-    # Check for done commands
-    if response_lower in ["/done", "done", "exit", "quit", "stop"]:
-        logger.info("User requested done, allowing stop")
-        update_session_status(session_id, "stopped")
-        sys.exit(0)
-    
-    # User sent new instruction - block stop and continue
-    # Use exit code 2 with stderr to feed instruction to Droid
-    update_session_status(session_id, "running")
-    print(response, file=sys.stderr)
-    sys.exit(2)
+    # Update status and allow stop
+    update_session_status(session_id, "stopped")
+    logger.info(f"Session {session_name} stopped, notification sent")
+    sys.exit(0)
 
 
 if __name__ == "__main__":
