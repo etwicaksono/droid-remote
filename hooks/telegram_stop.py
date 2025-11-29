@@ -88,13 +88,10 @@ def main():
         sys.exit(0)
     
     # User sent new instruction - block stop and continue
+    # Use exit code 2 with stderr to feed instruction to Droid
     update_session_status(session_id, "running")
-    output = {
-        "decision": "block",
-        "reason": f"User instruction: {response}"
-    }
-    print(json.dumps(output))
-    sys.exit(0)
+    print(response, file=sys.stderr)
+    sys.exit(2)
 
 
 if __name__ == "__main__":
