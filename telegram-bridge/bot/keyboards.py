@@ -45,13 +45,16 @@ def build_permission_keyboard(
     request_id: str
 ) -> InlineKeyboardMarkup:
     """Build standard permission request keyboard"""
+    # Use short IDs to fit within 64-byte callback_data limit
+    sid = session_id[:8] if len(session_id) > 8 else session_id
+    rid = request_id[:8] if len(request_id) > 8 else request_id
     return InlineKeyboardMarkup([
         [
-            InlineKeyboardButton("✅ Approve", callback_data=f"approve:{session_id}:{request_id}"),
-            InlineKeyboardButton("❌ Deny", callback_data=f"deny:{session_id}:{request_id}")
+            InlineKeyboardButton("Approve", callback_data=f"approve:{sid}:{rid}"),
+            InlineKeyboardButton("Deny", callback_data=f"deny:{sid}:{rid}")
         ],
         [
-            InlineKeyboardButton("✅ Approve All", callback_data=f"approve_all:{session_id}:{request_id}")
+            InlineKeyboardButton("Approve All", callback_data=f"approve_all:{sid}:{rid}")
         ]
     ])
 
@@ -61,10 +64,13 @@ def build_stop_keyboard(
     request_id: str
 ) -> InlineKeyboardMarkup:
     """Build keyboard for stop notification"""
+    # Use short IDs to fit within 64-byte callback_data limit
+    sid = session_id[:8] if len(session_id) > 8 else session_id
+    rid = request_id[:8] if len(request_id) > 8 else request_id
     return InlineKeyboardMarkup([
         [
-            InlineKeyboardButton("✅ Done", callback_data=f"done:{session_id}:{request_id}"),
-            InlineKeyboardButton("📋 Status", callback_data=f"status:{session_id}:{request_id}")
+            InlineKeyboardButton("Done", callback_data=f"done:{sid}:{rid}"),
+            InlineKeyboardButton("Status", callback_data=f"status:{sid}:{rid}")
         ]
     ])
 
