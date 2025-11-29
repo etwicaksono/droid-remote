@@ -1,0 +1,72 @@
+{
+  "hooks": {
+    "Notification": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"C:/Users/Eko Teguh Wicaksono/.factory/hooks/telegram_notify.py\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"C:/Users/Eko Teguh Wicaksono/.factory/hooks/telegram_stop.py\"",
+            "timeout": 300
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"C:/Users/Eko Teguh Wicaksono/.factory/hooks/telegram_subagent_stop.py\"",
+            "timeout": 300
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash|Execute|Write|Create|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"C:/Users/Eko Teguh Wicaksono/.factory/hooks/telegram_pre_tool.py\"",
+            "timeout": 120
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "startup",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"C:/Users/Eko Teguh Wicaksono/.factory/hooks/telegram_session_start.py\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"C:/Users/Eko Teguh Wicaksono/.factory/hooks/telegram_session_end.py\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
