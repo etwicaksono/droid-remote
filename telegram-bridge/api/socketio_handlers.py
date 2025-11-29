@@ -28,7 +28,7 @@ def create_socketio_server() -> socketio.AsyncServer:
         
         # Send current sessions
         sessions = session_registry.get_all()
-        await sio.emit("sessions_update", [s.model_dump() for s in sessions], to=sid)
+        await sio.emit("sessions_update", [s.model_dump(mode='json') for s in sessions], to=sid)
     
     @sio.event
     async def disconnect(sid):
@@ -72,7 +72,7 @@ def create_socketio_server() -> socketio.AsyncServer:
         
         # Broadcast update
         sessions = session_registry.get_all()
-        await sio.emit("sessions_update", [s.model_dump() for s in sessions])
+        await sio.emit("sessions_update", [s.model_dump(mode='json') for s in sessions])
         
         logger.info(f"Response delivered via WebSocket: session={session_id}")
         return {"success": True}
@@ -92,7 +92,7 @@ def create_socketio_server() -> socketio.AsyncServer:
         
         # Broadcast update
         sessions = session_registry.get_all()
-        await sio.emit("sessions_update", [s.model_dump() for s in sessions])
+        await sio.emit("sessions_update", [s.model_dump(mode='json') for s in sessions])
         
         logger.info(f"Approved via WebSocket: session={session_id}")
         return {"success": True}
@@ -112,7 +112,7 @@ def create_socketio_server() -> socketio.AsyncServer:
         
         # Broadcast update
         sessions = session_registry.get_all()
-        await sio.emit("sessions_update", [s.model_dump() for s in sessions])
+        await sio.emit("sessions_update", [s.model_dump(mode='json') for s in sessions])
         
         logger.info(f"Denied via WebSocket: session={session_id}")
         return {"success": True}
@@ -121,7 +121,7 @@ def create_socketio_server() -> socketio.AsyncServer:
     async def get_sessions(sid):
         """Get all sessions"""
         sessions = session_registry.get_all()
-        return [s.model_dump() for s in sessions]
+        return [s.model_dump(mode='json') for s in sessions]
     
     return sio
 
