@@ -68,8 +68,9 @@ function parseResultContent(resultStr: string | undefined, error: string | undef
   return content || 'Task completed'
 }
 
-// localStorage key for chat history
+// localStorage keys
 const getChatStorageKey = (sessionId: string) => `droid-chat-${sessionId}`
+const getSettingsStorageKey = (sessionId: string) => `droid-settings-${sessionId}`
 
 interface SessionCardProps {
   session: Session
@@ -110,18 +111,26 @@ export function SessionCard({ session }: SessionCardProps) {
   const currentModel = AVAILABLE_MODELS.find(m => m.id === selectedModel)
   const supportsReasoning = currentModel?.reasoning ?? false
 
-  // Load chat history from localStorage on mount
+  // Load chat history and settings from localStorage on mount
   useEffect(() => {
     try {
-      const stored = localStorage.getItem(getChatStorageKey(session.id))
-      if (stored) {
-        const parsed = JSON.parse(stored)
+      // Load chat history
+      const storedChat = localStorage.getItem(getChatStorageKey(session.id))
+      if (storedChat) {
+        const parsed = JSON.parse(storedChat)
         if (Array.isArray(parsed)) {
           setChatHistory(parsed.map(msg => ({
             ...msg,
             timestamp: new Date(msg.timestamp)
           })))
         }
+      }
+      // Load settings
+      const storedSettings = localStorage.getItem(getSettingsStorageKey(session.id))
+      if (storedSettings) {
+        const settings = JSON.parse(storedSettings)
+        if (settings.model) setSelectedModel(settings.model)
+        if (settings.reasoningEffort) setReasoningEffort(settings.reasoningEffort)
       }
     } catch {
       // Ignore parse errors
@@ -138,6 +147,18 @@ export function SessionCard({ session }: SessionCardProps) {
       }
     }
   }, [chatHistory, session.id])
+
+  // Save settings to localStorage when they change
+  useEffect(() => {
+    try {
+      localStorage.setItem(getSettingsStorageKey(session.id), JSON.stringify({
+        model: selectedModel,
+        reasoningEffort
+      }))
+    } catch {
+      // Ignore storage errors
+    }
+  }, [selectedModel, reasoningEffort, session.id])
 
   const statusConfig = STATUS_CONFIG[session.status]
   const controlState = session.control_state || 'cli_active'
