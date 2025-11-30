@@ -65,9 +65,9 @@ async def register_session(data: RegisterSessionRequest, request: Request):
     sio = getattr(request.app.state, "sio", None)
     if sio:
         sessions = session_registry.get_all()
-        await sio.emit("sessions_update", [s.model_dump() for s in sessions])
+        await sio.emit("sessions_update", [s.model_dump(mode='json') for s in sessions])
     
-    return {"success": True, "session": session.model_dump()}
+    return {"success": True, "session": session.model_dump(mode='json')}
 
 
 @router.get("/sessions", response_model=List[Session])
