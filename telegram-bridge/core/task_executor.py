@@ -245,18 +245,39 @@ class TaskExecutor:
         
         # Parse JSON output
         if stdout_str:
-            try:
-                output = json.loads(stdout_str)
+            # droid exec may output multiple lines, find the JSON result line
+            output = None
+            for line in stdout_str.split('\n'):
+                line = line.strip()
+                if not line:
+                    continue
+                if line.startswith('{'):
+                    try:
+                        parsed = json.loads(line)
+                        # Look for the result type message
+                        if parsed.get("type") == "result" or "result" in parsed:
+                            output = parsed
+                            break
+                    except json.JSONDecodeError:
+                        continue
+            
+            if output:
+                # Extract the actual result content
+                result_content = output.get("result", "")
+                # Clean up markdown headers
+                if isinstance(result_content, str):
+                    result_content = result_content.replace("# Answer\n\n", "").strip()
+                
                 return TaskResult(
                     success=not output.get("is_error", False),
-                    result=output.get("result", ""),
+                    result=result_content,
                     session_id=output.get("session_id"),
                     duration_ms=output.get("duration_ms", 0),
                     num_turns=output.get("num_turns", 0),
                     raw_output=output
                 )
-            except json.JSONDecodeError:
-                # Non-JSON output (shouldn't happen with --output-format json)
+            else:
+                # No valid JSON found, return raw output
                 return TaskResult(
                     success=process.returncode == 0,
                     result=stdout_str,
