@@ -34,8 +34,16 @@ def main():
         logger.error(f"Failed to parse input JSON: {e}")
         sys.exit(0)
     
-    # Extract session info
-    session_id = input_data.get("session_id", "unknown")
+    # Debug: log what Factory sends
+    logger.info(f"Received input keys: {list(input_data.keys())}")
+    
+    # Extract session info - try multiple possible key names
+    session_id = (
+        input_data.get("session_id") or 
+        input_data.get("sessionId") or 
+        input_data.get("id") or 
+        "unknown"
+    )
     project_dir = os.environ.get("FACTORY_PROJECT_DIR", os.getcwd())
     session_name = format_session_name(project_dir, session_id)
     trigger = input_data.get("trigger", "unknown")
