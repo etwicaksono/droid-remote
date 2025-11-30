@@ -20,7 +20,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "lib"))
 from bridge_client import register_session, notify, update_session_status, wait_for_response
 from formatters import format_session_name, format_stop_message
 
-logging.basicConfig(level=logging.INFO)
+# Log to stdout, not stderr (stderr is used for instruction output)
+logging.basicConfig(level=logging.INFO, stream=sys.stdout)
 logger = logging.getLogger(__name__)
 
 WAIT_TIMEOUT = 300  # 5 minutes
