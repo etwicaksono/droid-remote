@@ -20,14 +20,12 @@ const AVAILABLE_MODELS = [
 ]
 
 interface TaskFormProps {
-  defaultProjectDir?: string
-  sessionId?: string
   onComplete?: (result: TaskResponse) => void
 }
 
-export function TaskForm({ defaultProjectDir = '', sessionId, onComplete }: TaskFormProps) {
+export function TaskForm({ onComplete }: TaskFormProps) {
   const [prompt, setPrompt] = useState('')
-  const [projectDir, setProjectDir] = useState(defaultProjectDir)
+  const [projectDir, setProjectDir] = useState('')
   const [model, setModel] = useState('default')
   const [result, setResult] = useState<TaskResponse | null>(null)
   const { executeTask, loading } = useSessionActions()
@@ -40,7 +38,6 @@ export function TaskForm({ defaultProjectDir = '', sessionId, onComplete }: Task
       const response = await executeTask({
         prompt: prompt.trim(),
         projectDir: projectDir.trim(),
-        sessionId,
         model: model === 'default' ? undefined : model,
       })
       setResult(response)
@@ -61,7 +58,10 @@ export function TaskForm({ defaultProjectDir = '', sessionId, onComplete }: Task
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-lg">Execute Task</CardTitle>
+        <CardTitle className="text-lg">Custom Task</CardTitle>
+        <p className="text-sm text-muted-foreground">
+          Run a task on any project directory (no active session needed)
+        </p>
       </CardHeader>
       <CardContent>
         <form className="space-y-4" onSubmit={handleSubmit}>
@@ -119,27 +119,33 @@ export function TaskForm({ defaultProjectDir = '', sessionId, onComplete }: Task
         </form>
 
         {result && (
-          <div className="mt-4 p-3 rounded-md bg-muted">
-            <div className="flex items-center gap-2 mb-2">
-              <span
-                className={`h-2 w-2 rounded-full ${result.success ? 'bg-green-500' : 'bg-red-500'}`}
-              />
-              <span className="font-medium">
-                {result.success ? 'Success' : 'Failed'}
-              </span>
+          <div className={`mt-4 p-3 rounded-md space-y-2 ${
+            result.success 
+              ? 'bg-green-500/10 border border-green-500/30' 
+              : 'bg-red-500/10 border border-red-500/30'
+          }`}>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span
+                  className={`h-2 w-2 rounded-full ${result.success ? 'bg-green-500' : 'bg-red-500'}`}
+                />
+                <span className="font-medium text-sm">
+                  {result.success ? 'Task Completed' : 'Task Failed'}
+                </span>
+              </div>
               {result.duration_ms > 0 && (
                 <span className="text-xs text-muted-foreground">
-                  ({result.duration_ms}ms, {result.num_turns} turns)
+                  {(result.duration_ms / 1000).toFixed(1)}s · {result.num_turns} turns
                 </span>
               )}
             </div>
             {result.error && (
-              <p className="text-sm text-destructive">{result.error}</p>
+              <p className="text-sm text-red-400">{result.error}</p>
             )}
             {result.result && (
-              <pre className="text-xs whitespace-pre-wrap overflow-auto max-h-60">
+              <div className="text-sm whitespace-pre-wrap overflow-auto max-h-60">
                 {result.result}
-              </pre>
+              </div>
             )}
           </div>
         )}

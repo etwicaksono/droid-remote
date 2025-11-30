@@ -8,7 +8,14 @@ import { PermissionHistory } from '@/components/sessions/permission-history'
 import { ActivityFeed } from '@/components/activity/activity-feed'
 import { ConnectionStatus } from '@/components/connection-status'
 
-type Tab = 'sessions' | 'tasks' | 'permissions' | 'history'
+type Tab = 'sessions' | 'custom' | 'permissions' | 'history'
+
+const TAB_LABELS: Record<Tab, string> = {
+  sessions: 'Sessions',
+  custom: 'Custom Task',
+  permissions: 'Permissions',
+  history: 'History',
+}
 
 export default function DashboardPage() {
   const [activeTab, setActiveTab] = useState<Tab>('sessions')
@@ -26,7 +33,7 @@ export default function DashboardPage() {
       {/* Tab Navigation */}
       <div className="max-w-6xl mx-auto mb-6">
         <div className="flex gap-2 border-b border-gray-700 pb-2">
-          {(['sessions', 'tasks', 'permissions', 'history'] as Tab[]).map((tab) => (
+          {(['sessions', 'custom', 'permissions', 'history'] as Tab[]).map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -36,7 +43,7 @@ export default function DashboardPage() {
                   : 'text-gray-400 hover:text-white hover:bg-gray-800/50'
               }`}
             >
-              {tab.charAt(0).toUpperCase() + tab.slice(1)}
+              {TAB_LABELS[tab]}
             </button>
           ))}
         </div>
@@ -45,23 +52,16 @@ export default function DashboardPage() {
       <div className="grid gap-6 lg:grid-cols-3 max-w-6xl mx-auto">
         <div className="lg:col-span-2 space-y-6">
           {activeTab === 'sessions' && (
-            <>
-              <div>
-                <h2 className="mb-4 text-lg font-semibold">Active Sessions</h2>
-                <Suspense fallback={<SessionListSkeleton />}>
-                  <SessionList />
-                </Suspense>
-              </div>
-              <div>
-                <h2 className="mb-4 text-lg font-semibold">Execute New Task</h2>
-                <TaskForm />
-              </div>
-            </>
+            <div>
+              <h2 className="mb-4 text-lg font-semibold">Active Sessions</h2>
+              <Suspense fallback={<SessionListSkeleton />}>
+                <SessionList />
+              </Suspense>
+            </div>
           )}
 
-          {activeTab === 'tasks' && (
+          {activeTab === 'custom' && (
             <div>
-              <h2 className="mb-4 text-lg font-semibold">Execute Task</h2>
               <TaskForm />
             </div>
           )}
