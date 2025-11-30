@@ -131,6 +131,7 @@ class TaskExecuteRequest(BaseModel):
     session_id: Optional[str] = None  # For continuing sessions
     autonomy_level: str = "high"  # low, medium, high
     model: Optional[str] = None  # Model ID (e.g., claude-sonnet-4-20250514)
+    reasoning_effort: Optional[str] = None  # off, low, medium, high (for models with thinking)
     streaming: bool = False  # Use stream-json format
 
 

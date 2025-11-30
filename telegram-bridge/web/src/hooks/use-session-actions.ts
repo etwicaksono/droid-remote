@@ -83,6 +83,7 @@ export function useSessionActions() {
       projectDir: string
       sessionId?: string
       model?: string
+      reasoningEffort?: string
     }) => {
       setLoading(true)
       try {
@@ -94,6 +95,7 @@ export function useSessionActions() {
             project_dir: params.projectDir,
             session_id: params.sessionId,
             model: params.model,
+            reasoning_effort: params.reasoningEffort,
           }),
         })
         if (!res.ok) throw new Error('Task execution failed')

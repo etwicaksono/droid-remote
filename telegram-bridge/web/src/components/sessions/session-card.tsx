@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, type FormEvent } from 'react'
-import { Clock, Folder, Terminal, Radio, Play, Square, Loader2 } from 'lucide-react'
+import { Clock, Folder, Terminal, Radio, Play, Square, Loader2, Settings2, Brain } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -9,7 +9,23 @@ import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { useSessionActions } from '@/hooks/use-session-actions'
 import { cn, formatRelativeTime } from '@/lib/utils'
-import type { Session, ControlState } from '@/types'
+import type { Session, ControlState, ReasoningEffort } from '@/types'
+
+const AVAILABLE_MODELS = [
+  { id: 'claude-sonnet-4-5-20250929', name: 'Claude Sonnet 4.5', reasoning: true },
+  { id: 'gpt-5-codex', name: 'GPT-5 Codex', reasoning: false },
+  { id: 'gpt-5-2025-08-07', name: 'GPT-5', reasoning: true },
+  { id: 'claude-opus-4-1-20250805', name: 'Claude Opus 4.1', reasoning: true },
+  { id: 'claude-haiku-4-5-20251001', name: 'Claude Haiku 4.5', reasoning: true },
+  { id: 'glm-4.6', name: 'Droid Core', reasoning: false },
+]
+
+const REASONING_LEVELS: { id: ReasoningEffort; name: string }[] = [
+  { id: 'off', name: 'Off' },
+  { id: 'low', name: 'Low' },
+  { id: 'medium', name: 'Medium' },
+  { id: 'high', name: 'High' },
+]
 
 interface SessionCardProps {
   session: Session
@@ -42,7 +58,13 @@ export function SessionCard({ session }: SessionCardProps) {
   const [taskPrompt, setTaskPrompt] = useState('')
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([])
   const [executing, setExecuting] = useState(false)
+  const [showSettings, setShowSettings] = useState(false)
+  const [selectedModel, setSelectedModel] = useState('claude-sonnet-4-5-20250929')
+  const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort>('medium')
   const { respond, approve, deny, handoff, release, executeTask, loading } = useSessionActions()
+
+  const currentModel = AVAILABLE_MODELS.find(m => m.id === selectedModel)
+  const supportsReasoning = currentModel?.reasoning ?? false
 
   const statusConfig = STATUS_CONFIG[session.status]
   const controlState = session.control_state || 'cli_active'
@@ -82,6 +104,8 @@ export function SessionCard({ session }: SessionCardProps) {
         prompt,
         projectDir: session.project_dir,
         sessionId: session.id,
+        model: selectedModel,
+        reasoningEffort: supportsReasoning ? reasoningEffort : undefined,
       })
       
       // Parse the result to get human-readable content
@@ -89,15 +113,38 @@ export function SessionCard({ session }: SessionCardProps) {
       if (result.error) {
         responseContent = result.error
       } else if (result.result) {
-        // Try to parse if it's JSON
+        // Try to parse if it's JSON (droid exec returns JSON)
         try {
           const parsed = JSON.parse(result.result)
-          responseContent = parsed.result || parsed.message || result.result
+          // Extract the actual result content from droid exec JSON output
+          if (parsed.result) {
+            // Remove markdown header if present
+            responseContent = parsed.result.replace(/^#\s*Answer\s*\n+/i, '').trim()
+          } else if (parsed.message) {
+            responseContent = parsed.message
+          } else if (typeof parsed === 'string') {
+            responseContent = parsed
+          } else {
+            responseContent = result.result
+          }
         } catch {
-          responseContent = result.result
+          // Not JSON, use as-is but clean up markdown headers
+          responseContent = result.result.replace(/^#\s*Answer\s*\n+/i, '').trim()
         }
       } else {
         responseContent = 'Task completed'
+      }
+      
+      // Final cleanup - if still looks like JSON, try one more parse
+      if (responseContent.startsWith('{') || responseContent.startsWith('[')) {
+        try {
+          const innerParsed = JSON.parse(responseContent)
+          if (innerParsed.result) {
+            responseContent = innerParsed.result.replace(/^#\s*Answer\s*\n+/i, '').trim()
+          }
+        } catch {
+          // Keep as-is
+        }
       }
 
       const assistantMessage: ChatMessage = {
@@ -240,16 +287,76 @@ export function SessionCard({ session }: SessionCardProps) {
         {/* Task execution form (Remote Control mode) */}
         {isRemoteControlled && (
           <div className="space-y-3 pt-2 border-t border-border">
+            {/* Settings Bar */}
+            <div className="flex items-center gap-2 text-xs">
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 px-2"
+                onClick={() => setShowSettings(!showSettings)}
+              >
+                <Settings2 className="h-3 w-3 mr-1" />
+                {currentModel?.name || 'Model'}
+                {supportsReasoning && reasoningEffort !== 'off' && (
+                  <Brain className="h-3 w-3 ml-1 text-purple-400" />
+                )}
+              </Button>
+            </div>
+
+            {/* Settings Panel */}
+            {showSettings && (
+              <div className="p-3 rounded-md bg-muted/50 space-y-3">
+                <div className="space-y-1">
+                  <label className="text-xs font-medium">Model</label>
+                  <select
+                    value={selectedModel}
+                    onChange={(e) => setSelectedModel(e.target.value)}
+                    className="w-full h-8 px-2 text-sm rounded-md bg-background border border-border"
+                  >
+                    {AVAILABLE_MODELS.map((model) => (
+                      <option key={model.id} value={model.id}>
+                        {model.name} {model.reasoning ? '(thinking)' : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                
+                {supportsReasoning && (
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium flex items-center gap-1">
+                      <Brain className="h-3 w-3" />
+                      Thinking Mode
+                    </label>
+                    <div className="flex gap-1">
+                      {REASONING_LEVELS.map((level) => (
+                        <Button
+                          key={level.id}
+                          size="sm"
+                          variant={reasoningEffort === level.id ? 'default' : 'outline'}
+                          className="h-7 px-2 text-xs flex-1"
+                          onClick={() => setReasoningEffort(level.id)}
+                        >
+                          {level.name}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Chat History */}
-            {chatHistory.length > 0 && (
-              <div className="space-y-3 max-h-80 overflow-y-auto">
+            {(chatHistory.length > 0 || executing) && (
+              <div className="space-y-3 max-h-80 overflow-y-auto overflow-x-hidden">
                 {chatHistory.map((msg) => (
                   <ChatBubble key={msg.id} message={msg} />
                 ))}
                 {executing && (
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Droid is working...
+                  <div className="flex justify-start">
+                    <div className="bg-muted rounded-lg px-3 py-2 flex items-center gap-2 text-sm text-muted-foreground">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Droid is thinking...
+                    </div>
                   </div>
                 )}
               </div>

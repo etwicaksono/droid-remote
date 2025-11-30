@@ -42,6 +42,7 @@ class Task:
     session_id: Optional[str] = None  # For continuing sessions
     autonomy_level: str = "high"  # low, medium, high
     model: Optional[str] = None  # Model to use (e.g., claude-sonnet-4-20250514)
+    reasoning_effort: Optional[str] = None  # off, low, medium, high
     status: TaskStatus = TaskStatus.PENDING
     result: Optional[TaskResult] = None
     created_at: datetime = field(default_factory=datetime.utcnow)
@@ -68,6 +69,7 @@ class TaskExecutor:
         session_id: Optional[str] = None,
         autonomy_level: str = "high",
         model: Optional[str] = None,
+        reasoning_effort: Optional[str] = None,
         source: str = "api",
         on_progress: Optional[Callable[[str], None]] = None
     ) -> TaskResult:
@@ -81,6 +83,7 @@ class TaskExecutor:
             session_id: Optional session ID to continue
             autonomy_level: low, medium, or high
             model: Optional model ID (e.g., claude-sonnet-4-20250514)
+            reasoning_effort: Optional reasoning effort (off, low, medium, high)
             source: Source of the task (telegram, web, api)
             on_progress: Optional callback for progress updates
         
@@ -98,7 +101,8 @@ class TaskExecutor:
             project_dir=project_dir,
             session_id=session_id,
             autonomy_level=autonomy_level,
-            model=model
+            model=model,
+            reasoning_effort=reasoning_effort
         )
         self._tasks[task_id] = task
         
@@ -192,6 +196,10 @@ class TaskExecutor:
         # Add model if specified
         if task.model:
             cmd.extend(["--model", task.model])
+        
+        # Add reasoning effort if specified
+        if task.reasoning_effort:
+            cmd.extend(["--reasoning-effort", task.reasoning_effort])
         
         # Add autonomy level
         if task.autonomy_level:

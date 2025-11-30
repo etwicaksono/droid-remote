@@ -265,6 +265,7 @@ async def execute_task(data: TaskExecuteRequest, request: Request):
         session_id=data.session_id,
         autonomy_level=data.autonomy_level,
         model=data.model,
+        reasoning_effort=data.reasoning_effort,
         source="api"
     )
     

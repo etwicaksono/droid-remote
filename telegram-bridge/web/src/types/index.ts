@@ -83,12 +83,15 @@ export interface HealthStatus {
   version: string
 }
 
+export type ReasoningEffort = 'off' | 'low' | 'medium' | 'high'
+
 export interface TaskExecuteRequest {
   prompt: string
   project_dir: string
   session_id?: string
   autonomy_level?: string
   model?: string
+  reasoning_effort?: ReasoningEffort
 }
 
 export interface TaskResponse {
