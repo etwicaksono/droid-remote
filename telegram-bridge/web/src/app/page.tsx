@@ -1,5 +1,6 @@
 import { Suspense } from 'react'
 import { SessionList } from '@/components/sessions/session-list'
+import { TaskForm } from '@/components/sessions/task-form'
 import { ActivityFeed } from '@/components/activity/activity-feed'
 import { ConnectionStatus } from '@/components/connection-status'
 
@@ -15,11 +16,18 @@ export default function DashboardPage() {
       </header>
 
       <div className="grid gap-6 lg:grid-cols-3 max-w-6xl mx-auto">
-        <div className="lg:col-span-2">
-          <h2 className="mb-4 text-lg font-semibold">Active Sessions</h2>
-          <Suspense fallback={<SessionListSkeleton />}>
-            <SessionList />
-          </Suspense>
+        <div className="lg:col-span-2 space-y-6">
+          <div>
+            <h2 className="mb-4 text-lg font-semibold">Active Sessions</h2>
+            <Suspense fallback={<SessionListSkeleton />}>
+              <SessionList />
+            </Suspense>
+          </div>
+          
+          <div>
+            <h2 className="mb-4 text-lg font-semibold">Execute New Task</h2>
+            <TaskForm />
+          </div>
         </div>
 
         <div>
