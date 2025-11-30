@@ -248,26 +248,43 @@ class TaskExecutor:
             logger.info(f"Raw stdout ({len(stdout_str)} chars): {stdout_str[:500]}")
             
             # droid exec outputs JSON with --output-format json
+            # Clean the output - remove BOM and other invisible chars
+            clean_stdout = stdout_str.strip()
+            # Remove BOM if present
+            if clean_stdout.startswith('\ufeff'):
+                clean_stdout = clean_stdout[1:]
+            # Find the first { character (start of JSON)
+            json_start = clean_stdout.find('{')
+            if json_start > 0:
+                logger.info(f"Found JSON start at position {json_start}, skipping prefix: {repr(clean_stdout[:json_start])}")
+                clean_stdout = clean_stdout[json_start:]
+            
             # Try to parse the entire output first
             output = None
             try:
-                output = json.loads(stdout_str.strip())
+                output = json.loads(clean_stdout)
                 logger.info(f"Parsed JSON successfully, type={output.get('type')}, has result={('result' in output)}")
             except json.JSONDecodeError as e:
-                logger.warning(f"Full JSON parse failed: {e}, trying line by line")
+                logger.warning(f"Full JSON parse failed: {e}")
+                logger.warning(f"First 50 chars repr: {repr(clean_stdout[:50])}")
                 # Try line by line as fallback
-                for line in stdout_str.split('\n'):
+                for i, line in enumerate(stdout_str.split('\n')):
                     line = line.strip()
-                    if not line or not line.startswith('{'):
+                    if not line:
                         continue
-                    try:
-                        parsed = json.loads(line)
-                        if parsed.get("type") == "result" or "result" in parsed:
-                            output = parsed
-                            logger.info(f"Found JSON in line: type={parsed.get('type')}")
-                            break
-                    except json.JSONDecodeError:
-                        continue
+                    # Find JSON start in line
+                    j_start = line.find('{')
+                    if j_start >= 0:
+                        json_line = line[j_start:]
+                        try:
+                            parsed = json.loads(json_line)
+                            if "result" in parsed:
+                                output = parsed
+                                logger.info(f"Found JSON in line {i}: type={parsed.get('type')}")
+                                break
+                        except json.JSONDecodeError as e:
+                            logger.warning(f"Line {i} JSON parse failed: {e}, line={repr(json_line[:50])}")
+                            continue
             
             if output:
                 # Extract the actual result content
