@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, type FormEvent } from 'react'
-import { Clock, Folder, Terminal, Radio, Play, Square, Loader2, CheckCircle, XCircle } from 'lucide-react'
+import { Clock, Folder, Terminal, Radio, Play, Square, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -9,7 +9,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { useSessionActions } from '@/hooks/use-session-actions'
 import { cn, formatRelativeTime } from '@/lib/utils'
-import type { Session, ControlState, TaskResponse } from '@/types'
+import type { Session, ControlState } from '@/types'
 
 interface SessionCardProps {
   session: Session
@@ -28,10 +28,19 @@ const CONTROL_STATE_CONFIG: Record<ControlState, { label: string; color: string;
   released: { label: 'Released', color: 'bg-gray-500', description: 'Waiting for CLI' },
 }
 
+interface ChatMessage {
+  id: string
+  type: 'user' | 'assistant'
+  content: string
+  timestamp: Date
+  status?: 'success' | 'error'
+  meta?: { duration?: number; turns?: number }
+}
+
 export function SessionCard({ session }: SessionCardProps) {
   const [message, setMessage] = useState('')
   const [taskPrompt, setTaskPrompt] = useState('')
-  const [taskResult, setTaskResult] = useState<TaskResponse | null>(null)
+  const [chatHistory, setChatHistory] = useState<ChatMessage[]>([])
   const [executing, setExecuting] = useState(false)
   const { respond, approve, deny, handoff, release, executeTask, loading } = useSessionActions()
 
@@ -57,25 +66,61 @@ export function SessionCard({ session }: SessionCardProps) {
     e.preventDefault()
     if (!taskPrompt.trim() || executing) return
 
+    const userMessage: ChatMessage = {
+      id: Date.now().toString(),
+      type: 'user',
+      content: taskPrompt.trim(),
+      timestamp: new Date(),
+    }
+    setChatHistory(prev => [...prev, userMessage])
+    const prompt = taskPrompt.trim()
+    setTaskPrompt('')
     setExecuting(true)
-    setTaskResult(null)
+
     try {
       const result = await executeTask({
-        prompt: taskPrompt.trim(),
+        prompt,
         projectDir: session.project_dir,
         sessionId: session.id,
       })
-      setTaskResult(result)
-      setTaskPrompt('')
+      
+      // Parse the result to get human-readable content
+      let responseContent = ''
+      if (result.error) {
+        responseContent = result.error
+      } else if (result.result) {
+        // Try to parse if it's JSON
+        try {
+          const parsed = JSON.parse(result.result)
+          responseContent = parsed.result || parsed.message || result.result
+        } catch {
+          responseContent = result.result
+        }
+      } else {
+        responseContent = 'Task completed'
+      }
+
+      const assistantMessage: ChatMessage = {
+        id: (Date.now() + 1).toString(),
+        type: 'assistant',
+        content: responseContent,
+        timestamp: new Date(),
+        status: result.success ? 'success' : 'error',
+        meta: {
+          duration: result.duration_ms,
+          turns: result.num_turns,
+        },
+      }
+      setChatHistory(prev => [...prev, assistantMessage])
     } catch (error) {
-      setTaskResult({
-        success: false,
-        result: '',
-        task_id: '',
-        duration_ms: 0,
-        num_turns: 0,
-        error: String(error),
-      })
+      const errorMessage: ChatMessage = {
+        id: (Date.now() + 1).toString(),
+        type: 'assistant',
+        content: String(error),
+        timestamp: new Date(),
+        status: 'error',
+      }
+      setChatHistory(prev => [...prev, errorMessage])
     } finally {
       setExecuting(false)
     }
@@ -195,37 +240,51 @@ export function SessionCard({ session }: SessionCardProps) {
         {/* Task execution form (Remote Control mode) */}
         {isRemoteControlled && (
           <div className="space-y-3 pt-2 border-t border-border">
-            <form className="space-y-2" onSubmit={handleTaskSubmit}>
+            {/* Chat History */}
+            {chatHistory.length > 0 && (
+              <div className="space-y-3 max-h-80 overflow-y-auto">
+                {chatHistory.map((msg) => (
+                  <ChatBubble key={msg.id} message={msg} />
+                ))}
+                {executing && (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Droid is working...
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Input Form */}
+            <form className="flex gap-2" onSubmit={handleTaskSubmit}>
               <Textarea
                 placeholder="Enter task instruction..."
-                rows={2}
+                rows={1}
                 value={taskPrompt}
                 onChange={(e) => setTaskPrompt(e.target.value)}
                 disabled={executing}
+                className="flex-1 min-h-[40px] resize-none"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault()
+                    if (taskPrompt.trim() && !executing) {
+                      handleTaskSubmit(e as unknown as FormEvent<HTMLFormElement>)
+                    }
+                  }
+                }}
               />
               <Button 
                 type="submit" 
                 disabled={!taskPrompt.trim() || executing}
-                className="w-full"
+                size="icon"
               >
                 {executing ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Executing...
-                  </>
+                  <Loader2 className="h-4 w-4 animate-spin" />
                 ) : (
-                  <>
-                    <Play className="h-4 w-4 mr-2" />
-                    Execute Task
-                  </>
+                  <Play className="h-4 w-4" />
                 )}
               </Button>
             </form>
-
-            {/* Task Result */}
-            {taskResult && (
-              <TaskResultDisplay result={taskResult} />
-            )}
           </div>
         )}
       </CardContent>
@@ -233,61 +292,52 @@ export function SessionCard({ session }: SessionCardProps) {
   )
 }
 
-function TaskResultDisplay({ result }: { result: TaskResponse }) {
+function ChatBubble({ message }: { message: ChatMessage }) {
   const [expanded, setExpanded] = useState(false)
+  const isUser = message.type === 'user'
+  const isLong = message.content.length > 300
 
   return (
-    <div className={cn(
-      'rounded-md p-3 space-y-2',
-      result.success ? 'bg-green-500/10 border border-green-500/30' : 'bg-red-500/10 border border-red-500/30'
-    )}>
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          {result.success ? (
-            <CheckCircle className="h-4 w-4 text-green-500" />
-          ) : (
-            <XCircle className="h-4 w-4 text-red-500" />
-          )}
-          <span className="font-medium text-sm">
-            {result.success ? 'Task Completed' : 'Task Failed'}
-          </span>
-        </div>
-        {result.duration_ms > 0 && (
-          <span className="text-xs text-muted-foreground">
-            {(result.duration_ms / 1000).toFixed(1)}s · {result.num_turns} turns
-          </span>
+    <div className={cn('flex', isUser ? 'justify-end' : 'justify-start')}>
+      <div
+        className={cn(
+          'max-w-[85%] rounded-lg px-3 py-2',
+          isUser
+            ? 'bg-blue-600 text-white'
+            : message.status === 'error'
+            ? 'bg-red-500/20 border border-red-500/30'
+            : 'bg-muted'
         )}
-      </div>
+      >
+        {/* Message Content */}
+        <div className="text-sm whitespace-pre-wrap break-words">
+          {isLong && !expanded
+            ? message.content.substring(0, 300) + '...'
+            : message.content}
+        </div>
 
-      {/* Error */}
-      {result.error && (
-        <p className="text-sm text-red-400">{result.error}</p>
-      )}
-
-      {/* Result Summary */}
-      {result.result && (
-        <div className="space-y-1">
-          <div 
-            className="text-sm whitespace-pre-wrap cursor-pointer"
+        {/* Show more/less for long messages */}
+        {isLong && (
+          <button
+            className="text-xs mt-1 opacity-70 hover:opacity-100"
             onClick={() => setExpanded(!expanded)}
           >
-            {expanded ? result.result : (
-              result.result.length > 200 
-                ? result.result.substring(0, 200) + '...' 
-                : result.result
+            {expanded ? 'Show less' : 'Show more'}
+          </button>
+        )}
+
+        {/* Meta info for assistant messages */}
+        {!isUser && message.meta && (message.meta.duration || message.meta.turns) && (
+          <div className="flex items-center gap-2 mt-1 text-xs opacity-60">
+            {message.meta.duration && message.meta.duration > 0 && (
+              <span>{(message.meta.duration / 1000).toFixed(1)}s</span>
+            )}
+            {message.meta.turns && message.meta.turns > 0 && (
+              <span>{message.meta.turns} turns</span>
             )}
           </div>
-          {result.result.length > 200 && (
-            <button 
-              className="text-xs text-muted-foreground hover:text-foreground"
-              onClick={() => setExpanded(!expanded)}
-            >
-              {expanded ? 'Show less' : 'Show more'}
-            </button>
-          )}
-        </div>
-      )}
+        )}
+      </div>
     </div>
   )
 }
