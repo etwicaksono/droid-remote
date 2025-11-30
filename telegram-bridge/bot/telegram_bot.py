@@ -30,9 +30,11 @@ from .commands import (
     switch_command,
     setproject_command,
     setmodel_command,
+    models_command,
     done_command,
     stopall_command,
-    broadcast_command
+    broadcast_command,
+    AVAILABLE_MODELS
 )
 from .keyboards import (
     build_inline_keyboard,
@@ -161,6 +163,7 @@ class TelegramBotManager:
         app.add_handler(CommandHandler("switch", switch_command, filters=user_filter))
         app.add_handler(CommandHandler("setproject", setproject_command, filters=user_filter))
         app.add_handler(CommandHandler("setmodel", setmodel_command, filters=user_filter))
+        app.add_handler(CommandHandler("models", models_command, filters=user_filter))
         app.add_handler(CommandHandler("done", done_command, filters=user_filter))
         app.add_handler(CommandHandler("stopall", stopall_command, filters=user_filter))
         app.add_handler(CommandHandler("broadcast", broadcast_command, filters=user_filter))
@@ -187,6 +190,23 @@ class TelegramBotManager:
             logger.warning(f"Unauthorized callback from user {query.from_user.id}")
             return
         
+        # Handle model selection callback
+        if query.data.startswith("model:"):
+            model_id = query.data[6:]  # Remove "model:" prefix
+            if model_id == "default":
+                context.user_data.pop("model", None)
+                await query.edit_message_text("Model set to: Default (from Factory settings)")
+            else:
+                context.user_data["model"] = model_id
+                # Find display name
+                model_name = model_id
+                for mid, mname in AVAILABLE_MODELS:
+                    if mid == model_id:
+                        model_name = mname
+                        break
+                await query.edit_message_text(f"Model set to: {model_name}\n({model_id})")
+            return
+        
         # Parse callback data: action:session_id[:request_id]
         parts = query.data.split(":")
         if len(parts) < 2:
@@ -198,7 +218,7 @@ class TelegramBotManager:
         
         session = self.registry.get(session_id)
         if not session:
-            await query.edit_message_text("❌ Session no longer active")
+            await query.edit_message_text("Session no longer active")
             return
         
         # Handle different actions

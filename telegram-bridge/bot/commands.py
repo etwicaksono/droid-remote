@@ -2,13 +2,29 @@
 Telegram bot command handlers
 """
 import logging
-from telegram import Update, BotCommand
+from telegram import Update, BotCommand, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
 from core.session_registry import session_registry
 from core.message_queue import message_queue
 from core.models import SessionStatus
 from .keyboards import build_session_keyboard
+
+# Available models for droid exec
+AVAILABLE_MODELS = [
+    # Built-in models
+    ("gpt-5.1-codex", "GPT-5.1 Codex"),
+    ("gpt-5.1", "GPT-5.1"),
+    ("claude-sonnet-4-5-20250929", "Claude Sonnet 4.5"),
+    ("claude-opus-4-5-20251101", "Claude Opus 4.5"),
+    ("claude-opus-4-1-20250805", "Claude Opus 4.1"),
+    # Custom models
+    ("custom:gpt-5", "GPT-5 (Custom)"),
+    ("custom:claude-haiku-4-5-20251001", "Haiku 4.5 (Custom)"),
+    ("custom:claude-sonnet-4-5-20250929", "Sonnet 4.5 (Custom)"),
+    ("custom:deepseek-r1-0528", "DeepSeek R1 (Custom)"),
+    ("custom:deepseek-v3.1", "DeepSeek V3.1 (Custom)"),
+]
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +39,7 @@ async def setup_commands(application) -> None:
         BotCommand("switch", "Switch active session"),
         BotCommand("setproject", "Set project directory for tasks"),
         BotCommand("setmodel", "Set model for task execution"),
+        BotCommand("models", "Show available models"),
         BotCommand("done", "Signal current session to stop"),
         BotCommand("stopall", "Stop all sessions"),
         BotCommand("broadcast", "Send message to all waiting sessions"),
@@ -298,10 +315,7 @@ async def setmodel_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         await update.message.reply_text(
             f"Current model: {current}\n\n"
             "Usage: /setmodel <model_id>\n"
-            "Examples:\n"
-            "  /setmodel claude-sonnet-4-20250514\n"
-            "  /setmodel gpt-5-2025-08-07\n"
-            "  /setmodel default (use Factory settings)"
+            "Or use /models to see clickable list"
         )
         return
     
@@ -314,3 +328,35 @@ async def setmodel_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     else:
         context.user_data["model"] = model
         await update.message.reply_text(f"Model set to: {model}")
+
+
+async def models_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /models command - show available models with clickable buttons"""
+    current = context.user_data.get("model", None)
+    current_display = current if current else "Default"
+    
+    # Build inline keyboard with model buttons (2 per row)
+    keyboard = []
+    row = []
+    for model_id, model_name in AVAILABLE_MODELS:
+        # Mark current model with checkmark
+        display = f"[x] {model_name}" if model_id == current else model_name
+        row.append(InlineKeyboardButton(display, callback_data=f"model:{model_id}"))
+        if len(row) == 2:
+            keyboard.append(row)
+            row = []
+    
+    # Add remaining button if odd number
+    if row:
+        keyboard.append(row)
+    
+    # Add "Default" option
+    default_display = "[x] Default" if current is None else "Default"
+    keyboard.append([InlineKeyboardButton(default_display, callback_data="model:default")])
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await update.message.reply_text(
+        f"Current model: {current_display}\n\nSelect a model:",
+        reply_markup=reply_markup
+    )
