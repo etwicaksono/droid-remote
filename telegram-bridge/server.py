@@ -15,6 +15,7 @@ from bot.telegram_bot import TelegramBotManager
 from api.routes import router
 from api.socketio_handlers import create_socketio_server, create_socketio_app
 from core.session_registry import session_registry
+from core.database import get_db
 from utils.logging_config import setup_logging
 
 # Load environment variables
@@ -36,6 +37,14 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info("Starting Telegram-Droid Bridge Server...")
     
+    # Initialize database
+    try:
+        db = get_db()
+        logger.info(f"Database initialized at {db.db_path}")
+    except Exception as e:
+        logger.error(f"Failed to initialize database: {e}")
+        raise
+    
     # Initialize Telegram bot
     try:
         bot_manager = TelegramBotManager(session_registry)
@@ -53,6 +62,15 @@ async def lifespan(app: FastAPI):
     logger.info("Shutting down...")
     if bot_manager:
         await bot_manager.stop()
+    
+    # Close database connections
+    try:
+        db = get_db()
+        db.close_all()
+        logger.info("Database connections closed")
+    except Exception as e:
+        logger.error(f"Error closing database: {e}")
+    
     logger.info("Bridge server stopped")
 
 

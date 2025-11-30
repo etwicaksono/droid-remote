@@ -1,137 +1,204 @@
 """
 Session Registry - Tracks all active Droid sessions
-In-memory storage (sessions are transient)
+SQLite-backed storage with in-memory pending request cache
 """
+import os
 import logging
 from datetime import datetime
 from typing import Dict, Optional, List
 from threading import Lock
 
 from .models import Session, SessionStatus, PendingRequest
+from .repositories import get_session_repo, get_permission_repo
 
 logger = logging.getLogger(__name__)
 
 
 class SessionRegistry:
     """
-    In-memory session storage.
+    SQLite-backed session storage with in-memory pending request cache.
     
-    Why no database?
-    - Sessions are transient (tied to Droid lifetime)
-    - Hooks re-register on every event anyway
-    - Simpler = more reliable
-    - If bridge restarts, Droid hooks will re-register
+    Benefits of SQLite:
+    - Sessions persist across bridge restarts
+    - Troubleshooting via SQL queries
+    - Audit trail of all events
+    - Queue persistence
+    
+    Pending requests are cached in-memory for quick access during
+    active permission flows, but also stored in database for persistence.
     """
     
     def __init__(self):
-        self._sessions: Dict[str, Session] = {}
+        self._pending_requests: Dict[str, PendingRequest] = {}
         self._lock = Lock()
+    
+    def _dict_to_session(self, data: dict) -> Session:
+        """Convert database dict to Session model"""
+        # Handle datetime fields
+        started_at = data.get('created_at')
+        if isinstance(started_at, str):
+            started_at = datetime.fromisoformat(started_at)
+        
+        last_activity = data.get('updated_at')
+        if isinstance(last_activity, str):
+            last_activity = datetime.fromisoformat(last_activity)
+        
+        # Get pending request from cache or database
+        session_id = data['id']
+        pending_request = self._pending_requests.get(session_id)
+        
+        if not pending_request:
+            # Check database for pending permission request
+            perm_repo = get_permission_repo()
+            pending_perm = perm_repo.get_pending_by_session(session_id)
+            if pending_perm:
+                pending_request = PendingRequest(
+                    id=pending_perm['id'],
+                    type='permission',
+                    message=pending_perm.get('message', ''),
+                    tool_name=pending_perm.get('tool_name'),
+                    tool_input=pending_perm.get('tool_input'),
+                    telegram_message_id=pending_perm.get('telegram_message_id'),
+                    created_at=pending_perm.get('created_at', datetime.utcnow())
+                )
+        
+        return Session(
+            id=session_id,
+            name=data['name'],
+            project_dir=data['project_dir'],
+            status=SessionStatus(data.get('status', 'running')),
+            started_at=started_at or datetime.utcnow(),
+            last_activity=last_activity or datetime.utcnow(),
+            pending_request=pending_request
+        )
     
     def register(
         self,
         session_id: str,
         project_dir: str,
-        name: Optional[str] = None
+        name: Optional[str] = None,
+        transcript_path: Optional[str] = None
     ) -> Session:
         """Register or update a session (deduplicated by project_dir)"""
-        import os
+        repo = get_session_repo()
         
         with self._lock:
-            now = datetime.utcnow()
-            
             if not name:
                 name = os.path.basename(project_dir) or "unknown"
             
-            # Check for existing session with same project_dir (different session_id)
-            # This handles the case where Droid restarts and gets a new session_id
-            existing_by_project = None
-            if project_dir:
-                for sid, sess in list(self._sessions.items()):
-                    if sess.project_dir == project_dir and sid != session_id:
-                        existing_by_project = sid
-                        break
+            # Check for existing session with same project_dir
+            existing_by_project = repo.get_by_project_dir(project_dir)
+            if existing_by_project and existing_by_project['id'] != session_id:
+                # Remove old session for same project
+                old_id = existing_by_project['id']
+                repo.delete(old_id)
+                self._pending_requests.pop(old_id, None)
+                logger.info(f"Removed old session {old_id} for project {project_dir}")
             
-            # Remove old session for same project if exists
-            if existing_by_project:
-                del self._sessions[existing_by_project]
-                logger.info(f"Removed old session {existing_by_project} for project {project_dir}")
+            # Upsert session
+            data = repo.upsert(
+                session_id=session_id,
+                name=name,
+                project_dir=project_dir,
+                status='running',
+                transcript_path=transcript_path
+            )
             
-            if session_id in self._sessions:
-                # Update existing session
-                session = self._sessions[session_id]
-                session.last_activity = now
-                session.name = name
-                session.project_dir = project_dir
-                session.status = SessionStatus.RUNNING
-                session.pending_request = None
-                logger.info(f"Updated session: {session_id} ({name})")
-            else:
-                # Create new session
-                session = Session(
-                    id=session_id,
-                    name=name,
-                    project_dir=project_dir,
-                    started_at=now,
-                    last_activity=now
-                )
-                self._sessions[session_id] = session
-                logger.info(f"Registered new session: {session_id} ({name})")
+            # Clear any cached pending request on re-register
+            self._pending_requests.pop(session_id, None)
             
+            session = self._dict_to_session(data)
+            logger.info(f"Registered session: {session_id} ({name})")
             return session
     
     def get(self, session_id: str) -> Optional[Session]:
         """Get a session by ID"""
-        with self._lock:
-            return self._sessions.get(session_id)
+        repo = get_session_repo()
+        data = repo.get_by_id(session_id)
+        if data:
+            return self._dict_to_session(data)
+        return None
     
     def get_by_name(self, name: str) -> Optional[Session]:
         """Get a session by name"""
-        with self._lock:
-            for session in self._sessions.values():
-                if session.name.lower() == name.lower():
-                    return session
-            return None
+        repo = get_session_repo()
+        for data in repo.get_all():
+            if data['name'].lower() == name.lower():
+                return self._dict_to_session(data)
+        return None
+    
+    def get_by_project_dir(self, project_dir: str) -> Optional[Session]:
+        """Get a session by project directory"""
+        repo = get_session_repo()
+        data = repo.get_by_project_dir(project_dir)
+        if data:
+            return self._dict_to_session(data)
+        return None
     
     def get_by_index(self, index: int) -> Optional[Session]:
         """Get a session by its index (1-based)"""
-        with self._lock:
-            sessions = list(self._sessions.values())
-            if 1 <= index <= len(sessions):
-                return sessions[index - 1]
-            return None
+        repo = get_session_repo()
+        sessions = repo.get_all()
+        if 1 <= index <= len(sessions):
+            return self._dict_to_session(sessions[index - 1])
+        return None
     
     def get_all(self) -> List[Session]:
         """Get all sessions"""
-        with self._lock:
-            return list(self._sessions.values())
+        repo = get_session_repo()
+        return [self._dict_to_session(data) for data in repo.get_all(include_stopped=True)]
     
     def get_active_sessions(self) -> List[Session]:
         """Get all non-stopped sessions"""
-        with self._lock:
-            return [s for s in self._sessions.values() if s.status != SessionStatus.STOPPED]
+        repo = get_session_repo()
+        return [self._dict_to_session(data) for data in repo.get_all(include_stopped=False)]
     
     def get_waiting_sessions(self) -> List[Session]:
         """Get all waiting sessions"""
-        with self._lock:
-            return [s for s in self._sessions.values() if s.status == SessionStatus.WAITING]
+        repo = get_session_repo()
+        sessions = []
+        for data in repo.get_all():
+            if data.get('status') == 'waiting':
+                sessions.append(self._dict_to_session(data))
+        return sessions
     
     def update(self, session_id: str, **kwargs) -> Optional[Session]:
         """Update session attributes"""
-        with self._lock:
-            session = self._sessions.get(session_id)
-            if not session:
-                return None
-            
-            for key, value in kwargs.items():
-                if hasattr(session, key):
-                    setattr(session, key, value)
-            
-            session.last_activity = datetime.utcnow()
-            return session
+        repo = get_session_repo()
+        
+        # Handle pending_request separately (it's cached in memory)
+        pending_request = kwargs.pop('pending_request', None)
+        if pending_request is not None:
+            with self._lock:
+                if pending_request:
+                    self._pending_requests[session_id] = pending_request
+                else:
+                    self._pending_requests.pop(session_id, None)
+        
+        # Map model fields to database fields
+        db_kwargs = {}
+        if 'status' in kwargs:
+            status = kwargs['status']
+            db_kwargs['status'] = status.value if isinstance(status, SessionStatus) else status
+        
+        # Update in database
+        if db_kwargs:
+            data = repo.update(session_id, **db_kwargs)
+        else:
+            data = repo.get_by_id(session_id)
+        
+        if data:
+            return self._dict_to_session(data)
+        return None
     
     def update_status(self, session_id: str, status: SessionStatus) -> Optional[Session]:
         """Update session status"""
-        return self.update(session_id, status=status)
+        repo = get_session_repo()
+        status_str = status.value if isinstance(status, SessionStatus) else status
+        data = repo.update_status(session_id, status_str)
+        if data:
+            return self._dict_to_session(data)
+        return None
     
     def set_pending_request(
         self,
@@ -139,31 +206,54 @@ class SessionRegistry:
         pending_request: Optional[PendingRequest]
     ) -> Optional[Session]:
         """Set or clear the pending request for a session"""
-        return self.update(session_id, pending_request=pending_request)
+        with self._lock:
+            if pending_request:
+                self._pending_requests[session_id] = pending_request
+                
+                # Also store in database for permission requests
+                if pending_request.type == 'permission' or pending_request.tool_name:
+                    perm_repo = get_permission_repo()
+                    perm_repo.create(
+                        session_id=session_id,
+                        message=pending_request.message,
+                        tool_name=pending_request.tool_name,
+                        tool_input=pending_request.tool_input,
+                        request_id=pending_request.id,
+                        telegram_message_id=pending_request.telegram_message_id
+                    )
+            else:
+                self._pending_requests.pop(session_id, None)
+        
+        return self.get(session_id)
     
     def remove(self, session_id: str) -> bool:
         """Remove a session"""
+        repo = get_session_repo()
         with self._lock:
-            if session_id in self._sessions:
-                del self._sessions[session_id]
-                logger.info(f"Removed session: {session_id}")
-                return True
-            return False
+            self._pending_requests.pop(session_id, None)
+        
+        if repo.delete(session_id):
+            logger.info(f"Removed session: {session_id}")
+            return True
+        return False
     
     def clear_stale_sessions(self, max_age_seconds: int = 3600):
         """Remove sessions that haven't been active for a while"""
-        with self._lock:
-            now = datetime.utcnow()
-            stale_ids = []
-            
-            for session_id, session in self._sessions.items():
-                age = (now - session.last_activity).total_seconds()
-                if age > max_age_seconds and session.status == SessionStatus.STOPPED:
-                    stale_ids.append(session_id)
-            
-            for session_id in stale_ids:
-                del self._sessions[session_id]
-                logger.info(f"Cleared stale session: {session_id}")
+        repo = get_session_repo()
+        now = datetime.utcnow()
+        
+        for data in repo.get_all(include_stopped=True):
+            if data.get('status') == 'stopped':
+                updated_at = data.get('updated_at')
+                if isinstance(updated_at, str):
+                    updated_at = datetime.fromisoformat(updated_at)
+                
+                if updated_at:
+                    age = (now - updated_at).total_seconds()
+                    if age > max_age_seconds:
+                        session_id = data['id']
+                        self.remove(session_id)
+                        logger.info(f"Cleared stale session: {session_id}")
 
 
 # Global instance
