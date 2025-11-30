@@ -15,7 +15,7 @@ export interface Session {
   name: string
   project_dir: string
   status: SessionStatus
-  control_state: ControlState
+  control_state?: ControlState
   started_at: string
   last_activity: string
   pending_request: PendingRequest | null

@@ -32,10 +32,11 @@ export function SessionCard({ session }: SessionCardProps) {
   const { respond, approve, deny, handoff, release, loading } = useSessionActions()
 
   const statusConfig = STATUS_CONFIG[session.status]
-  const controlConfig = CONTROL_STATE_CONFIG[session.control_state || 'cli_active']
+  const controlState = session.control_state || 'cli_active'
+  const controlConfig = CONTROL_STATE_CONFIG[controlState]
   const hasPendingRequest = session.pending_request !== null
-  const isRemoteControlled = session.control_state === 'remote_active'
-  const canHandoff = session.control_state === 'cli_active' || session.control_state === 'cli_waiting'
+  const isRemoteControlled = controlState === 'remote_active'
+  const canHandoff = controlState === 'cli_active' || controlState === 'cli_waiting'
 
   const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
