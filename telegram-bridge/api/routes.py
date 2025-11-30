@@ -10,6 +10,7 @@ from fastapi import APIRouter, HTTPException, Request, Depends, Header
 from core.session_registry import session_registry
 from core.message_queue import message_queue
 from core.task_executor import task_executor
+from core.repositories import get_permission_repo, get_task_repo, get_event_repo
 from core.models import (
     Session,
     SessionStatus,
@@ -263,7 +264,8 @@ async def execute_task(data: TaskExecuteRequest, request: Request):
         project_dir=data.project_dir,
         session_id=data.session_id,
         autonomy_level=data.autonomy_level,
-        model=data.model
+        model=data.model,
+        source="api"
     )
     
     # Notify completion
@@ -401,7 +403,8 @@ async def send_next_queued(session_id: str, request: Request):
         task_id=task_id,
         prompt=message['content'],
         project_dir=session.project_dir,
-        session_id=session_id
+        session_id=session_id,
+        source="web"
     )
     
     # Emit queue update event
@@ -466,3 +469,96 @@ async def release_session(session_id: str, request: Request):
         await sio.emit("sessions_update", [s.model_dump(mode='json') for s in sessions])
     
     return {"success": True, "session": session.model_dump(mode='json')}
+
+
+# History and Troubleshooting Endpoints
+
+@router.get("/sessions/{session_id}/permissions")
+async def get_permission_history(session_id: str, limit: int = 50):
+    """Get permission request history for a session"""
+    session = session_registry.get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    permissions = get_permission_repo().get_history(session_id=session_id, limit=limit)
+    return {"session_id": session_id, "permissions": permissions}
+
+
+@router.get("/permissions")
+async def get_all_permissions(limit: int = 50):
+    """Get all permission requests (for troubleshooting)"""
+    permissions = get_permission_repo().get_history(limit=limit)
+    return {"permissions": permissions}
+
+
+@router.post("/sessions/{session_id}/permissions/{request_id}/resolve")
+async def resolve_permission(session_id: str, request_id: str, decision: str, request: Request):
+    """Resolve a permission request from Web UI"""
+    if decision not in ["approved", "denied"]:
+        raise HTTPException(status_code=400, detail="Decision must be 'approved' or 'denied'")
+    
+    # Resolve in database
+    perm = get_permission_repo().resolve(request_id, decision, "web")
+    if not perm:
+        raise HTTPException(status_code=404, detail="Permission request not found")
+    
+    # Deliver response to waiting session
+    response = "approve" if decision == "approved" else "deny"
+    message_queue.deliver_response(session_id, request_id, response)
+    
+    # Emit event
+    sio = getattr(request.app.state, "sio", None)
+    if sio:
+        await sio.emit("permission_resolved", {
+            "session_id": session_id,
+            "request_id": request_id,
+            "decision": decision
+        })
+    
+    return {"success": True, "permission": perm}
+
+
+@router.get("/sessions/{session_id}/events")
+async def get_session_events(session_id: str, limit: int = 100):
+    """Get session events for troubleshooting"""
+    session = session_registry.get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    events = get_event_repo().get_by_session(session_id, limit=limit)
+    return {"session_id": session_id, "events": events}
+
+
+@router.get("/sessions/{session_id}/timeline")
+async def get_session_timeline(session_id: str, limit: int = 50):
+    """Get unified timeline for a session (events, permissions, tasks)"""
+    session = session_registry.get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    timeline = get_event_repo().get_timeline(session_id, limit=limit)
+    return {"session_id": session_id, "timeline": timeline}
+
+
+@router.get("/tasks")
+async def get_task_history(
+    session_id: Optional[str] = None,
+    source: Optional[str] = None,
+    success_only: bool = False,
+    limit: int = 50
+):
+    """Get task execution history"""
+    tasks = get_task_repo().get_history(
+        session_id=session_id,
+        source=source,
+        success_only=success_only,
+        limit=limit
+    )
+    return {"tasks": tasks}
+
+
+@router.get("/tasks/failed")
+async def get_failed_tasks(limit: int = 20):
+    """Get failed tasks for troubleshooting"""
+    tasks = get_task_repo().get_failed(limit=limit)
+    return {"tasks": tasks}

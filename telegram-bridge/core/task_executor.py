@@ -10,6 +10,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 
+from .repositories import get_task_repo
+
 logger = logging.getLogger(__name__)
 
 
@@ -66,6 +68,7 @@ class TaskExecutor:
         session_id: Optional[str] = None,
         autonomy_level: str = "high",
         model: Optional[str] = None,
+        source: str = "api",
         on_progress: Optional[Callable[[str], None]] = None
     ) -> TaskResult:
         """
@@ -78,6 +81,7 @@ class TaskExecutor:
             session_id: Optional session ID to continue
             autonomy_level: low, medium, or high
             model: Optional model ID (e.g., claude-sonnet-4-20250514)
+            source: Source of the task (telegram, web, api)
             on_progress: Optional callback for progress updates
         
         Returns:
@@ -98,6 +102,19 @@ class TaskExecutor:
         )
         self._tasks[task_id] = task
         
+        # Log task to database
+        try:
+            get_task_repo().create(
+                task_id=task_id,
+                prompt=prompt,
+                project_dir=project_dir,
+                source=source,
+                session_id=session_id,
+                model=model
+            )
+        except Exception as e:
+            logger.error(f"Failed to log task to database: {e}")
+        
         try:
             task.status = TaskStatus.RUNNING
             task.started_at = datetime.utcnow()
@@ -113,11 +130,34 @@ class TaskExecutor:
                 self._session_map[project_dir] = result.session_id
                 logger.info(f"Stored session {result.session_id} for {project_dir}")
             
+            # Log task completion to database
+            try:
+                get_task_repo().complete(
+                    task_id=task_id,
+                    success=result.success,
+                    result=result.result[:5000] if result.result else None,  # Truncate
+                    duration_ms=result.duration_ms,
+                    num_turns=result.num_turns,
+                    error=result.error,
+                    session_id=result.session_id
+                )
+            except Exception as e:
+                logger.error(f"Failed to log task completion: {e}")
+            
             return result
             
         except asyncio.CancelledError:
             task.status = TaskStatus.CANCELLED
             task.completed_at = datetime.utcnow()
+            # Log cancellation
+            try:
+                get_task_repo().complete(
+                    task_id=task_id,
+                    success=False,
+                    error="Task cancelled"
+                )
+            except Exception:
+                pass
             raise
         except Exception as e:
             logger.exception(f"Task {task_id} failed with exception")
@@ -128,6 +168,15 @@ class TaskExecutor:
                 result="",
                 error=str(e)
             )
+            # Log failure to database
+            try:
+                get_task_repo().complete(
+                    task_id=task_id,
+                    success=False,
+                    error=str(e)
+                )
+            except Exception:
+                pass
             return task.result
     
     async def _run_droid_exec(

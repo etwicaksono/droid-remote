@@ -21,6 +21,7 @@ from core.session_registry import SessionRegistry, session_registry
 from core.message_queue import message_queue
 from core.task_executor import task_executor
 from core.models import Session, Notification, NotificationType, PendingRequest, SessionStatus
+from core.repositories import get_permission_repo, get_task_repo
 from .commands import (
     setup_commands,
     start_command,
@@ -239,18 +240,27 @@ class TelegramBotManager:
             # Handle different actions
             if action == "approve":
                 message_queue.deliver_response(session_id, request_id, "approve")
+                # Log permission decision
+                if request_id:
+                    get_permission_repo().resolve(request_id, "approved", "telegram")
                 await query.edit_message_text(
                     f"Approved\n\nSession: {session.name}"
                 )
             
             elif action == "deny":
                 message_queue.deliver_response(session_id, request_id, "deny")
+                # Log permission decision
+                if request_id:
+                    get_permission_repo().resolve(request_id, "denied", "telegram")
                 await query.edit_message_text(
                     f"Denied\n\nSession: {session.name}"
                 )
             
             elif action == "approve_all":
                 message_queue.deliver_response(session_id, request_id, "approve_all")
+                # Log permission decision
+                if request_id:
+                    get_permission_repo().resolve(request_id, "approved", "telegram")
                 context.user_data["auto_approve"] = session_id
                 await query.edit_message_text(
                     f"Approved (auto-approve enabled)\n\nSession: {session.name}"
@@ -373,7 +383,8 @@ class TelegramBotManager:
                 prompt=prompt,
                 project_dir=project_dir,
                 autonomy_level="high",
-                model=model
+                model=model,
+                source="telegram"
             )
             
             # Format result
