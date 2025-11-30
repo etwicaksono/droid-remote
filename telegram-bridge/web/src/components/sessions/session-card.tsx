@@ -104,17 +104,39 @@ export function SessionCard({ session }: SessionCardProps) {
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([])
   const [executing, setExecuting] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
-  const [selectedModel, setSelectedModel] = useState('claude-sonnet-4-5-20250929')
-  const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort>('medium')
+  const [selectedModel, setSelectedModel] = useState(() => {
+    // Load from localStorage on init
+    if (typeof window !== 'undefined') {
+      try {
+        const stored = localStorage.getItem(getSettingsStorageKey(session.id))
+        if (stored) {
+          const settings = JSON.parse(stored)
+          if (settings.model) return settings.model
+        }
+      } catch {}
+    }
+    return 'claude-sonnet-4-5-20250929'
+  })
+  const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const stored = localStorage.getItem(getSettingsStorageKey(session.id))
+        if (stored) {
+          const settings = JSON.parse(stored)
+          if (settings.reasoningEffort) return settings.reasoningEffort
+        }
+      } catch {}
+    }
+    return 'medium'
+  })
   const { respond, approve, deny, handoff, release, executeTask, loading } = useSessionActions()
 
   const currentModel = AVAILABLE_MODELS.find(m => m.id === selectedModel)
   const supportsReasoning = currentModel?.reasoning ?? false
 
-  // Load chat history and settings from localStorage on mount
+  // Load chat history from localStorage on mount
   useEffect(() => {
     try {
-      // Load chat history
       const storedChat = localStorage.getItem(getChatStorageKey(session.id))
       if (storedChat) {
         const parsed = JSON.parse(storedChat)
@@ -124,13 +146,6 @@ export function SessionCard({ session }: SessionCardProps) {
             timestamp: new Date(msg.timestamp)
           })))
         }
-      }
-      // Load settings
-      const storedSettings = localStorage.getItem(getSettingsStorageKey(session.id))
-      if (storedSettings) {
-        const settings = JSON.parse(storedSettings)
-        if (settings.model) setSelectedModel(settings.model)
-        if (settings.reasoningEffort) setReasoningEffort(settings.reasoningEffort)
       }
     } catch {
       // Ignore parse errors
