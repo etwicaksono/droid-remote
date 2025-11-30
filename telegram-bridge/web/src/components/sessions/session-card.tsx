@@ -13,10 +13,12 @@ import type { Session, ControlState, ReasoningEffort } from '@/types'
 
 const AVAILABLE_MODELS = [
   { id: 'claude-sonnet-4-5-20250929', name: 'Claude Sonnet 4.5', reasoning: true },
-  { id: 'gpt-5-codex', name: 'GPT-5 Codex', reasoning: false },
-  { id: 'gpt-5-2025-08-07', name: 'GPT-5', reasoning: true },
+  { id: 'gpt-5.1-codex', name: 'GPT-5.1 Codex', reasoning: false },
+  { id: 'gpt-5.1', name: 'GPT-5.1', reasoning: true },
+  { id: 'claude-opus-4-5-20251101', name: 'Claude Opus 4.5', reasoning: true },
   { id: 'claude-opus-4-1-20250805', name: 'Claude Opus 4.1', reasoning: true },
   { id: 'claude-haiku-4-5-20251001', name: 'Claude Haiku 4.5', reasoning: true },
+  { id: 'gemini-3-pro-preview', name: 'Gemini 3 Pro', reasoning: false },
   { id: 'glm-4.6', name: 'Droid Core', reasoning: false },
 ]
 
@@ -144,6 +146,17 @@ export function SessionCard({ session }: SessionCardProps) {
           }
         } catch {
           // Keep as-is
+        }
+      }
+      
+      // Remove duplicate content (sometimes droid outputs same error twice)
+      const lines = responseContent.split('\n')
+      const midpoint = Math.floor(lines.length / 2)
+      if (lines.length > 6) {
+        const firstHalf = lines.slice(0, midpoint).join('\n').trim()
+        const secondHalf = lines.slice(midpoint).join('\n').trim()
+        if (firstHalf === secondHalf) {
+          responseContent = firstHalf
         }
       }
 
