@@ -298,3 +298,171 @@ async def clear_project_session(project_dir: str):
     """Clear the stored session for a project (start fresh)."""
     success = task_executor.clear_session(project_dir)
     return {"success": success}
+
+
+# Queue Management Endpoints
+
+@router.get("/sessions/{session_id}/queue")
+async def get_session_queue(session_id: str):
+    """Get queued messages for a session"""
+    session = session_registry.get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    messages = session_registry.get_queued_messages(session_id)
+    return {"session_id": session_id, "messages": messages, "count": len(messages)}
+
+
+@router.post("/sessions/{session_id}/queue")
+async def add_to_queue(session_id: str, content: str, source: str = "web", request: Request = None):
+    """Add a message to the queue"""
+    session = session_registry.get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    message = session_registry.queue_message(session_id, content, source)
+    
+    # Emit queue update event
+    sio = getattr(request.app.state, "sio", None) if request else None
+    if sio:
+        messages = session_registry.get_queued_messages(session_id)
+        await sio.emit("queue_updated", {
+            "session_id": session_id,
+            "queue": messages
+        })
+    
+    return {"success": True, "message": message}
+
+
+@router.delete("/sessions/{session_id}/queue/{message_id}")
+async def cancel_queued_message(session_id: str, message_id: int, request: Request):
+    """Cancel a specific queued message"""
+    success = session_registry.cancel_queued_message(message_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Message not found or already processed")
+    
+    # Emit queue update event
+    sio = getattr(request.app.state, "sio", None)
+    if sio:
+        messages = session_registry.get_queued_messages(session_id)
+        await sio.emit("queue_updated", {
+            "session_id": session_id,
+            "queue": messages
+        })
+    
+    return {"success": True}
+
+
+@router.delete("/sessions/{session_id}/queue")
+async def clear_session_queue(session_id: str, request: Request):
+    """Clear all queued messages for a session"""
+    session = session_registry.get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    count = session_registry.clear_queue(session_id)
+    
+    # Emit queue update event
+    sio = getattr(request.app.state, "sio", None)
+    if sio:
+        await sio.emit("queue_updated", {
+            "session_id": session_id,
+            "queue": []
+        })
+    
+    return {"success": True, "cleared_count": count}
+
+
+@router.post("/sessions/{session_id}/queue/send-next")
+async def send_next_queued(session_id: str, request: Request):
+    """Send the next queued message"""
+    session = session_registry.get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    # Check if remote control is active
+    if not session_registry.can_execute_remote_task(session_id):
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Session not under remote control (state: {session.control_state})"
+        )
+    
+    # Get next message
+    message = session_registry.get_next_queued_message(session_id)
+    if not message:
+        return {"success": False, "message": "No messages in queue"}
+    
+    # Mark as sent
+    session_registry.mark_message_sent(message['id'])
+    
+    # Execute the task
+    task_id = str(uuid.uuid4())
+    result = await task_executor.execute_task(
+        task_id=task_id,
+        prompt=message['content'],
+        project_dir=session.project_dir,
+        session_id=session_id
+    )
+    
+    # Emit queue update event
+    sio = getattr(request.app.state, "sio", None)
+    if sio:
+        messages = session_registry.get_queued_messages(session_id)
+        await sio.emit("queue_updated", {
+            "session_id": session_id,
+            "queue": messages
+        })
+    
+    return {
+        "success": True,
+        "message": message,
+        "result": {
+            "success": result.success,
+            "result": result.result[:500] if result.result else "",
+            "task_id": task_id
+        }
+    }
+
+
+# Control State Endpoints
+
+@router.post("/sessions/{session_id}/handoff")
+async def handoff_session(session_id: str, request: Request):
+    """Hand off control from CLI to remote"""
+    session = session_registry.handoff_to_remote(session_id)
+    if not session:
+        raise HTTPException(status_code=400, detail="Cannot handoff - session not in CLI state")
+    
+    # Emit state change event
+    sio = getattr(request.app.state, "sio", None)
+    if sio:
+        await sio.emit("session_state_changed", {
+            "session_id": session_id,
+            "control_state": session.control_state
+        })
+        # Also emit sessions_update
+        sessions = session_registry.get_all()
+        await sio.emit("sessions_update", [s.model_dump(mode='json') for s in sessions])
+    
+    return {"success": True, "session": session.model_dump(mode='json')}
+
+
+@router.post("/sessions/{session_id}/release")
+async def release_session(session_id: str, request: Request):
+    """Release control back to CLI"""
+    session = session_registry.release_to_cli(session_id)
+    if not session:
+        raise HTTPException(status_code=400, detail="Cannot release - session not under remote control")
+    
+    # Emit state change event
+    sio = getattr(request.app.state, "sio", None)
+    if sio:
+        await sio.emit("session_state_changed", {
+            "session_id": session_id,
+            "control_state": session.control_state
+        })
+        # Also emit sessions_update
+        sessions = session_registry.get_all()
+        await sio.emit("sessions_update", [s.model_dump(mode='json') for s in sessions])
+    
+    return {"success": True, "session": session.model_dump(mode='json')}

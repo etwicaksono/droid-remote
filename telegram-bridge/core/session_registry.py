@@ -9,7 +9,7 @@ from typing import Dict, Optional, List
 from threading import Lock
 
 from .models import Session, SessionStatus, ControlState, PendingRequest
-from .repositories import get_session_repo, get_permission_repo
+from .repositories import get_session_repo, get_permission_repo, get_queue_repo
 
 logger = logging.getLogger(__name__)
 
@@ -318,6 +318,55 @@ class SessionRegistry:
         if not session:
             return False
         return session.control_state == ControlState.REMOTE_ACTIVE
+    
+    # Queue management methods
+    
+    def queue_message(self, session_id: str, content: str, source: str = 'telegram') -> dict:
+        """Add a message to the queue for a session"""
+        queue_repo = get_queue_repo()
+        message = queue_repo.create(session_id, content, source)
+        logger.info(f"Queued message for session {session_id} from {source}")
+        return message
+    
+    def get_queued_messages(self, session_id: str) -> List[dict]:
+        """Get all pending queued messages for a session"""
+        queue_repo = get_queue_repo()
+        return queue_repo.get_pending(session_id)
+    
+    def get_next_queued_message(self, session_id: str) -> Optional[dict]:
+        """Get the next pending message in queue"""
+        queue_repo = get_queue_repo()
+        return queue_repo.get_next(session_id)
+    
+    def mark_message_sent(self, message_id: int) -> bool:
+        """Mark a queued message as sent"""
+        queue_repo = get_queue_repo()
+        return queue_repo.mark_sent(message_id)
+    
+    def cancel_queued_message(self, message_id: int) -> bool:
+        """Cancel a queued message"""
+        queue_repo = get_queue_repo()
+        return queue_repo.cancel(message_id)
+    
+    def clear_queue(self, session_id: str) -> int:
+        """Clear all pending messages for a session"""
+        queue_repo = get_queue_repo()
+        count = queue_repo.clear_pending(session_id)
+        logger.info(f"Cleared {count} queued messages for session {session_id}")
+        return count
+    
+    def get_queue_count(self, session_id: str) -> int:
+        """Get count of pending messages"""
+        queue_repo = get_queue_repo()
+        return queue_repo.count_pending(session_id)
+    
+    def should_queue_message(self, session_id: str) -> bool:
+        """Check if incoming message should be queued (CLI is active)"""
+        session = self.get(session_id)
+        if not session:
+            return False
+        # Queue if CLI has control
+        return session.control_state in [ControlState.CLI_ACTIVE, ControlState.CLI_WAITING]
 
 
 # Global instance
