@@ -68,9 +68,7 @@ function parseResultContent(resultStr: string | undefined, error: string | undef
   return content || 'Task completed'
 }
 
-// localStorage keys
-const getChatStorageKey = (sessionId: string) => `droid-chat-${sessionId}`
-const getSettingsStorageKey = (sessionId: string) => `droid-settings-${sessionId}`
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8765'
 
 interface SessionCardProps {
   session: Session
@@ -104,76 +102,72 @@ export function SessionCard({ session }: SessionCardProps) {
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([])
   const [executing, setExecuting] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
-  const [selectedModel, setSelectedModel] = useState(() => {
-    // Load from localStorage on init
-    if (typeof window !== 'undefined') {
-      try {
-        const stored = localStorage.getItem(getSettingsStorageKey(session.id))
-        if (stored) {
-          const settings = JSON.parse(stored)
-          if (settings.model) return settings.model
-        }
-      } catch {}
-    }
-    return 'claude-sonnet-4-5-20250929'
-  })
-  const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort>(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const stored = localStorage.getItem(getSettingsStorageKey(session.id))
-        if (stored) {
-          const settings = JSON.parse(stored)
-          if (settings.reasoningEffort) return settings.reasoningEffort
-        }
-      } catch {}
-    }
-    return 'medium'
-  })
-  const { respond, approve, deny, handoff, release, executeTask, loading } = useSessionActions()
+  const [selectedModel, setSelectedModel] = useState('claude-sonnet-4-5-20250929')
+  const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort>('medium')
+  const [settingsLoaded, setSettingsLoaded] = useState(false)
+  const { respond, approve, deny, handoff, release, executeTask, addChatMessage, loading } = useSessionActions()
 
   const currentModel = AVAILABLE_MODELS.find(m => m.id === selectedModel)
   const supportsReasoning = currentModel?.reasoning ?? false
 
-  // Load chat history from localStorage on mount
+  // Load chat history and settings from API on mount
   useEffect(() => {
-    try {
-      const storedChat = localStorage.getItem(getChatStorageKey(session.id))
-      if (storedChat) {
-        const parsed = JSON.parse(storedChat)
-        if (Array.isArray(parsed)) {
-          setChatHistory(parsed.map(msg => ({
-            ...msg,
-            timestamp: new Date(msg.timestamp)
-          })))
+    const loadData = async () => {
+      try {
+        // Load chat history
+        const chatRes = await fetch(`${API_BASE}/sessions/${session.id}/chat`)
+        if (chatRes.ok) {
+          const data = await chatRes.json()
+          if (data.messages?.length > 0) {
+            setChatHistory(data.messages.map((msg: any) => ({
+              id: String(msg.id),
+              type: msg.type,
+              content: msg.content,
+              timestamp: new Date(msg.created_at),
+              status: msg.status,
+              meta: msg.duration_ms || msg.num_turns ? {
+                duration: msg.duration_ms,
+                turns: msg.num_turns
+              } : undefined
+            })))
+          }
         }
+        
+        // Load settings
+        const settingsRes = await fetch(`${API_BASE}/sessions/${session.id}/settings`)
+        if (settingsRes.ok) {
+          const settings = await settingsRes.json()
+          if (settings.model) setSelectedModel(settings.model)
+          if (settings.reasoning_effort) setReasoningEffort(settings.reasoning_effort as ReasoningEffort)
+        }
+        setSettingsLoaded(true)
+      } catch (err) {
+        console.error('Failed to load session data:', err)
+        setSettingsLoaded(true)
       }
-    } catch {
-      // Ignore parse errors
     }
+    loadData()
   }, [session.id])
 
-  // Save chat history to localStorage when it changes
+  // Save settings to API when they change (after initial load)
   useEffect(() => {
-    if (chatHistory.length > 0) {
+    if (!settingsLoaded) return
+    
+    const saveSettings = async () => {
       try {
-        localStorage.setItem(getChatStorageKey(session.id), JSON.stringify(chatHistory))
+        const params = new URLSearchParams({
+          model: selectedModel,
+          reasoning_effort: reasoningEffort
+        })
+        await fetch(`${API_BASE}/sessions/${session.id}/settings?${params}`, {
+          method: 'PUT'
+        })
       } catch {
-        // Ignore storage errors
+        // Ignore save errors
       }
     }
-  }, [chatHistory, session.id])
-
-  // Save settings to localStorage when they change
-  useEffect(() => {
-    try {
-      localStorage.setItem(getSettingsStorageKey(session.id), JSON.stringify({
-        model: selectedModel,
-        reasoningEffort
-      }))
-    } catch {
-      // Ignore storage errors
-    }
-  }, [selectedModel, reasoningEffort, session.id])
+    saveSettings()
+  }, [selectedModel, reasoningEffort, session.id, settingsLoaded])
 
   const statusConfig = STATUS_CONFIG[session.status]
   const controlState = session.control_state || 'cli_active'
@@ -197,16 +191,25 @@ export function SessionCard({ session }: SessionCardProps) {
     e.preventDefault()
     if (!taskPrompt.trim() || executing) return
 
+    const prompt = taskPrompt.trim()
     const userMessage: ChatMessage = {
       id: Date.now().toString(),
       type: 'user',
-      content: taskPrompt.trim(),
+      content: prompt,
       timestamp: new Date(),
     }
     setChatHistory(prev => [...prev, userMessage])
-    const prompt = taskPrompt.trim()
     setTaskPrompt('')
     setExecuting(true)
+
+    // Save user message to API
+    try {
+      await addChatMessage({
+        sessionId: session.id,
+        type: 'user',
+        content: prompt,
+      })
+    } catch {}
 
     try {
       const result = await executeTask({
@@ -218,7 +221,7 @@ export function SessionCard({ session }: SessionCardProps) {
       })
       
       // Parse the result to get human-readable content
-      let responseContent = parseResultContent(result.result, result.error)
+      const responseContent = parseResultContent(result.result, result.error)
 
       const assistantMessage: ChatMessage = {
         id: (Date.now() + 1).toString(),
@@ -232,15 +235,38 @@ export function SessionCard({ session }: SessionCardProps) {
         },
       }
       setChatHistory(prev => [...prev, assistantMessage])
+
+      // Save assistant message to API
+      try {
+        await addChatMessage({
+          sessionId: session.id,
+          type: 'assistant',
+          content: responseContent,
+          status: result.success ? 'success' : 'error',
+          durationMs: result.duration_ms,
+          numTurns: result.num_turns,
+        })
+      } catch {}
     } catch (error) {
+      const errorContent = String(error)
       const errorMessage: ChatMessage = {
         id: (Date.now() + 1).toString(),
         type: 'assistant',
-        content: String(error),
+        content: errorContent,
         timestamp: new Date(),
         status: 'error',
       }
       setChatHistory(prev => [...prev, errorMessage])
+
+      // Save error message to API
+      try {
+        await addChatMessage({
+          sessionId: session.id,
+          type: 'assistant',
+          content: errorContent,
+          status: 'error',
+        })
+      } catch {}
     } finally {
       setExecuting(false)
     }

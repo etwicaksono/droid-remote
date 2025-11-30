@@ -81,6 +81,28 @@ CREATE TABLE IF NOT EXISTS tasks (
     FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE SET NULL
 );
 
+-- Chat messages (for web UI conversation history)
+CREATE TABLE IF NOT EXISTS chat_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id TEXT NOT NULL,
+    type TEXT NOT NULL,  -- 'user' or 'assistant'
+    content TEXT NOT NULL,
+    status TEXT,  -- 'success' or 'error' for assistant messages
+    duration_ms INTEGER,
+    num_turns INTEGER,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+);
+
+-- Session settings (model, reasoning, etc.)
+CREATE TABLE IF NOT EXISTS session_settings (
+    session_id TEXT PRIMARY KEY,
+    model TEXT DEFAULT 'claude-sonnet-4-5-20250929',
+    reasoning_effort TEXT DEFAULT 'medium',
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+);
+
 -- Indexes for common queries
 CREATE INDEX IF NOT EXISTS idx_session_events_session ON session_events(session_id);
 CREATE INDEX IF NOT EXISTS idx_session_events_created ON session_events(created_at);
@@ -89,6 +111,8 @@ CREATE INDEX IF NOT EXISTS idx_queued_messages_status ON queued_messages(status)
 CREATE INDEX IF NOT EXISTS idx_permission_requests_session ON permission_requests(session_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_session ON tasks(session_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_created ON tasks(created_at);
+CREATE INDEX IF NOT EXISTS idx_chat_messages_session ON chat_messages(session_id);
+CREATE INDEX IF NOT EXISTS idx_chat_messages_created ON chat_messages(created_at);
 """
 
 

@@ -479,12 +479,118 @@ class TaskRepository:
         return [row_to_dict(row) for row in cursor.fetchall()]
 
 
+class ChatMessageRepository:
+    """Repository for chat_messages table"""
+    
+    def create(
+        self,
+        session_id: str,
+        msg_type: str,  # 'user' or 'assistant'
+        content: str,
+        status: Optional[str] = None,
+        duration_ms: Optional[int] = None,
+        num_turns: Optional[int] = None
+    ) -> dict:
+        """Create a new chat message"""
+        db = get_db()
+        cursor = db.execute("""
+            INSERT INTO chat_messages (session_id, type, content, status, duration_ms, num_turns)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (session_id, msg_type, content, status, duration_ms, num_turns))
+        db.commit()
+        
+        return {
+            "id": cursor.lastrowid,
+            "session_id": session_id,
+            "type": msg_type,
+            "content": content,
+            "status": status,
+            "duration_ms": duration_ms,
+            "num_turns": num_turns,
+            "created_at": datetime.utcnow().isoformat()
+        }
+    
+    def get_by_session(self, session_id: str, limit: int = 100) -> List[dict]:
+        """Get chat messages for a session"""
+        db = get_db()
+        cursor = db.execute("""
+            SELECT * FROM chat_messages 
+            WHERE session_id = ? 
+            ORDER BY created_at ASC
+            LIMIT ?
+        """, (session_id, limit))
+        return [row_to_dict(row) for row in cursor.fetchall()]
+    
+    def clear_session(self, session_id: str) -> int:
+        """Clear all chat messages for a session"""
+        db = get_db()
+        cursor = db.execute("DELETE FROM chat_messages WHERE session_id = ?", (session_id,))
+        db.commit()
+        return cursor.rowcount
+
+
+class SessionSettingsRepository:
+    """Repository for session_settings table"""
+    
+    def get(self, session_id: str) -> Optional[dict]:
+        """Get settings for a session"""
+        db = get_db()
+        cursor = db.execute("SELECT * FROM session_settings WHERE session_id = ?", (session_id,))
+        row = cursor.fetchone()
+        return row_to_dict(row) if row else None
+    
+    def upsert(
+        self,
+        session_id: str,
+        model: Optional[str] = None,
+        reasoning_effort: Optional[str] = None
+    ) -> dict:
+        """Create or update settings for a session"""
+        db = get_db()
+        existing = self.get(session_id)
+        now = datetime.utcnow()
+        
+        if existing:
+            # Update existing
+            updates = []
+            params = []
+            if model is not None:
+                updates.append("model = ?")
+                params.append(model)
+            if reasoning_effort is not None:
+                updates.append("reasoning_effort = ?")
+                params.append(reasoning_effort)
+            updates.append("updated_at = ?")
+            params.append(now)
+            params.append(session_id)
+            
+            db.execute(f"""
+                UPDATE session_settings SET {', '.join(updates)} WHERE session_id = ?
+            """, params)
+        else:
+            # Insert new
+            db.execute("""
+                INSERT INTO session_settings (session_id, model, reasoning_effort, updated_at)
+                VALUES (?, ?, ?, ?)
+            """, (
+                session_id,
+                model or 'claude-sonnet-4-5-20250929',
+                reasoning_effort or 'medium',
+                now
+            ))
+        
+        db.commit()
+        return self.get(session_id)
+
+
 # Singleton instances
 _session_repo: Optional[SessionRepository] = None
 _event_repo: Optional[SessionEventRepository] = None
 _queue_repo: Optional[QueuedMessageRepository] = None
 _permission_repo: Optional[PermissionRequestRepository] = None
 _task_repo: Optional[TaskRepository] = None
+_chat_repo: Optional[ChatMessageRepository] = None
+_settings_repo: Optional[SessionSettingsRepository] = None
 
 
 def get_session_repo() -> SessionRepository:
@@ -520,3 +626,17 @@ def get_task_repo() -> TaskRepository:
     if _task_repo is None:
         _task_repo = TaskRepository()
     return _task_repo
+
+
+def get_chat_repo() -> ChatMessageRepository:
+    global _chat_repo
+    if _chat_repo is None:
+        _chat_repo = ChatMessageRepository()
+    return _chat_repo
+
+
+def get_settings_repo() -> SessionSettingsRepository:
+    global _settings_repo
+    if _settings_repo is None:
+        _settings_repo = SessionSettingsRepository()
+    return _settings_repo

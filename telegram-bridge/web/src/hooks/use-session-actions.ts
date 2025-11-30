@@ -138,6 +138,65 @@ export function useSessionActions() {
     []
   )
 
+  const getChatHistory = useCallback(
+    async (sessionId: string) => {
+      const res = await fetch(`${API_BASE}/sessions/${sessionId}/chat`)
+      if (!res.ok) throw new Error('Failed to get chat history')
+      return await res.json()
+    },
+    []
+  )
+
+  const addChatMessage = useCallback(
+    async (params: {
+      sessionId: string
+      type: 'user' | 'assistant'
+      content: string
+      status?: 'success' | 'error'
+      durationMs?: number
+      numTurns?: number
+    }) => {
+      const searchParams = new URLSearchParams({
+        msg_type: params.type,
+        content: params.content,
+      })
+      if (params.status) searchParams.append('status', params.status)
+      if (params.durationMs) searchParams.append('duration_ms', String(params.durationMs))
+      if (params.numTurns) searchParams.append('num_turns', String(params.numTurns))
+      
+      const res = await fetch(`${API_BASE}/sessions/${params.sessionId}/chat?${searchParams}`, {
+        method: 'POST',
+      })
+      if (!res.ok) throw new Error('Failed to add chat message')
+      return await res.json()
+    },
+    []
+  )
+
+  const getSettings = useCallback(
+    async (sessionId: string) => {
+      const res = await fetch(`${API_BASE}/sessions/${sessionId}/settings`)
+      if (!res.ok) throw new Error('Failed to get settings')
+      return await res.json()
+    },
+    []
+  )
+
+  const updateSettings = useCallback(
+    async (params: { sessionId: string; model?: string; reasoningEffort?: string }) => {
+      const searchParams = new URLSearchParams()
+      if (params.model) searchParams.append('model', params.model)
+      if (params.reasoningEffort) searchParams.append('reasoning_effort', params.reasoningEffort)
+      
+      const res = await fetch(`${API_BASE}/sessions/${params.sessionId}/settings?${searchParams}`, {
+        method: 'PUT',
+      })
+      if (!res.ok) throw new Error('Failed to update settings')
+      return await res.json()
+    },
+    []
+  )
+
   return {
     respond,
     approve,
@@ -148,6 +207,10 @@ export function useSessionActions() {
     getQueue,
     addToQueue,
     clearQueue,
+    getChatHistory,
+    addChatMessage,
+    getSettings,
+    updateSettings,
     loading,
   }
 }

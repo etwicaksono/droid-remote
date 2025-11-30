@@ -10,7 +10,7 @@ from fastapi import APIRouter, HTTPException, Request, Depends, Header
 from core.session_registry import session_registry
 from core.message_queue import message_queue
 from core.task_executor import task_executor
-from core.repositories import get_permission_repo, get_task_repo, get_event_repo
+from core.repositories import get_permission_repo, get_task_repo, get_event_repo, get_chat_repo, get_settings_repo
 from core.models import (
     Session,
     SessionStatus,
@@ -563,3 +563,69 @@ async def get_failed_tasks(limit: int = 20):
     """Get failed tasks for troubleshooting"""
     tasks = get_task_repo().get_failed(limit=limit)
     return {"tasks": tasks}
+
+
+# Chat History Endpoints
+@router.get("/sessions/{session_id}/chat")
+async def get_chat_history(session_id: str, limit: int = 100):
+    """Get chat messages for a session"""
+    messages = get_chat_repo().get_by_session(session_id, limit=limit)
+    return {"session_id": session_id, "messages": messages}
+
+
+@router.post("/sessions/{session_id}/chat")
+async def add_chat_message(
+    session_id: str,
+    msg_type: str,
+    content: str,
+    status: Optional[str] = None,
+    duration_ms: Optional[int] = None,
+    num_turns: Optional[int] = None
+):
+    """Add a chat message"""
+    message = get_chat_repo().create(
+        session_id=session_id,
+        msg_type=msg_type,
+        content=content,
+        status=status,
+        duration_ms=duration_ms,
+        num_turns=num_turns
+    )
+    return {"success": True, "message": message}
+
+
+@router.delete("/sessions/{session_id}/chat")
+async def clear_chat_history(session_id: str):
+    """Clear all chat messages for a session"""
+    count = get_chat_repo().clear_session(session_id)
+    return {"success": True, "deleted": count}
+
+
+# Session Settings Endpoints
+@router.get("/sessions/{session_id}/settings")
+async def get_session_settings(session_id: str):
+    """Get settings for a session"""
+    settings = get_settings_repo().get(session_id)
+    if not settings:
+        # Return defaults
+        settings = {
+            "session_id": session_id,
+            "model": "claude-sonnet-4-5-20250929",
+            "reasoning_effort": "medium"
+        }
+    return settings
+
+
+@router.put("/sessions/{session_id}/settings")
+async def update_session_settings(
+    session_id: str,
+    model: Optional[str] = None,
+    reasoning_effort: Optional[str] = None
+):
+    """Update settings for a session"""
+    settings = get_settings_repo().upsert(
+        session_id=session_id,
+        model=model,
+        reasoning_effort=reasoning_effort
+    )
+    return {"success": True, "settings": settings}
