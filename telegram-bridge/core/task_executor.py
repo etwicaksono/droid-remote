@@ -163,12 +163,16 @@ class TaskExecutor:
         
         logger.info(f"Executing: {' '.join(cmd)}")
         
-        # Run the command
+        # Run the command with DROID_EXEC_MODE env var
+        env = os.environ.copy()
+        env["DROID_EXEC_MODE"] = "1"
+        
         process = await asyncio.create_subprocess_exec(
             *cmd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
-            cwd=task.project_dir
+            cwd=task.project_dir,
+            env=env
         )
         task.process = process
         
@@ -254,11 +258,16 @@ class TaskExecutor:
         task.status = TaskStatus.RUNNING
         task.started_at = datetime.utcnow()
         
+        # Set env var to skip Stop hook notification
+        env = os.environ.copy()
+        env["DROID_EXEC_MODE"] = "1"
+        
         process = await asyncio.create_subprocess_exec(
             *cmd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
-            cwd=task.project_dir
+            cwd=task.project_dir,
+            env=env
         )
         task.process = process
         

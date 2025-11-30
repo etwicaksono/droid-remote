@@ -25,6 +25,11 @@ logger = logging.getLogger(__name__)
 
 
 def main():
+    # Skip notification if running via droid exec (task executor)
+    if os.environ.get("DROID_EXEC_MODE") == "1":
+        logger.info("Running in exec mode, skipping stop notification")
+        sys.exit(0)
+    
     try:
         input_data = json.load(sys.stdin)
     except json.JSONDecodeError as e:
