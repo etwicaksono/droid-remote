@@ -3,10 +3,13 @@
 Stop Hook Script
 
 Receives: JSON via stdin with session/transcript info
-Action: Wait for user input from Telegram, or allow stop after timeout
+Action: Wait for user input from Telegram, provide it as context to Droid
 Output: 
-  - Exit code 0: Allow Droid to stop
-  - Exit code 2 + stderr: Feed instruction to Droid
+  - Exit code 0 with no JSON: Allow Droid to stop
+  - Exit code 0 with JSON {decision: "block", reason: "..."}: Keep Droid running with context
+
+NOTE: This hook can only provide CONTEXT to Droid, not inject prompts.
+For remote task execution, use the Telegram bot's droid exec feature.
 """
 import os
 import sys
@@ -20,8 +23,14 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "lib"))
 from bridge_client import register_session, notify, update_session_status, wait_for_response
 from formatters import format_session_name, format_stop_message
 
-# Log to stdout, not stderr (stderr is used for instruction output)
-logging.basicConfig(level=logging.INFO, stream=sys.stdout)
+# Log to a file to avoid corrupting JSON output
+log_file = os.path.join(os.path.dirname(__file__), "stop_hook.log")
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    filename=log_file,
+    filemode='a'
+)
 logger = logging.getLogger(__name__)
 
 WAIT_TIMEOUT = 300  # 5 minutes
@@ -39,8 +48,8 @@ def main():
         logger.error(f"Failed to parse input JSON: {e}")
         sys.exit(0)
     
-    # Check if we're already in a stop hook loop
-    if input_data.get("stop_hook_active", False):
+    # Check if we're already in a stop hook loop (Factory sends camelCase)
+    if input_data.get("stopHookActive", False) or input_data.get("stop_hook_active", False):
         logger.info("Stop hook already active, allowing stop")
         sys.exit(0)
     
