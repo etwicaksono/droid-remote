@@ -260,7 +260,12 @@ class TelegramBotManager:
         
         elif action == "select":
             context.user_data["active_session"] = session_id
-            await query.answer(f"Active: {session.name}")
+            context.user_data["project_dir"] = session.project_dir  # Also set project dir
+            await query.edit_message_text(
+                f"Selected session: {session.name}\n\n"
+                f"Project: {session.project_dir}\n\n"
+                "Send a message to interact with this session."
+            )
     
     async def _handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle text messages (responses to Droid or new tasks)"""
