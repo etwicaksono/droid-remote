@@ -85,9 +85,13 @@ def main():
         logger.info(f"Received instruction: {response[:100]}...")
         update_session_status(session_id, "running")
         
-        # Write to stderr and exit with code 2 to feed instruction to Droid
-        sys.stderr.write(response)
-        sys.exit(2)
+        # Use JSON output format to block stop and provide instruction
+        output = {
+            "decision": "block",
+            "reason": response
+        }
+        print(json.dumps(output))
+        sys.exit(0)
     else:
         # Timeout or /done - allow stop
         logger.info("No response received, allowing stop")
