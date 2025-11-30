@@ -183,89 +183,104 @@ class TelegramBotManager:
     async def _handle_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle inline keyboard button presses"""
         query = update.callback_query
-        await query.answer()
         
-        # Check user authorization
-        if self.allowed_users and query.from_user.id not in self.allowed_users:
-            logger.warning(f"Unauthorized callback from user {query.from_user.id}")
-            return
+        try:
+            await query.answer()
+            
+            # Check user authorization
+            if self.allowed_users and query.from_user.id not in self.allowed_users:
+                logger.warning(f"Unauthorized callback from user {query.from_user.id}")
+                return
+            
+            logger.info(f"Callback received: {query.data}")
+            
+            # Handle model selection callback
+            if query.data.startswith("model:"):
+                model_id = query.data[6:]  # Remove "model:" prefix
+                if model_id == "default":
+                    context.user_data.pop("model", None)
+                    await query.edit_message_text("Model set to: Default (from Factory settings)")
+                else:
+                    context.user_data["model"] = model_id
+                    # Find display name
+                    model_name = model_id
+                    for mid, mname in AVAILABLE_MODELS:
+                        if mid == model_id:
+                            model_name = mname
+                            break
+                    await query.edit_message_text(f"Model set to: {model_name}\n({model_id})")
+                return
+            
+            # Parse callback data: action:session_id[:request_id]
+            parts = query.data.split(":")
+            if len(parts) < 2:
+                logger.warning(f"Invalid callback data format: {query.data}")
+                await query.edit_message_text("Invalid button data")
+                return
+            
+            action = parts[0]
+            session_id = parts[1]
+            request_id = parts[2] if len(parts) > 2 else None
+            
+            logger.info(f"Callback action={action}, session_id={session_id}")
+            
+            session = self.registry.get(session_id)
+            if not session:
+                logger.warning(f"Session not found: {session_id}")
+                await query.edit_message_text(f"Session not found: {session_id[:20]}...")
+                return
         
-        # Handle model selection callback
-        if query.data.startswith("model:"):
-            model_id = query.data[6:]  # Remove "model:" prefix
-            if model_id == "default":
-                context.user_data.pop("model", None)
-                await query.edit_message_text("Model set to: Default (from Factory settings)")
+            # Handle different actions
+            if action == "approve":
+                message_queue.deliver_response(session_id, request_id, "approve")
+                await query.edit_message_text(
+                    f"Approved\n\nSession: {session.name}"
+                )
+            
+            elif action == "deny":
+                message_queue.deliver_response(session_id, request_id, "deny")
+                await query.edit_message_text(
+                    f"Denied\n\nSession: {session.name}"
+                )
+            
+            elif action == "approve_all":
+                message_queue.deliver_response(session_id, request_id, "approve_all")
+                context.user_data["auto_approve"] = session_id
+                await query.edit_message_text(
+                    f"Approved (auto-approve enabled)\n\nSession: {session.name}"
+                )
+            
+            elif action == "done":
+                message_queue.deliver_response(session_id, request_id, "done")
+                self.registry.update_status(session_id, SessionStatus.STOPPED)
+                await query.edit_message_text(
+                    f"Session ended: {session.name}"
+                )
+            
+            elif action == "status":
+                status = session.status
+                if isinstance(status, SessionStatus):
+                    status = status.value
+                await query.answer(f"Status: {status}", show_alert=True)
+            
+            elif action == "select":
+                context.user_data["active_session"] = session_id
+                context.user_data["project_dir"] = session.project_dir
+                await query.edit_message_text(
+                    f"Selected session: {session.name}\n\n"
+                    f"Project: {session.project_dir}\n\n"
+                    "Send a message to interact with this session."
+                )
+            
             else:
-                context.user_data["model"] = model_id
-                # Find display name
-                model_name = model_id
-                for mid, mname in AVAILABLE_MODELS:
-                    if mid == model_id:
-                        model_name = mname
-                        break
-                await query.edit_message_text(f"Model set to: {model_name}\n({model_id})")
-            return
+                logger.warning(f"Unknown action: {action}")
         
-        # Parse callback data: action:session_id[:request_id]
-        parts = query.data.split(":")
-        if len(parts) < 2:
-            return
-        
-        action = parts[0]
-        session_id = parts[1]
-        request_id = parts[2] if len(parts) > 2 else None
-        
-        session = self.registry.get(session_id)
-        if not session:
-            await query.edit_message_text("Session no longer active")
-            return
-        
-        # Handle different actions
-        if action == "approve":
-            message_queue.deliver_response(session_id, request_id, "approve")
-            await query.edit_message_text(
-                f"✅ Approved\n\nSession: {session.name}",
-                parse_mode="Markdown"
-            )
-        
-        elif action == "deny":
-            message_queue.deliver_response(session_id, request_id, "deny")
-            await query.edit_message_text(
-                f"❌ Denied\n\nSession: {session.name}",
-                parse_mode="Markdown"
-            )
-        
-        elif action == "approve_all":
-            message_queue.deliver_response(session_id, request_id, "approve_all")
-            context.user_data["auto_approve"] = session_id
-            await query.edit_message_text(
-                f"✅ Approved (auto-approve enabled)\n\nSession: {session.name}",
-                parse_mode="Markdown"
-            )
-        
-        elif action == "done":
-            message_queue.deliver_response(session_id, request_id, "done")
-            self.registry.update_status(session_id, SessionStatus.STOPPED)
-            await query.edit_message_text(
-                f"✅ Session ended: {session.name}",
-                parse_mode="Markdown"
-            )
-        
-        elif action == "status":
-            status = session.status
-            if isinstance(status, SessionStatus):
-                status = status.value
-            await query.answer(f"Status: {status}", show_alert=True)
-        
-        elif action == "select":
-            context.user_data["active_session"] = session_id
-            context.user_data["project_dir"] = session.project_dir  # Also set project dir
-            await query.edit_message_text(
-                f"Selected session: {session.name}\n\n"
-                f"Project: {session.project_dir}\n\n"
-                "Send a message to interact with this session."
-            )
+        except Exception as e:
+            logger.exception(f"Error handling callback: {e}")
+            try:
+                await query.edit_message_text(f"Error: {str(e)[:100]}")
+            except:
+                pass
     
     async def _handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle text messages (responses to Droid or new tasks)"""
