@@ -245,6 +245,8 @@ class TaskExecutor:
         
         # Parse JSON output
         if stdout_str:
+            logger.info(f"Raw stdout ({len(stdout_str)} chars): {stdout_str[:500]}")
+            
             # droid exec may output multiple lines, find the JSON result line
             output = None
             for line in stdout_str.split('\n'):
@@ -257,13 +259,17 @@ class TaskExecutor:
                         # Look for the result type message
                         if parsed.get("type") == "result" or "result" in parsed:
                             output = parsed
+                            logger.info(f"Found JSON result: type={parsed.get('type')}")
                             break
-                    except json.JSONDecodeError:
+                    except json.JSONDecodeError as e:
+                        logger.warning(f"JSON parse error: {e}")
                         continue
             
             if output:
                 # Extract the actual result content
                 result_content = output.get("result", "")
+                logger.info(f"Extracted result: {result_content[:200] if result_content else 'empty'}")
+                
                 # Clean up markdown headers
                 if isinstance(result_content, str):
                     result_content = result_content.replace("# Answer\n\n", "").strip()
@@ -278,6 +284,7 @@ class TaskExecutor:
                 )
             else:
                 # No valid JSON found, return raw output
+                logger.warning("No valid JSON found in output, returning raw")
                 return TaskResult(
                     success=process.returncode == 0,
                     result=stdout_str,
