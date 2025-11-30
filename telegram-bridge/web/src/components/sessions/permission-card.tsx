@@ -50,10 +50,10 @@ export function PermissionCard({ permission, sessionName, onResolved }: Permissi
           <Badge
             variant={
               permission.decision === 'approved'
-                ? 'default'
+                ? 'success'
                 : permission.decision === 'denied'
                 ? 'destructive'
-                : 'secondary'
+                : 'warning'
             }
           >
             {permission.decision || 'pending'}
