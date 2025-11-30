@@ -13,6 +13,14 @@ class SessionStatus(str, Enum):
     STOPPED = "stopped"
 
 
+class ControlState(str, Enum):
+    """Who has control of the session"""
+    CLI_ACTIVE = "cli_active"      # CLI is running and processing
+    CLI_WAITING = "cli_waiting"    # CLI at stop point, waiting for input
+    REMOTE_ACTIVE = "remote_active"  # Remote (Telegram/Web) has control
+    RELEASED = "released"          # Released, waiting for CLI to resume
+
+
 class NotificationType(str, Enum):
     INFO = "info"
     WARNING = "warning"
@@ -44,12 +52,24 @@ class Session(BaseModel):
     name: str
     project_dir: str
     status: SessionStatus = SessionStatus.RUNNING
+    control_state: ControlState = ControlState.CLI_ACTIVE
     started_at: datetime = Field(default_factory=datetime.utcnow)
     last_activity: datetime = Field(default_factory=datetime.utcnow)
     pending_request: Optional[PendingRequest] = None
+    transcript_path: Optional[str] = None
 
     class Config:
         use_enum_values = True
+    
+    @property
+    def is_remote_controlled(self) -> bool:
+        """Check if session is under remote control"""
+        return self.control_state == ControlState.REMOTE_ACTIVE
+    
+    @property
+    def can_accept_remote_input(self) -> bool:
+        """Check if session can accept remote input"""
+        return self.control_state == ControlState.REMOTE_ACTIVE
 
 
 class Notification(BaseModel):

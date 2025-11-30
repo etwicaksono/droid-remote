@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import Dict, Optional, List
 from threading import Lock
 
-from .models import Session, SessionStatus, PendingRequest
+from .models import Session, SessionStatus, ControlState, PendingRequest
 from .repositories import get_session_repo, get_permission_repo
 
 logger = logging.getLogger(__name__)
@@ -67,9 +67,11 @@ class SessionRegistry:
             name=data['name'],
             project_dir=data['project_dir'],
             status=SessionStatus(data.get('status', 'running')),
+            control_state=ControlState(data.get('control_state', 'cli_active')),
             started_at=started_at or datetime.utcnow(),
             last_activity=last_activity or datetime.utcnow(),
-            pending_request=pending_request
+            pending_request=pending_request,
+            transcript_path=data.get('transcript_path')
         )
     
     def register(
@@ -254,6 +256,68 @@ class SessionRegistry:
                         session_id = data['id']
                         self.remove(session_id)
                         logger.info(f"Cleared stale session: {session_id}")
+    
+    # Control state management methods
+    
+    def update_control_state(self, session_id: str, control_state: ControlState) -> Optional[Session]:
+        """Update session control state"""
+        repo = get_session_repo()
+        state_str = control_state.value if isinstance(control_state, ControlState) else control_state
+        data = repo.update_control_state(session_id, state_str)
+        if data:
+            logger.info(f"Session {session_id} control state changed to {state_str}")
+            return self._dict_to_session(data)
+        return None
+    
+    def handoff_to_remote(self, session_id: str) -> Optional[Session]:
+        """Hand off control from CLI to remote"""
+        session = self.get(session_id)
+        if not session:
+            return None
+        
+        # Only allow handoff from CLI states
+        if session.control_state not in [ControlState.CLI_ACTIVE, ControlState.CLI_WAITING]:
+            logger.warning(f"Cannot handoff session {session_id}: not in CLI state")
+            return None
+        
+        return self.update_control_state(session_id, ControlState.REMOTE_ACTIVE)
+    
+    def release_to_cli(self, session_id: str) -> Optional[Session]:
+        """Release control back to CLI"""
+        session = self.get(session_id)
+        if not session:
+            return None
+        
+        # Only allow release from remote state
+        if session.control_state != ControlState.REMOTE_ACTIVE:
+            logger.warning(f"Cannot release session {session_id}: not in remote state")
+            return None
+        
+        return self.update_control_state(session_id, ControlState.RELEASED)
+    
+    def set_cli_waiting(self, session_id: str) -> Optional[Session]:
+        """Set CLI to waiting state (at stop point)"""
+        return self.update_control_state(session_id, ControlState.CLI_WAITING)
+    
+    def set_cli_active(self, session_id: str) -> Optional[Session]:
+        """Set CLI to active state"""
+        return self.update_control_state(session_id, ControlState.CLI_ACTIVE)
+    
+    def get_remote_controlled_sessions(self) -> List[Session]:
+        """Get all sessions under remote control"""
+        repo = get_session_repo()
+        sessions = []
+        for data in repo.get_all():
+            if data.get('control_state') == 'remote_active':
+                sessions.append(self._dict_to_session(data))
+        return sessions
+    
+    def can_execute_remote_task(self, session_id: str) -> bool:
+        """Check if remote task execution is allowed for this session"""
+        session = self.get(session_id)
+        if not session:
+            return False
+        return session.control_state == ControlState.REMOTE_ACTIVE
 
 
 # Global instance
