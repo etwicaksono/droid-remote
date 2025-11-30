@@ -247,22 +247,26 @@ class TaskExecutor:
         if stdout_str:
             logger.info(f"Raw stdout ({len(stdout_str)} chars): {stdout_str[:500]}")
             
-            # droid exec may output multiple lines, find the JSON result line
+            # droid exec outputs JSON with --output-format json
+            # Try to parse the entire output first
             output = None
-            for line in stdout_str.split('\n'):
-                line = line.strip()
-                if not line:
-                    continue
-                if line.startswith('{'):
+            try:
+                output = json.loads(stdout_str.strip())
+                logger.info(f"Parsed JSON successfully, type={output.get('type')}, has result={('result' in output)}")
+            except json.JSONDecodeError as e:
+                logger.warning(f"Full JSON parse failed: {e}, trying line by line")
+                # Try line by line as fallback
+                for line in stdout_str.split('\n'):
+                    line = line.strip()
+                    if not line or not line.startswith('{'):
+                        continue
                     try:
                         parsed = json.loads(line)
-                        # Look for the result type message
                         if parsed.get("type") == "result" or "result" in parsed:
                             output = parsed
-                            logger.info(f"Found JSON result: type={parsed.get('type')}")
+                            logger.info(f"Found JSON in line: type={parsed.get('type')}")
                             break
-                    except json.JSONDecodeError as e:
-                        logger.warning(f"JSON parse error: {e}")
+                    except json.JSONDecodeError:
                         continue
             
             if output:
