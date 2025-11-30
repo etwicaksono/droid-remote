@@ -31,6 +31,9 @@ from .commands import (
     setproject_command,
     setmodel_command,
     models_command,
+    handoff_command,
+    release_command,
+    queue_command,
     done_command,
     stopall_command,
     broadcast_command,
@@ -164,6 +167,9 @@ class TelegramBotManager:
         app.add_handler(CommandHandler("setproject", setproject_command, filters=user_filter))
         app.add_handler(CommandHandler("setmodel", setmodel_command, filters=user_filter))
         app.add_handler(CommandHandler("models", models_command, filters=user_filter))
+        app.add_handler(CommandHandler("handoff", handoff_command, filters=user_filter))
+        app.add_handler(CommandHandler("release", release_command, filters=user_filter))
+        app.add_handler(CommandHandler("queue", queue_command, filters=user_filter))
         app.add_handler(CommandHandler("done", done_command, filters=user_filter))
         app.add_handler(CommandHandler("stopall", stopall_command, filters=user_filter))
         app.add_handler(CommandHandler("broadcast", broadcast_command, filters=user_filter))

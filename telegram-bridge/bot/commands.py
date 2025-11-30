@@ -7,7 +7,7 @@ from telegram.ext import ContextTypes
 
 from core.session_registry import session_registry
 from core.message_queue import message_queue
-from core.models import SessionStatus
+from core.models import SessionStatus, ControlState
 from .keyboards import build_session_keyboard
 
 # Available models for droid exec
@@ -40,6 +40,9 @@ async def setup_commands(application) -> None:
         BotCommand("setproject", "Set project directory for tasks"),
         BotCommand("setmodel", "Set model for task execution"),
         BotCommand("models", "Show available models"),
+        BotCommand("handoff", "Take remote control of a session"),
+        BotCommand("release", "Release control back to CLI"),
+        BotCommand("queue", "Show queued messages"),
         BotCommand("done", "Signal current session to stop"),
         BotCommand("stopall", "Stop all sessions"),
         BotCommand("broadcast", "Send message to all waiting sessions"),
@@ -75,6 +78,10 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "/switch <name|number> - Set active session\n"
         "/done - Signal session to stop\n"
         "/stopall - Stop all sessions\n\n"
+        "*Remote Control:*\n"
+        "/handoff [name] - Take remote control\n"
+        "/release [name] - Return control to CLI\n"
+        "/queue [name] - Show queued messages\n\n"
         "*Communication:*\n"
         "/broadcast <msg> - Send to all waiting\n"
         "/<number> <msg> - Send to specific session\n\n"
@@ -83,9 +90,9 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "• Use inline buttons for approve/deny\n"
         "• Type 'approve' or 'deny' directly\n\n"
         "*Examples:*\n"
-        "`/1 continue with tests`\n"
-        "`/switch backend-api`\n"
-        "`/broadcast fix all linting errors`",
+        "`/handoff` - Take control of current session\n"
+        "`/release` - Return control to CLI\n"
+        "`/switch backend-api`",
         parse_mode="Markdown"
     )
 
@@ -360,3 +367,173 @@ async def models_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         f"Current model: {current_display}\n\nSelect a model:",
         reply_markup=reply_markup
     )
+
+
+# Control State Commands
+
+async def handoff_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /handoff command - take remote control of a session"""
+    args = context.args
+    
+    # Determine which session to handoff
+    if args:
+        name = " ".join(args)
+        session = session_registry.get_by_name(name)
+        if not session:
+            try:
+                index = int(name)
+                session = session_registry.get_by_index(index)
+            except ValueError:
+                pass
+    else:
+        # Use active session or first waiting session
+        active_session_id = context.user_data.get("active_session")
+        if active_session_id:
+            session = session_registry.get(active_session_id)
+        else:
+            waiting = session_registry.get_waiting_sessions()
+            session = waiting[0] if waiting else None
+    
+    if not session:
+        await update.message.reply_text(
+            "No session to handoff.\n"
+            "Usage: /handoff [session_name|number]"
+        )
+        return
+    
+    # Check if already under remote control
+    if session.control_state == ControlState.REMOTE_ACTIVE:
+        await update.message.reply_text(
+            f"Session *{session.name}* is already under remote control.",
+            parse_mode="Markdown"
+        )
+        return
+    
+    # Perform handoff
+    result = session_registry.handoff_to_remote(session.id)
+    if not result:
+        await update.message.reply_text(
+            f"Cannot handoff *{session.name}* - not in CLI state.\n"
+            f"Current state: {session.control_state}",
+            parse_mode="Markdown"
+        )
+        return
+    
+    # Set as active session
+    context.user_data["active_session"] = session.id
+    
+    # Show queue count if any
+    queue_count = session_registry.get_queue_count(session.id)
+    queue_msg = f"\n{queue_count} message(s) queued." if queue_count > 0 else ""
+    
+    await update.message.reply_text(
+        f"You now have remote control of *{session.name}*\n"
+        f"Your messages will be executed as tasks.{queue_msg}\n\n"
+        "Use /release to return control to CLI.",
+        parse_mode="Markdown"
+    )
+
+
+async def release_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /release command - release control back to CLI"""
+    args = context.args
+    
+    # Determine which session to release
+    if args:
+        name = " ".join(args)
+        session = session_registry.get_by_name(name)
+        if not session:
+            try:
+                index = int(name)
+                session = session_registry.get_by_index(index)
+            except ValueError:
+                pass
+    else:
+        # Use active session or first remote-controlled session
+        active_session_id = context.user_data.get("active_session")
+        if active_session_id:
+            session = session_registry.get(active_session_id)
+        else:
+            remote = session_registry.get_remote_controlled_sessions()
+            session = remote[0] if remote else None
+    
+    if not session:
+        await update.message.reply_text(
+            "No session to release.\n"
+            "Usage: /release [session_name|number]"
+        )
+        return
+    
+    # Check if under remote control
+    if session.control_state != ControlState.REMOTE_ACTIVE:
+        await update.message.reply_text(
+            f"Session *{session.name}* is not under remote control.\n"
+            f"Current state: {session.control_state}",
+            parse_mode="Markdown"
+        )
+        return
+    
+    # Perform release
+    result = session_registry.release_to_cli(session.id)
+    if not result:
+        await update.message.reply_text(
+            f"Cannot release *{session.name}*.",
+            parse_mode="Markdown"
+        )
+        return
+    
+    # Clear active session
+    if context.user_data.get("active_session") == session.id:
+        context.user_data.pop("active_session", None)
+    
+    await update.message.reply_text(
+        f"Released control of *{session.name}* back to CLI.\n\n"
+        "Run `droid --continue` in terminal to resume.",
+        parse_mode="Markdown"
+    )
+
+
+async def queue_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /queue command - show queued messages"""
+    args = context.args
+    
+    # Determine which session's queue to show
+    if args:
+        name = " ".join(args)
+        session = session_registry.get_by_name(name)
+        if not session:
+            try:
+                index = int(name)
+                session = session_registry.get_by_index(index)
+            except ValueError:
+                pass
+    else:
+        active_session_id = context.user_data.get("active_session")
+        if active_session_id:
+            session = session_registry.get(active_session_id)
+        else:
+            sessions = session_registry.get_all()
+            session = sessions[0] if sessions else None
+    
+    if not session:
+        await update.message.reply_text("No session selected.")
+        return
+    
+    messages = session_registry.get_queued_messages(session.id)
+    
+    if not messages:
+        await update.message.reply_text(
+            f"No queued messages for *{session.name}*",
+            parse_mode="Markdown"
+        )
+        return
+    
+    lines = [f"Queued messages for *{session.name}*:\n"]
+    for i, msg in enumerate(messages[:10], 1):  # Limit to 10
+        content = msg['content'][:50] + "..." if len(msg['content']) > 50 else msg['content']
+        lines.append(f"{i}. {content}")
+    
+    if len(messages) > 10:
+        lines.append(f"\n... and {len(messages) - 10} more")
+    
+    await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
