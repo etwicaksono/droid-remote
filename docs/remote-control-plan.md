@@ -121,7 +121,133 @@ Enable remote control of Droid sessions via Telegram (notifications + quick acti
 
 ## Data Model
 
-### Session (Extended)
+### SQLite Database
+
+Using SQLite for persistence and troubleshooting. Single file (`bridge.db`), no server needed.
+
+#### Why SQLite?
+- **Troubleshooting**: Query historical data easily
+- **Persistence**: Survives server restarts
+- **Audit trail**: Track all decisions and actions
+- **Simple**: Single file, no setup, works everywhere
+
+#### Database Schema
+
+```sql
+-- Sessions table
+CREATE TABLE sessions (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    project_dir TEXT NOT NULL,
+    status TEXT DEFAULT 'running',
+    control_state TEXT DEFAULT 'cli_active',
+    transcript_path TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Session events (for troubleshooting)
+CREATE TABLE session_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id TEXT NOT NULL,
+    event_type TEXT NOT NULL,  -- 'start', 'stop', 'handoff', 'release', 'state_change'
+    event_data TEXT,           -- JSON blob for additional data
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (session_id) REFERENCES sessions(id)
+);
+
+-- Message queue
+CREATE TABLE queued_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id TEXT NOT NULL,
+    content TEXT NOT NULL,
+    source TEXT NOT NULL,      -- 'telegram', 'web'
+    status TEXT DEFAULT 'pending',  -- 'pending', 'sent', 'cancelled'
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    sent_at TIMESTAMP,
+    FOREIGN KEY (session_id) REFERENCES sessions(id)
+);
+
+-- Permission requests
+CREATE TABLE permission_requests (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    tool_name TEXT,
+    tool_input TEXT,           -- JSON blob
+    message TEXT,
+    decision TEXT,             -- 'approved', 'denied', 'pending'
+    decided_by TEXT,           -- 'telegram', 'web', 'auto'
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    decided_at TIMESTAMP,
+    FOREIGN KEY (session_id) REFERENCES sessions(id)
+);
+
+-- Task executions
+CREATE TABLE tasks (
+    id TEXT PRIMARY KEY,
+    session_id TEXT,
+    prompt TEXT NOT NULL,
+    project_dir TEXT NOT NULL,
+    model TEXT,
+    result TEXT,
+    success BOOLEAN,
+    duration_ms INTEGER,
+    error TEXT,
+    source TEXT NOT NULL,      -- 'telegram', 'web', 'api'
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    completed_at TIMESTAMP,
+    FOREIGN KEY (session_id) REFERENCES sessions(id)
+);
+
+-- Indexes for common queries
+CREATE INDEX idx_session_events_session ON session_events(session_id);
+CREATE INDEX idx_session_events_created ON session_events(created_at);
+CREATE INDEX idx_queued_messages_session ON queued_messages(session_id);
+CREATE INDEX idx_queued_messages_status ON queued_messages(status);
+CREATE INDEX idx_permission_requests_session ON permission_requests(session_id);
+CREATE INDEX idx_tasks_session ON tasks(session_id);
+CREATE INDEX idx_tasks_created ON tasks(created_at);
+```
+
+#### Useful Troubleshooting Queries
+
+```sql
+-- Recent session events
+SELECT * FROM session_events 
+WHERE session_id = ? 
+ORDER BY created_at DESC LIMIT 50;
+
+-- Permission decisions in last 24h
+SELECT * FROM permission_requests 
+WHERE created_at > datetime('now', '-24 hours')
+ORDER BY created_at DESC;
+
+-- Failed tasks
+SELECT * FROM tasks 
+WHERE success = 0 
+ORDER BY created_at DESC;
+
+-- Message queue for session
+SELECT * FROM queued_messages 
+WHERE session_id = ? AND status = 'pending'
+ORDER BY created_at ASC;
+
+-- Session timeline
+SELECT 
+    'event' as type, event_type as action, created_at 
+FROM session_events WHERE session_id = ?
+UNION ALL
+SELECT 
+    'permission' as type, tool_name as action, created_at 
+FROM permission_requests WHERE session_id = ?
+UNION ALL
+SELECT 
+    'task' as type, substr(prompt, 1, 50) as action, created_at 
+FROM tasks WHERE session_id = ?
+ORDER BY created_at DESC;
+```
+
+### TypeScript Interfaces (for API/Frontend)
 
 ```typescript
 interface Session {
@@ -129,33 +255,59 @@ interface Session {
   name: string;
   projectDir: string;
   status: 'running' | 'waiting' | 'stopped';
-  
-  // New fields
   controlState: 'cli_active' | 'cli_waiting' | 'remote_active' | 'released';
-  controlStateChangedAt: Date;
-  transcriptPath: string;
+  transcriptPath?: string;
+  createdAt: Date;
+  updatedAt: Date;
   
-  // Queue
-  queuedMessages: QueuedMessage[];
-  
-  // Pending request
-  pendingRequest?: PendingRequest;
+  // Loaded separately
+  queuedMessages?: QueuedMessage[];
+  pendingRequest?: PermissionRequest;
+}
+
+interface SessionEvent {
+  id: number;
+  sessionId: string;
+  eventType: string;
+  eventData?: object;
+  createdAt: Date;
 }
 
 interface QueuedMessage {
-  id: string;
+  id: number;
+  sessionId: string;
   content: string;
   source: 'telegram' | 'web';
+  status: 'pending' | 'sent' | 'cancelled';
   createdAt: Date;
+  sentAt?: Date;
 }
 
-interface PendingRequest {
+interface PermissionRequest {
   id: string;
-  type: 'permission' | 'input';
+  sessionId: string;
   toolName?: string;
   toolInput?: object;
   message: string;
+  decision?: 'approved' | 'denied' | 'pending';
+  decidedBy?: 'telegram' | 'web' | 'auto';
   createdAt: Date;
+  decidedAt?: Date;
+}
+
+interface Task {
+  id: string;
+  sessionId?: string;
+  prompt: string;
+  projectDir: string;
+  model?: string;
+  result?: string;
+  success?: boolean;
+  durationMs?: number;
+  error?: string;
+  source: 'telegram' | 'web' | 'api';
+  createdAt: Date;
+  completedAt?: Date;
 }
 ```
 
@@ -272,47 +424,72 @@ GET /sessions/:id/transcript
 
 ## Implementation Phases
 
-### Phase 1: Core State Management
-1. Add `controlState` to Session model
-2. Add `queuedMessages` to Session model  
-3. Update session registry with state transitions
-4. Modify hooks to set appropriate states
+### Phase 1: Database Setup
+1. Create `core/database.py` with SQLite connection management
+2. Create schema initialization script
+3. Create repository classes for each table
+4. Add database path to configuration
+5. Initialize database on server startup
 
-### Phase 2: Queue System
-1. Implement message queue in session registry
+### Phase 2: Migrate Session Registry to SQLite
+1. Update `SessionRegistry` to use database
+2. Migrate in-memory session storage to `sessions` table
+3. Add session event logging
+4. Ensure hooks still work with new storage
+
+### Phase 3: Core State Management
+1. Add `control_state` column to sessions
+2. Implement state transition logic
+3. Log state changes to `session_events`
+4. Modify hooks to update control state
+
+### Phase 4: Queue System
+1. Implement `queued_messages` repository
 2. Add queue API endpoints
 3. Modify message handling to check state and queue
 4. Add queue WebSocket events
 
-### Phase 3: Handoff Commands
+### Phase 5: Handoff Commands
 1. Add `/handoff` command to Telegram
 2. Add `/release` command to Telegram
 3. Modify Stop hook to handle handoff
 4. Add handoff API endpoints
 
-### Phase 4: Web UI - Session Control
+### Phase 6: Permission Tracking
+1. Implement `permission_requests` repository
+2. Log all permission requests and decisions
+3. Update Telegram bot to use database
+4. Add permission history API endpoint
+
+### Phase 7: Task Tracking
+1. Implement `tasks` repository
+2. Update task executor to log to database
+3. Add task history API endpoint
+4. Track task source (telegram/web/api)
+
+### Phase 8: Web UI - Session Control
 1. Add control state indicators
 2. Add Take Control / Release buttons
 3. Add queue display panel
 4. Add queue management actions
 
-### Phase 5: Web UI - Task Execution
+### Phase 9: Web UI - Task Execution
 1. Add task input form
 2. Add project/model selectors
 3. Implement task submission
 4. Add response streaming display
 
-### Phase 6: Web UI - Permission Handling
+### Phase 10: Web UI - Permission Handling
 1. Add permission request cards
 2. Implement approve/deny actions
-3. Add request history
+3. Add request history view
 4. Real-time updates via WebSocket
 
-### Phase 7: Web UI - Conversation View
-1. Parse and display transcript
-2. Real-time message updates
-3. File changes viewer
-4. Execution logs
+### Phase 11: Web UI - History & Troubleshooting
+1. Session timeline view
+2. Task history with filters
+3. Permission decision history
+4. Export logs/data for debugging
 
 ## File Changes Summary
 
@@ -320,9 +497,11 @@ GET /sessions/:id/transcript
 
 | File | Changes |
 |------|---------|
-| `core/models.py` | Add controlState, queuedMessages fields |
-| `core/session_registry.py` | State transitions, queue management |
-| `api/routes.py` | New endpoints for handoff, queue, transcript |
+| `core/database.py` | **NEW** - SQLite connection, schema init |
+| `core/repositories.py` | **NEW** - Repository classes for each table |
+| `core/models.py` | Add controlState, update to match DB schema |
+| `core/session_registry.py` | Use database instead of in-memory |
+| `api/routes.py` | New endpoints for handoff, queue, transcript, history |
 | `api/socketio_handlers.py` | New events for state, queue, permissions |
 | `bot/telegram_bot.py` | Simplify to notifications + quick actions |
 | `bot/commands.py` | Add /handoff, /release commands |
@@ -344,12 +523,34 @@ GET /sessions/:id/transcript
 
 ## Success Criteria
 
+### Database & Persistence
+- [ ] SQLite database created and initialized on startup
+- [ ] Sessions persist across server restarts
+- [ ] All events logged to `session_events` table
+- [ ] Can query historical data for troubleshooting
+
+### Control Flow
 - [ ] Can handoff control from CLI to remote via `/handoff`
 - [ ] Can release control back to CLI via `/release`
 - [ ] Auto-handoff works when CLI exits unexpectedly
 - [ ] Messages queued when CLI is active
+- [ ] Queue persists across server restarts
+
+### Web UI
 - [ ] Queue visible and manageable in Web UI
 - [ ] Can execute tasks from Web UI when in remote control
-- [ ] Can approve/deny permissions from both Telegram and Web UI
-- [ ] Full conversation visible in Web UI
-- [ ] Real-time updates in both Telegram and Web UI
+- [ ] Can approve/deny permissions from Web UI
+- [ ] Session timeline and history visible
+- [ ] Real-time updates via WebSocket
+
+### Telegram
+- [ ] Notifications delivered for all events
+- [ ] Can approve/deny permissions via buttons
+- [ ] `/handoff`, `/release`, `/status` commands work
+- [ ] Link to Web UI in notifications
+
+### Troubleshooting
+- [ ] Can query permission decisions by date range
+- [ ] Can view failed tasks with error details
+- [ ] Can export session timeline for debugging
+- [ ] All actions have audit trail in database
