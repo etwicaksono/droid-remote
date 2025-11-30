@@ -3,31 +3,33 @@
 Stop Hook Script
 
 Receives: JSON via stdin with session/transcript info
-Action: Send completion notification to Telegram (notification only, no blocking)
-Output: Exit code 0 (allow Droid to stop)
-
-Note: For continuing work, use the Telegram bot's task execution feature
-which uses 'droid exec' for reliable programmatic control.
+Action: Wait for user input from Telegram, or allow stop after timeout
+Output: 
+  - Exit code 0: Allow Droid to stop
+  - Exit code 2 + stderr: Feed instruction to Droid
 """
 import os
 import sys
 import json
 import logging
+import uuid
 
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "lib"))
 
-from bridge_client import register_session, notify, update_session_status
+from bridge_client import register_session, notify, update_session_status, wait_for_response
 from formatters import format_session_name, format_stop_message
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+WAIT_TIMEOUT = 300  # 5 minutes
+
 
 def main():
-    # Skip notification if running via droid exec (task executor)
+    # Skip if running via droid exec (task executor handles responses)
     if os.environ.get("DROID_EXEC_MODE") == "1":
-        logger.info("Running in exec mode, skipping stop notification")
+        logger.info("Running in exec mode, skipping stop hook")
         sys.exit(0)
     
     try:
@@ -44,7 +46,7 @@ def main():
     # Debug: log what Factory sends
     logger.info(f"Received input keys: {list(input_data.keys())}")
     
-    # Extract session info - try multiple possible key names
+    # Extract session info
     session_id = (
         input_data.get("session_id") or 
         input_data.get("sessionId") or 
@@ -54,27 +56,42 @@ def main():
     project_dir = os.environ.get("FACTORY_PROJECT_DIR", os.getcwd())
     session_name = format_session_name(project_dir, session_id)
     
-    # Register/update session
+    # Register session and set status to waiting
     register_session(session_id, project_dir, session_name)
+    update_session_status(session_id, "waiting")
     
     # Get summary if available
     summary = input_data.get("summary")
     
-    # Send stop notification
+    # Send stop notification asking for input
     message = format_stop_message(session_name, summary)
-    
     notify(
         session_id=session_id,
         session_name=session_name,
         message=message,
         notification_type="stop",
-        buttons=[]  # No buttons - use Telegram to send new tasks via droid exec
+        buttons=[]
     )
     
-    # Update status and allow stop
-    update_session_status(session_id, "stopped")
-    logger.info(f"Session {session_name} stopped, notification sent")
-    sys.exit(0)
+    # Generate request ID and wait for response
+    request_id = str(uuid.uuid4())
+    logger.info(f"Waiting for response (session={session_id}, request={request_id})")
+    
+    response = wait_for_response(session_id, request_id, timeout=WAIT_TIMEOUT)
+    
+    if response:
+        # User sent instruction - feed it to Droid
+        logger.info(f"Received instruction: {response[:100]}...")
+        update_session_status(session_id, "running")
+        
+        # Write to stderr and exit with code 2 to feed instruction to Droid
+        sys.stderr.write(response)
+        sys.exit(2)
+    else:
+        # Timeout or /done - allow stop
+        logger.info("No response received, allowing stop")
+        update_session_status(session_id, "stopped")
+        sys.exit(0)
 
 
 if __name__ == "__main__":
