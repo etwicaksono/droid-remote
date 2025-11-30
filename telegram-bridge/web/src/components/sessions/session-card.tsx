@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, type FormEvent } from 'react'
+import { useState, useEffect, type FormEvent } from 'react'
 import { Clock, Folder, Terminal, Radio, Play, Square, Loader2, Settings2, Brain } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
@@ -28,6 +28,48 @@ const REASONING_LEVELS: { id: ReasoningEffort; name: string }[] = [
   { id: 'medium', name: 'Medium' },
   { id: 'high', name: 'High' },
 ]
+
+// Helper to parse droid exec result and extract clean content
+function parseResultContent(resultStr: string | undefined, error: string | undefined): string {
+  if (error) return error
+  if (!resultStr) return 'Task completed'
+  
+  let content = resultStr
+  
+  // Try to parse JSON (droid exec returns JSON with --output-format json)
+  if (content.startsWith('{') || content.startsWith('[')) {
+    try {
+      const parsed = JSON.parse(content)
+      // Handle droid exec JSON format: {type, subtype, result, ...}
+      if (parsed.result !== undefined) {
+        content = String(parsed.result)
+      } else if (parsed.message) {
+        content = parsed.message
+      } else if (parsed.error) {
+        content = parsed.error
+      }
+    } catch {
+      // Not valid JSON, keep as-is
+    }
+  }
+  
+  // Clean up markdown headers like "# Answer\n\n"
+  content = content.replace(/^#\s*Answer\s*\n+/i, '').trim()
+  
+  // Remove duplicate content (sometimes appears twice)
+  const lines = content.split('\n')
+  if (lines.length > 6) {
+    const mid = Math.floor(lines.length / 2)
+    const first = lines.slice(0, mid).join('\n').trim()
+    const second = lines.slice(mid).join('\n').trim()
+    if (first === second) content = first
+  }
+  
+  return content || 'Task completed'
+}
+
+// localStorage key for chat history
+const getChatStorageKey = (sessionId: string) => `droid-chat-${sessionId}`
 
 interface SessionCardProps {
   session: Session
@@ -67,6 +109,35 @@ export function SessionCard({ session }: SessionCardProps) {
 
   const currentModel = AVAILABLE_MODELS.find(m => m.id === selectedModel)
   const supportsReasoning = currentModel?.reasoning ?? false
+
+  // Load chat history from localStorage on mount
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(getChatStorageKey(session.id))
+      if (stored) {
+        const parsed = JSON.parse(stored)
+        if (Array.isArray(parsed)) {
+          setChatHistory(parsed.map(msg => ({
+            ...msg,
+            timestamp: new Date(msg.timestamp)
+          })))
+        }
+      }
+    } catch {
+      // Ignore parse errors
+    }
+  }, [session.id])
+
+  // Save chat history to localStorage when it changes
+  useEffect(() => {
+    if (chatHistory.length > 0) {
+      try {
+        localStorage.setItem(getChatStorageKey(session.id), JSON.stringify(chatHistory))
+      } catch {
+        // Ignore storage errors
+      }
+    }
+  }, [chatHistory, session.id])
 
   const statusConfig = STATUS_CONFIG[session.status]
   const controlState = session.control_state || 'cli_active'
@@ -111,54 +182,7 @@ export function SessionCard({ session }: SessionCardProps) {
       })
       
       // Parse the result to get human-readable content
-      let responseContent = ''
-      if (result.error) {
-        responseContent = result.error
-      } else if (result.result) {
-        // Try to parse if it's JSON (droid exec returns JSON)
-        try {
-          const parsed = JSON.parse(result.result)
-          // Extract the actual result content from droid exec JSON output
-          if (parsed.result) {
-            // Remove markdown header if present
-            responseContent = parsed.result.replace(/^#\s*Answer\s*\n+/i, '').trim()
-          } else if (parsed.message) {
-            responseContent = parsed.message
-          } else if (typeof parsed === 'string') {
-            responseContent = parsed
-          } else {
-            responseContent = result.result
-          }
-        } catch {
-          // Not JSON, use as-is but clean up markdown headers
-          responseContent = result.result.replace(/^#\s*Answer\s*\n+/i, '').trim()
-        }
-      } else {
-        responseContent = 'Task completed'
-      }
-      
-      // Final cleanup - if still looks like JSON, try one more parse
-      if (responseContent.startsWith('{') || responseContent.startsWith('[')) {
-        try {
-          const innerParsed = JSON.parse(responseContent)
-          if (innerParsed.result) {
-            responseContent = innerParsed.result.replace(/^#\s*Answer\s*\n+/i, '').trim()
-          }
-        } catch {
-          // Keep as-is
-        }
-      }
-      
-      // Remove duplicate content (sometimes droid outputs same error twice)
-      const lines = responseContent.split('\n')
-      const midpoint = Math.floor(lines.length / 2)
-      if (lines.length > 6) {
-        const firstHalf = lines.slice(0, midpoint).join('\n').trim()
-        const secondHalf = lines.slice(midpoint).join('\n').trim()
-        if (firstHalf === secondHalf) {
-          responseContent = firstHalf
-        }
-      }
+      let responseContent = parseResultContent(result.result, result.error)
 
       const assistantMessage: ChatMessage = {
         id: (Date.now() + 1).toString(),
