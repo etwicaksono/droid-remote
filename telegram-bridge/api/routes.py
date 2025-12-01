@@ -2,10 +2,15 @@
 FastAPI REST API routes for the bridge server
 """
 import os
+import sys
 import uuid
 import logging
 from typing import List, Optional
 from fastapi import APIRouter, HTTPException, Request, Depends, Header
+
+# Add hooks lib to path for config
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'hooks'))
+from lib.config import TELEGRAM_TASK_RESULT_MAX_LENGTH, WEB_UI_URL
 
 from core.session_registry import session_registry
 from core.message_queue import message_queue
@@ -310,7 +315,7 @@ async def execute_task(data: TaskExecuteRequest, request: Request):
         source="api"
     )
     
-    # Notify completion
+    # Notify completion via WebSocket
     if sio:
         await sio.emit("task_completed", {
             "task_id": task_id,
@@ -318,6 +323,41 @@ async def execute_task(data: TaskExecuteRequest, request: Request):
             "result": result.result[:500] if result.result else "",  # Truncate for event
             "session_id": result.session_id
         })
+    
+    # Send Telegram notification
+    bot_manager_getter = getattr(request.app.state, "bot_manager", None)
+    if bot_manager_getter:
+        bot_manager = bot_manager_getter()
+        if bot_manager:
+            # Build session URL
+            session_url = f"{WEB_UI_URL}/session/{data.session_id}" if data.session_id else None
+            
+            # Truncate result if configured
+            result_text = result.result or ""
+            if TELEGRAM_TASK_RESULT_MAX_LENGTH > 0 and len(result_text) > TELEGRAM_TASK_RESULT_MAX_LENGTH:
+                result_text = result_text[:TELEGRAM_TASK_RESULT_MAX_LENGTH] + "..."
+            
+            # Escape markdown special characters in result
+            result_text = result_text.replace("_", "\\_").replace("*", "\\*").replace("`", "\\`")
+            
+            # Build notification message
+            status_emoji = "✅" if result.success else "❌"
+            project_name = data.project_dir.replace("\\", "/").split("/")[-1]
+            
+            message_parts = [
+                f"{status_emoji} *Task Completed*",
+                f"📁 Project: `{project_name}`",
+                f"💬 Prompt: _{data.prompt[:100]}{'...' if len(data.prompt) > 100 else ''}_",
+                "",
+                f"📝 *Result:*",
+                result_text if result_text else "(no output)"
+            ]
+            
+            if session_url:
+                message_parts.append("")
+                message_parts.append(f"🔗 [Open in Web UI]({session_url})")
+            
+            await bot_manager.send_text("\n".join(message_parts))
     
     return TaskResponse(
         success=result.success,

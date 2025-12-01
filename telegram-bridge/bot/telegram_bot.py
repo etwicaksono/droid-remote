@@ -460,3 +460,20 @@ class TelegramBotManager:
             )
         except Exception as e:
             logger.error(f"Failed to update message: {e}")
+    
+    async def send_text(self, text: str, parse_mode: str = "Markdown") -> Optional[int]:
+        """Send a simple text message to Telegram"""
+        if not self.is_connected or not self.chat_id:
+            logger.warning("Cannot send message: bot not connected or no chat_id")
+            return None
+        
+        try:
+            message = await self.application.bot.send_message(
+                chat_id=self.chat_id,
+                text=text,
+                parse_mode=parse_mode
+            )
+            return message.message_id
+        except Exception as e:
+            logger.error(f"Failed to send text message: {e}")
+            return None

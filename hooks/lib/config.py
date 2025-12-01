@@ -22,6 +22,11 @@ PERMISSION_TIMEOUT = 120
 NOTIFY_TIMEOUT = 10
 
 # ================================
+# Telegram Notifications
+# ================================
+TELEGRAM_TASK_RESULT_MAX_LENGTH = 500  # Max chars for task result in Telegram (0 = no limit)
+
+# ================================
 # Logging
 # ================================
 LOG_LEVEL = "INFO"
