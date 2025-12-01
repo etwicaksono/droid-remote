@@ -1,95 +1,116 @@
 'use client'
 
-import { Suspense, useState } from 'react'
-import { SessionList } from '@/components/sessions/session-list'
+import { Suspense, useState, useEffect } from 'react'
+import { AppSidebar } from '@/components/layout/app-sidebar'
+import { SessionCard } from '@/components/sessions/session-card'
 import { TaskForm } from '@/components/sessions/task-form'
 import { TaskHistory } from '@/components/sessions/task-history'
 import { PermissionHistory } from '@/components/sessions/permission-history'
 import { ConnectionStatus } from '@/components/connection-status'
+import type { Session } from '@/types'
 
-type Tab = 'sessions' | 'custom' | 'permissions' | 'history'
+type View = 'session' | 'new' | 'permissions' | 'history'
 
-const TAB_LABELS: Record<Tab, string> = {
-  sessions: 'Sessions',
-  custom: 'Custom Task',
-  permissions: 'Permissions',
-  history: 'History',
-}
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8765'
 
 export default function DashboardPage() {
-  const [activeTab, setActiveTab] = useState<Tab>('sessions')
+  const [currentView, setCurrentView] = useState<View>('session')
+  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null)
+  const [sessions, setSessions] = useState<Session[]>([])
+
+  // Fetch sessions
+  useEffect(() => {
+    const fetchSessions = async () => {
+      try {
+        const response = await fetch(`${API_BASE}/sessions`)
+        if (response.ok) {
+          const data = await response.json()
+          const fetchedSessions = data.sessions || []
+          setSessions(fetchedSessions)
+          
+          // Auto-select first session if none selected
+          if (!selectedSessionId && fetchedSessions.length > 0) {
+            setSelectedSessionId(fetchedSessions[0].session_id)
+          }
+        }
+      } catch (error) {
+        console.error('Failed to fetch sessions:', error)
+      }
+    }
+
+    fetchSessions()
+    const interval = setInterval(fetchSessions, 5000) // Refresh every 5s
+
+    return () => clearInterval(interval)
+  }, [selectedSessionId])
+
+  const handleSelectSession = (sessionId: string) => {
+    setSelectedSessionId(sessionId)
+    setCurrentView('session')
+  }
+
+  const handleSelectView = (view: 'new' | 'permissions' | 'history') => {
+    setCurrentView(view)
+  }
+
+  const selectedSession = sessions.find((s) => s.session_id === selectedSessionId)
 
   return (
-    <div className="min-h-screen bg-gray-900 text-white p-2 sm:p-4">
-      <header className="mb-4 sm:mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between max-w-6xl mx-auto gap-2">
-        <div>
-          <h1 className="text-xl sm:text-2xl font-bold">Droid Control</h1>
-          <p className="text-sm sm:text-base text-gray-400 hidden sm:block">Manage your Factory.ai Droid sessions</p>
+    <div className="flex h-screen bg-gray-900 text-white overflow-hidden">
+      {/* Sidebar */}
+      <AppSidebar
+        selectedSessionId={selectedSessionId}
+        onSelectSession={handleSelectSession}
+        onSelectView={handleSelectView}
+        currentView={currentView}
+      />
+
+      {/* Main Content */}
+      <main className="flex-1 flex flex-col overflow-hidden">
+        {/* Header */}
+        <header className="flex items-center justify-between p-4 border-b border-gray-800">
+          <div>
+            <h1 className="text-lg font-semibold">
+              {currentView === 'session' && selectedSession
+                ? selectedSession.name || selectedSession.project_dir?.split('/').pop() || 'Session'
+                : currentView === 'new'
+                ? 'Create New Task'
+                : currentView === 'permissions'
+                ? 'Permission Requests'
+                : 'Task History'}
+            </h1>
+          </div>
+          <ConnectionStatus />
+        </header>
+
+        {/* Content Area */}
+        <div className="flex-1 overflow-y-auto p-4">
+          {currentView === 'session' && selectedSession && (
+            <Suspense fallback={<SessionSkeleton />}>
+              <SessionCard session={selectedSession} />
+            </Suspense>
+          )}
+
+          {currentView === 'session' && !selectedSession && (
+            <div className="flex items-center justify-center h-full text-gray-500">
+              <div className="text-center">
+                <p className="text-lg mb-2">No session selected</p>
+                <p className="text-sm">Select a session from the sidebar or create a new one</p>
+              </div>
+            </div>
+          )}
+
+          {currentView === 'new' && <TaskForm />}
+
+          {currentView === 'permissions' && <PermissionHistory />}
+
+          {currentView === 'history' && <TaskHistory limit={20} />}
         </div>
-        <ConnectionStatus />
-      </header>
-
-      {/* Tab Navigation */}
-      <div className="max-w-6xl mx-auto mb-4 sm:mb-6">
-        <div className="flex gap-1 sm:gap-2 border-b border-gray-700 pb-2 overflow-x-auto">
-          {(['sessions', 'custom', 'permissions', 'history'] as Tab[]).map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`px-3 sm:px-4 py-2 rounded-t-md text-xs sm:text-sm font-medium transition-colors whitespace-nowrap ${
-                activeTab === tab
-                  ? 'bg-gray-800 text-white'
-                  : 'text-gray-400 hover:text-white hover:bg-gray-800/50'
-              }`}
-            >
-              {TAB_LABELS[tab]}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="max-w-6xl mx-auto">
-        <div className="space-y-4 sm:space-y-6">
-          {activeTab === 'sessions' && (
-            <div>
-              <h2 className="mb-4 text-lg font-semibold">Active Sessions</h2>
-              <Suspense fallback={<SessionListSkeleton />}>
-                <SessionList />
-              </Suspense>
-            </div>
-          )}
-
-          {activeTab === 'custom' && (
-            <div>
-              <TaskForm />
-            </div>
-          )}
-
-          {activeTab === 'permissions' && (
-            <div>
-              <h2 className="mb-4 text-lg font-semibold">Permission Requests</h2>
-              <PermissionHistory />
-            </div>
-          )}
-
-          {activeTab === 'history' && (
-            <div>
-              <h2 className="mb-4 text-lg font-semibold">Task History</h2>
-              <TaskHistory limit={20} />
-            </div>
-          )}
-        </div>
-      </div>
+      </main>
     </div>
   )
 }
 
-function SessionListSkeleton() {
-  return (
-    <div className="space-y-4">
-      {[1, 2, 3].map((i) => (
-        <div key={i} className="h-32 animate-pulse rounded-lg bg-gray-800" />
-      ))}
-    </div>
-  )
+function SessionSkeleton() {
+  return <div className="h-64 animate-pulse rounded-lg bg-gray-800" />
 }
