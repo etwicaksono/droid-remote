@@ -174,7 +174,7 @@ export function SessionCard({ session }: SessionCardProps) {
   const controlConfig = CONTROL_STATE_CONFIG[controlState]
   const hasPendingRequest = session.pending_request !== null
   const isRemoteControlled = controlState === 'remote_active'
-  const canHandoff = controlState === 'cli_active' || controlState === 'cli_waiting'
+  const canHandoff = controlState === 'cli_active' || controlState === 'cli_waiting' || controlState === 'released'
 
   const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
