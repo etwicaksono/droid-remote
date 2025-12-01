@@ -403,65 +403,75 @@ export function SessionCard({ session }: SessionCardProps) {
               </div>
             )}
 
-            {/* Model Settings - Compact Inline */}
-            <div className="flex items-center gap-2 text-xs">
-              <select
-                value={selectedModel}
-                onChange={(e) => setSelectedModel(e.target.value)}
-                className="flex-1 h-8 px-2 text-sm rounded-md bg-muted border border-border"
-              >
-                {AVAILABLE_MODELS.map((model) => (
-                  <option key={model.id} value={model.id}>
-                    {model.name}
-                  </option>
-                ))}
-              </select>
-              
-              {supportsReasoning && (
+            {/* Input Form with Inline Model Selector */}
+            <div className="space-y-2">
+              <form className="flex gap-2" onSubmit={handleTaskSubmit}>
+                {/* Model Selector - Inline Left */}
                 <select
-                  value={reasoningEffort}
-                  onChange={(e) => setReasoningEffort(e.target.value as ReasoningEffort)}
-                  className="h-8 px-2 text-sm rounded-md bg-muted border border-border"
+                  value={selectedModel}
+                  onChange={(e) => setSelectedModel(e.target.value)}
+                  className="h-10 px-3 text-sm rounded-md bg-muted border border-border hover:bg-muted/80 transition-colors"
+                  disabled={executing}
                 >
-                  {REASONING_LEVELS.map((level) => (
-                    <option key={level.id} value={level.id}>
-                      {level.name}
+                  {AVAILABLE_MODELS.map((model) => (
+                    <option key={model.id} value={model.id}>
+                      {model.name}
                     </option>
                   ))}
                 </select>
+
+                {/* Text Input */}
+                <Textarea
+                  placeholder="Message..."
+                  rows={1}
+                  value={taskPrompt}
+                  onChange={(e) => setTaskPrompt(e.target.value)}
+                  disabled={executing}
+                  className="flex-1 min-h-[40px] resize-none"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault()
+                      if (taskPrompt.trim() && !executing) {
+                        handleTaskSubmit(e as unknown as FormEvent<HTMLFormElement>)
+                      }
+                    }
+                  }}
+                />
+
+                {/* Send Button */}
+                <Button 
+                  type="submit" 
+                  disabled={!taskPrompt.trim() || executing}
+                  size="icon"
+                  className="h-10 w-10 shrink-0"
+                >
+                  {executing ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Play className="h-4 w-4" />
+                  )}
+                </Button>
+              </form>
+
+              {/* Thinking Mode - Below Input (Conditional) */}
+              {supportsReasoning && (
+                <div className="flex items-center gap-2 pl-1">
+                  <span className="text-xs text-muted-foreground">Thinking:</span>
+                  <select
+                    value={reasoningEffort}
+                    onChange={(e) => setReasoningEffort(e.target.value as ReasoningEffort)}
+                    className="h-7 px-2 text-xs rounded-md bg-muted border border-border hover:bg-muted/80 transition-colors"
+                    disabled={executing}
+                  >
+                    {REASONING_LEVELS.map((level) => (
+                      <option key={level.id} value={level.id}>
+                        {level.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               )}
             </div>
-
-            {/* Input Form */}
-            <form className="flex gap-2" onSubmit={handleTaskSubmit}>
-              <Textarea
-                placeholder="Enter task instruction..."
-                rows={1}
-                value={taskPrompt}
-                onChange={(e) => setTaskPrompt(e.target.value)}
-                disabled={executing}
-                className="flex-1 min-h-[40px] resize-none"
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault()
-                    if (taskPrompt.trim() && !executing) {
-                      handleTaskSubmit(e as unknown as FormEvent<HTMLFormElement>)
-                    }
-                  }
-                }}
-              />
-              <Button 
-                type="submit" 
-                disabled={!taskPrompt.trim() || executing}
-                size="icon"
-              >
-                {executing ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Play className="h-4 w-4" />
-                )}
-              </Button>
-            </form>
           </div>
         )}
       </CardContent>
