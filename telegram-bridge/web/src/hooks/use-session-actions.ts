@@ -210,6 +210,17 @@ export function useSessionActions() {
     []
   )
 
+  const deleteSession = useCallback(
+    async (sessionId: string) => {
+      const res = await fetch(`${API_BASE}/sessions/${sessionId}`, {
+        method: 'DELETE',
+      })
+      if (!res.ok) throw new Error('Failed to delete session')
+      return await res.json()
+    },
+    []
+  )
+
   return {
     respond,
     approve,
@@ -225,6 +236,7 @@ export function useSessionActions() {
     addChatMessage,
     getSettings,
     updateSettings,
+    deleteSession,
     loading,
   }
 }

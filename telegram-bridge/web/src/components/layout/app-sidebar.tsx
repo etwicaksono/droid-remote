@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Terminal, Menu, Plus, ShieldCheck, History, Circle, X } from 'lucide-react'
+import { Terminal, Menu, Plus, ShieldCheck, History, Circle, X, Trash2 } from 'lucide-react'
 import { cn, formatRelativeTime } from '@/lib/utils'
 import type { Session, ControlState } from '@/types'
 
@@ -30,6 +30,7 @@ export function AppSidebar({
   const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
   const [sessions, setSessions] = useState<Session[]>([])
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
 
   // Fetch sessions
   useEffect(() => {
@@ -65,6 +66,35 @@ export function AppSidebar({
   const handleSelectView = (view: 'new' | 'permissions' | 'history') => {
     onSelectView(view)
     setMobileOpen(false) // Close mobile menu after selection
+  }
+
+  const handleDeleteSession = async (sessionId: string) => {
+    try {
+      const response = await fetch(`${API_BASE}/sessions/${sessionId}`, {
+        method: 'DELETE',
+      })
+      if (response.ok) {
+        // If deleting the selected session, clear selection
+        if (selectedSessionId === sessionId) {
+          onSelectSession('')
+        }
+        // Refresh sessions list
+        const fetchResponse = await fetch(`${API_BASE}/sessions`)
+        if (fetchResponse.ok) {
+          const fetchedSessions: Session[] = await fetchResponse.json()
+          const sortedSessions = fetchedSessions.sort((a, b) => {
+            const dateA = new Date(a.last_activity).getTime()
+            const dateB = new Date(b.last_activity).getTime()
+            return dateB - dateA
+          })
+          setSessions(sortedSessions)
+        }
+      }
+    } catch (error) {
+      console.error('Failed to delete session:', error)
+    } finally {
+      setDeleteConfirmId(null)
+    }
   }
 
   return (
@@ -184,34 +214,78 @@ export function AppSidebar({
                 }
 
                 return (
-                  <button
+                  <div
                     key={session.id}
-                    onClick={() => handleSelectSession(session.id)}
                     className={cn(
-                      'w-full text-left p-3 rounded-md transition-colors mb-1',
+                      'relative w-full p-3 rounded-md transition-colors mb-1 group',
                       isSelected
                         ? 'bg-gray-800 text-white border-l-4 border-blue-500'
                         : 'text-gray-400 hover:bg-gray-800/50 hover:text-white'
                     )}
                   >
-                    {collapsed ? (
-                      // Collapsed view: just indicator bar
-                      <div className={cn('w-full h-3', isSelected && 'border-l-4 border-blue-500')} />
-                    ) : (
-                      // Full view
-                      <div>
-                        <div className="font-medium text-sm truncate mb-1">
-                          {session.name || session.project_dir?.split('/').pop() || 'Unnamed'}
+                    <button
+                      onClick={() => handleSelectSession(session.id)}
+                      className="w-full text-left"
+                    >
+                      {collapsed ? (
+                        // Collapsed view: just indicator bar
+                        <div className={cn('w-full h-3', isSelected && 'border-l-4 border-blue-500')} />
+                      ) : (
+                        // Full view
+                        <div>
+                          <div className="font-medium text-sm truncate mb-1 pr-8">
+                            {session.name || session.project_dir?.split('/').pop() || 'Unnamed'}
+                          </div>
+                          <div className="flex items-center gap-1 text-xs text-gray-500">
+                            <span className={cn('h-2 w-2 rounded-full', statusInfo.color)} />
+                            <span>{statusInfo.label}</span>
+                            <span>•</span>
+                            <span>{formatRelativeTime(session.last_activity)}</span>
+                          </div>
                         </div>
-                        <div className="flex items-center gap-1 text-xs text-gray-500">
-                          <span className={cn('h-2 w-2 rounded-full', statusInfo.color)} />
-                          <span>{statusInfo.label}</span>
-                          <span>•</span>
-                          <span>{formatRelativeTime(session.last_activity)}</span>
-                        </div>
+                      )}
+                    </button>
+                    
+                    {/* Delete button (visible on hover) */}
+                    {!collapsed && deleteConfirmId !== session.id && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setDeleteConfirmId(session.id)
+                        }}
+                        className="absolute top-2 right-2 p-1.5 rounded opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-500/20 text-gray-500 hover:text-red-400"
+                        title="Delete session"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                    
+                    {/* Delete confirmation */}
+                    {!collapsed && deleteConfirmId === session.id && (
+                      <div className="absolute top-2 right-2 flex gap-1">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleDeleteSession(session.id)
+                          }}
+                          className="px-2 py-1 text-xs bg-red-500 hover:bg-red-600 text-white rounded"
+                          title="Confirm delete"
+                        >
+                          Delete
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setDeleteConfirmId(null)
+                          }}
+                          className="px-2 py-1 text-xs bg-gray-700 hover:bg-gray-600 text-white rounded"
+                          title="Cancel"
+                        >
+                          Cancel
+                        </button>
                       </div>
                     )}
-                  </button>
+                  </div>
                 )
               })}
             </div>
