@@ -436,7 +436,9 @@ class TaskExecutor:
     def clear_session(self, project_dir: str) -> bool:
         """Clear stored session for a project (start fresh)."""
         if project_dir in self._session_map:
+            old_session_id = self._session_map[project_dir]
             del self._session_map[project_dir]
+            logger.info(f"Cleared droid session {old_session_id} for {project_dir}")
             return True
         return False
 

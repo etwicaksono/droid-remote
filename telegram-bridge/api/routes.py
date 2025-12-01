@@ -108,6 +108,15 @@ async def update_session(session_id: str, data: UpdateSessionRequest, request: R
 @router.delete("/sessions/{session_id}", dependencies=[Depends(verify_secret)])
 async def delete_session(session_id: str, request: Request):
     """Delete a session"""
+    # Get session before deleting to access project_dir
+    session = session_registry.get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    # Clear droid exec session for this project (if any)
+    task_executor.clear_session(session.project_dir)
+    
+    # Remove session from registry
     success = session_registry.remove(session_id)
     if not success:
         raise HTTPException(status_code=404, detail="Session not found")
