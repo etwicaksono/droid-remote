@@ -192,6 +192,10 @@ export function SessionCard({ session }: SessionCardProps) {
     if (!taskPrompt.trim() || executing) return
 
     const prompt = taskPrompt.trim()
+    
+    // Generate task_id immediately for cancellation tracking
+    const taskId = crypto.randomUUID()
+    
     const userMessage: ChatMessage = {
       id: Date.now().toString(),
       type: 'user',
@@ -201,6 +205,7 @@ export function SessionCard({ session }: SessionCardProps) {
     setChatHistory(prev => [...prev, userMessage])
     setTaskPrompt('')
     setExecuting(true)
+    setCurrentTaskId(taskId) // Set immediately before execution
 
     // Save user message to API
     try {
@@ -215,13 +220,11 @@ export function SessionCard({ session }: SessionCardProps) {
       const result = await executeTask({
         prompt,
         projectDir: session.project_dir,
+        taskId: taskId,
         sessionId: session.id,
         model: selectedModel,
         reasoningEffort: supportsReasoning ? reasoningEffort : undefined,
       })
-      
-      // Store task_id for cancellation
-      setCurrentTaskId(result.task_id)
       
       // Parse the result to get human-readable content
       const responseContent = parseResultContent(result.result, result.error)

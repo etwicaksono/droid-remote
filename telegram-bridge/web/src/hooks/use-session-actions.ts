@@ -81,6 +81,7 @@ export function useSessionActions() {
     async (params: {
       prompt: string
       projectDir: string
+      taskId?: string
       sessionId?: string
       model?: string
       reasoningEffort?: string
@@ -93,6 +94,7 @@ export function useSessionActions() {
           body: JSON.stringify({
             prompt: params.prompt,
             project_dir: params.projectDir,
+            task_id: params.taskId,
             session_id: params.sessionId,
             model: params.model,
             reasoning_effort: params.reasoningEffort,

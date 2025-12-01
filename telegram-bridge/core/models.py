@@ -128,6 +128,7 @@ class HealthResponse(BaseModel):
 class TaskExecuteRequest(BaseModel):
     prompt: str
     project_dir: str
+    task_id: Optional[str] = None  # Optional task ID for cancellation tracking
     session_id: Optional[str] = None  # For continuing sessions
     autonomy_level: str = "high"  # low, medium, high
     model: Optional[str] = None  # Model ID (e.g., claude-sonnet-4-20250514)

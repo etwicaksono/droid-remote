@@ -252,7 +252,7 @@ async def execute_task(data: TaskExecuteRequest, request: Request):
     Execute a task using droid exec (headless mode).
     Returns the result and session_id for continuation.
     """
-    task_id = str(uuid.uuid4())
+    task_id = data.task_id or str(uuid.uuid4())
     
     # Notify that task is starting
     sio = getattr(request.app.state, "sio", None)
