@@ -467,21 +467,24 @@ export function SessionCard({ session }: SessionCardProps) {
         {isRemoteControlled && (
           <div className="flex-1 flex flex-col pt-2 border-t border-border min-h-0">
             {/* Chat History - Always rendered to push input to bottom */}
-            <div className="flex-1 space-y-3 overflow-y-auto overflow-x-hidden mb-3 min-h-0">
-              {chatHistory.length === 0 && !executing && (
-                <div className="flex-1 flex items-center justify-center h-full text-muted-foreground text-sm">
+            <div className="flex-1 flex flex-col overflow-y-auto overflow-x-hidden mb-3 min-h-0">
+              {chatHistory.length === 0 && !executing ? (
+                <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">
                   Start a conversation...
                 </div>
-              )}
-              {chatHistory.map((msg) => (
-                <ChatBubble key={msg.id} message={msg} />
-              ))}
-              {executing && (
-                <div className="flex justify-start">
-                  <div className="bg-muted rounded-lg px-3 py-2 flex items-center gap-2 text-sm text-muted-foreground">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Droid is thinking...
-                  </div>
+              ) : (
+                <div className="space-y-3 mt-auto">
+                  {chatHistory.map((msg) => (
+                    <ChatBubble key={msg.id} message={msg} />
+                  ))}
+                  {executing && (
+                    <div className="flex justify-start">
+                      <div className="bg-muted rounded-lg px-3 py-2 flex items-center gap-2 text-sm text-muted-foreground">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Droid is thinking...
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
