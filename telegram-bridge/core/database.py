@@ -78,7 +78,7 @@ CREATE TABLE IF NOT EXISTS tasks (
     source TEXT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     completed_at TIMESTAMP,
-    FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE SET NULL
+    FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
 );
 
 -- Chat messages (for web UI conversation history)
@@ -231,6 +231,72 @@ def json_deserialize(s: Optional[str]) -> Any:
     if s is None:
         return None
     return json.loads(s)
+
+
+def migrate_tasks_cascade_delete():
+    """
+    Migration: Change tasks foreign key from ON DELETE SET NULL to ON DELETE CASCADE
+    SQLite doesn't support ALTER FOREIGN KEY, so we need to recreate the table
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    db = Database.get_instance()
+    conn = db._get_connection()
+    
+    try:
+        # Check if migration is needed
+        cursor = conn.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='tasks'")
+        current_schema = cursor.fetchone()
+        
+        if current_schema and 'ON DELETE SET NULL' in current_schema[0]:
+            logger.info("Migrating tasks table to CASCADE delete...")
+            
+            # Create backup table
+            conn.execute("""
+                CREATE TABLE tasks_backup AS SELECT * FROM tasks
+            """)
+            
+            # Drop old table
+            conn.execute("DROP TABLE tasks")
+            
+            # Recreate with CASCADE
+            conn.execute("""
+                CREATE TABLE tasks (
+                    id TEXT PRIMARY KEY,
+                    session_id TEXT,
+                    prompt TEXT NOT NULL,
+                    project_dir TEXT NOT NULL,
+                    model TEXT,
+                    result TEXT,
+                    success BOOLEAN,
+                    duration_ms INTEGER,
+                    num_turns INTEGER,
+                    error TEXT,
+                    source TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    completed_at TIMESTAMP,
+                    FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+                )
+            """)
+            
+            # Restore data
+            conn.execute("""
+                INSERT INTO tasks SELECT * FROM tasks_backup
+            """)
+            
+            # Drop backup
+            conn.execute("DROP TABLE tasks_backup")
+            
+            conn.commit()
+            logger.info("Migration completed successfully")
+        else:
+            logger.info("Tasks table already has CASCADE delete, skipping migration")
+            
+    except Exception as e:
+        logger.error(f"Migration failed: {e}")
+        conn.rollback()
+        raise
 
 
 # Global database instance getter

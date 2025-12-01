@@ -110,7 +110,7 @@ export default function DashboardPage() {
 
             {currentView === 'permissions' && <PermissionHistory />}
 
-            {currentView === 'history' && <TaskHistory limit={20} />}
+            {currentView === 'history' && <TaskHistory />}
           </div>
         </div>
       </main>
