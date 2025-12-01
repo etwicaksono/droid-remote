@@ -50,7 +50,7 @@ export function PermissionHistory({ sessionId, limit = 20 }: PermissionHistoryPr
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
           <div>
-            <CardTitle className="text-lg">Permission Requests</CardTitle>
+            <CardTitle className="text-base sm:text-lg">Permission Requests</CardTitle>
             {pendingCount > 0 && (
               <p className="text-sm text-yellow-500">{pendingCount} pending</p>
             )}
@@ -68,7 +68,7 @@ export function PermissionHistory({ sessionId, limit = 20 }: PermissionHistoryPr
             No permission requests found
           </div>
         ) : (
-          <div className="space-y-3">
+          <div className="space-y-2 sm:space-y-3">
             {permissions.map((permission) => (
               <PermissionCard
                 key={permission.id}
