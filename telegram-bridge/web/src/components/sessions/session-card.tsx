@@ -105,6 +105,7 @@ export function SessionCard({ session }: SessionCardProps) {
   const [settingsLoaded, setSettingsLoaded] = useState(false)
   const [copiedSessionId, setCopiedSessionId] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
+  const [controlAction, setControlAction] = useState<'handoff' | 'release' | null>(null)
   const { approve, deny, handoff, release, executeTask, cancelTask, addChatMessage, loading } = useSessionActions()
 
   const currentModel = AVAILABLE_MODELS.find(m => m.id === selectedModel)
@@ -320,6 +321,7 @@ export function SessionCard({ session }: SessionCardProps) {
 
   const handleHandoff = async () => {
     setActionError(null)
+    setControlAction('handoff')
     try {
       const result = await handoff({ sessionId: session.id })
       if (!result.success) {
@@ -328,14 +330,19 @@ export function SessionCard({ session }: SessionCardProps) {
     } catch (error) {
       console.error('Handoff failed:', error)
       setActionError(error instanceof Error ? error.message : 'Failed to take control')
+    } finally {
+      setControlAction(null)
     }
   }
 
   const handleRelease = async () => {
+    setControlAction('release')
     try {
       await release({ sessionId: session.id })
     } catch (error) {
       console.error('Release failed:', error)
+    } finally {
+      setControlAction(null)
     }
   }
 
@@ -350,7 +357,19 @@ export function SessionCard({ session }: SessionCardProps) {
   }
 
   return (
-    <Card className="overflow-hidden flex flex-col h-full">
+    <Card className="overflow-hidden flex flex-col h-full relative">
+      {/* Loading Overlay for Control Actions */}
+      {controlAction && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="flex flex-col items-center gap-3 text-white">
+            <Loader2 className="h-10 w-10 animate-spin" />
+            <span className="text-lg font-medium">
+              {controlAction === 'handoff' ? 'Taking control...' : 'Releasing to CLI...'}
+            </span>
+          </div>
+        </div>
+      )}
+      
       <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between space-y-2 sm:space-y-0 pb-2 shrink-0">
         <div className="flex flex-col gap-1 min-w-0 w-full sm:w-auto">
           <div className="flex items-center gap-2">
