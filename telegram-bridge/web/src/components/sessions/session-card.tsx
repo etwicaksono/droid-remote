@@ -28,6 +28,19 @@ const REASONING_LEVELS: { id: ReasoningEffort; name: string }[] = [
   { id: 'high', name: 'High' },
 ]
 
+// Generate UUID that works in all browsers (crypto.randomUUID requires HTTPS)
+function generateUUID(): string {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID()
+  }
+  // Fallback for non-secure contexts
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0
+    const v = c === 'x' ? r : (r & 0x3) | 0x8
+    return v.toString(16)
+  })
+}
+
 // Helper to parse droid exec result and extract clean content
 function parseResultContent(resultStr: string | undefined, error: string | undefined): string {
   if (error) return error
@@ -190,7 +203,7 @@ export function SessionCard({ session }: SessionCardProps) {
     const prompt = taskPrompt.trim()
     
     // Generate task_id immediately for cancellation tracking
-    const taskId = crypto.randomUUID()
+    const taskId = generateUUID()
     
     const userMessage: ChatMessage = {
       id: Date.now().toString(),
