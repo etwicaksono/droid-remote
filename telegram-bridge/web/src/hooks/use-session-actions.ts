@@ -46,14 +46,17 @@ export function useSessionActions() {
   )
 
   const handoff = useCallback(
-    async ({ sessionId }: SessionIdParam) => {
+    async ({ sessionId }: SessionIdParam): Promise<{ success: boolean; error?: string }> => {
       setLoading(true)
       try {
         const res = await fetch(`${API_BASE}/sessions/${sessionId}/handoff`, {
           method: 'POST',
         })
-        if (!res.ok) throw new Error('Handoff failed')
-        return await res.json()
+        const data = await res.json()
+        if (!res.ok) {
+          return { success: false, error: data.detail || data.error || 'Handoff failed' }
+        }
+        return { success: true, ...data }
       } finally {
         setLoading(false)
       }

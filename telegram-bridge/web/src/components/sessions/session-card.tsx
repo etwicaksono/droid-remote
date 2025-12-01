@@ -106,6 +106,7 @@ export function SessionCard({ session }: SessionCardProps) {
   const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort>('medium')
   const [settingsLoaded, setSettingsLoaded] = useState(false)
   const [copiedSessionId, setCopiedSessionId] = useState(false)
+  const [actionError, setActionError] = useState<string | null>(null)
   const { respond, approve, deny, handoff, release, executeTask, cancelTask, addChatMessage, loading } = useSessionActions()
 
   const currentModel = AVAILABLE_MODELS.find(m => m.id === selectedModel)
@@ -331,10 +332,15 @@ export function SessionCard({ session }: SessionCardProps) {
   }
 
   const handleHandoff = async () => {
+    setActionError(null)
     try {
-      await handoff({ sessionId: session.id })
+      const result = await handoff({ sessionId: session.id })
+      if (!result.success) {
+        setActionError(result.error || 'Failed to take control')
+      }
     } catch (error) {
       console.error('Handoff failed:', error)
+      setActionError(error instanceof Error ? error.message : 'Failed to take control')
     }
   }
 
@@ -533,8 +539,8 @@ export function SessionCard({ session }: SessionCardProps) {
 
                 {/* Control Actions and Thinking Mode */}
                 <div className="flex items-center justify-between gap-2">
-                  <Button size="sm" variant="outline" onClick={handleRelease} disabled={loading}>
-                    <Square className="h-3 w-3 mr-1" />
+                  <Button onClick={handleRelease} disabled={loading} className="flex-1">
+                    <Square className="h-4 w-4 mr-2" />
                     Release to CLI
                   </Button>
                   
@@ -558,19 +564,59 @@ export function SessionCard({ session }: SessionCardProps) {
                 </div>
               </>
             ) : (
-              <div className="flex gap-2">
-                {canHandoff && (
-                  <Button onClick={handleHandoff} disabled={loading} className="flex-1">
-                    <Play className="h-4 w-4 mr-2" />
-                    Take Control
+              <>
+                {/* Show disabled input form in CLI mode */}
+                <form className="flex gap-2">
+                  <select
+                    value={selectedModel}
+                    onChange={(e) => setSelectedModel(e.target.value)}
+                    className="h-10 px-3 text-sm rounded-md bg-muted border border-border opacity-50"
+                    disabled
+                  >
+                    {AVAILABLE_MODELS.map((model) => (
+                      <option key={model.id} value={model.id}>
+                        {model.name}
+                      </option>
+                    ))}
+                  </select>
+                  <Textarea
+                    placeholder="Take control to send messages..."
+                    rows={1}
+                    disabled
+                    className="flex-1 min-h-[40px] resize-none opacity-50"
+                  />
+                  <Button 
+                    type="button" 
+                    disabled
+                    size="icon"
+                    className="h-10 w-10 shrink-0 opacity-50"
+                  >
+                    <Play className="h-4 w-4" />
                   </Button>
-                )}
-                {!canHandoff && (
-                  <div className="flex-1 h-10 flex items-center justify-center text-sm text-muted-foreground bg-muted rounded-md">
-                    CLI is active
+                </form>
+
+                {/* Error message */}
+                {actionError && (
+                  <div className="text-sm text-red-500 bg-red-500/10 border border-red-500/20 rounded-md px-3 py-2">
+                    {actionError}
                   </div>
                 )}
-              </div>
+
+                {/* Take Control button */}
+                <div className="flex gap-2">
+                  {canHandoff && (
+                    <Button onClick={handleHandoff} disabled={loading} className="flex-1">
+                      <Play className="h-4 w-4 mr-2" />
+                      Take Control
+                    </Button>
+                  )}
+                  {!canHandoff && (
+                    <div className="flex-1 h-10 flex items-center justify-center text-sm text-muted-foreground bg-muted rounded-md">
+                      CLI is active
+                    </div>
+                  )}
+                </div>
+              </>
             )}
           </div>
         </div>
