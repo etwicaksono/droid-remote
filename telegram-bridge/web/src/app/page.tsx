@@ -1,6 +1,7 @@
 'use client'
 
-import { Suspense, useState, useEffect } from 'react'
+import { Suspense, useState, useEffect, useCallback } from 'react'
+import { useSearchParams, useRouter } from 'next/navigation'
 import { AppSidebar } from '@/components/layout/app-sidebar'
 import { SessionCard } from '@/components/sessions/session-card'
 import { TaskForm } from '@/components/sessions/task-form'
@@ -13,10 +14,32 @@ type View = 'session' | 'new' | 'permissions' | 'history'
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8765'
 
-export default function DashboardPage() {
+function DashboardContent() {
+  const searchParams = useSearchParams()
+  const router = useRouter()
   const [currentView, setCurrentView] = useState<View>('session')
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null)
   const [sessions, setSessions] = useState<Session[]>([])
+  const [initialUrlProcessed, setInitialUrlProcessed] = useState(false)
+
+  // Read session ID from URL on mount
+  useEffect(() => {
+    const sessionFromUrl = searchParams.get('session')
+    if (sessionFromUrl && !initialUrlProcessed) {
+      setSelectedSessionId(sessionFromUrl)
+      setCurrentView('session')
+      setInitialUrlProcessed(true)
+    }
+  }, [searchParams, initialUrlProcessed])
+
+  // Update URL when session changes
+  const updateUrl = useCallback((sessionId: string | null) => {
+    if (sessionId) {
+      router.replace(`/?session=${sessionId}`, { scroll: false })
+    } else {
+      router.replace('/', { scroll: false })
+    }
+  }, [router])
 
   // Fetch sessions
   useEffect(() => {
@@ -33,9 +56,11 @@ export default function DashboardPage() {
           })
           setSessions(sortedSessions)
           
-          // Auto-select first session if none selected (will be most recent)
-          if (!selectedSessionId && sortedSessions.length > 0 && sortedSessions[0]) {
+          // Auto-select first session if none selected and no URL param
+          const sessionFromUrl = searchParams.get('session')
+          if (!selectedSessionId && !sessionFromUrl && sortedSessions.length > 0 && sortedSessions[0]) {
             setSelectedSessionId(sortedSessions[0].id)
+            updateUrl(sortedSessions[0].id)
           }
         }
       } catch (error) {
@@ -47,11 +72,12 @@ export default function DashboardPage() {
     const interval = setInterval(fetchSessions, 5000) // Refresh every 5s
 
     return () => clearInterval(interval)
-  }, [selectedSessionId])
+  }, [selectedSessionId, searchParams, updateUrl])
 
   const handleSelectSession = (sessionId: string) => {
     setSelectedSessionId(sessionId)
     setCurrentView('session')
+    updateUrl(sessionId)
   }
 
   const handleSelectView = (view: 'new' | 'permissions' | 'history') => {
@@ -122,4 +148,13 @@ export default function DashboardPage() {
 
 function SessionSkeleton() {
   return <div className="h-64 animate-pulse rounded-lg bg-gray-800" />
+}
+
+// Wrap in Suspense for useSearchParams
+export default function DashboardPage() {
+  return (
+    <Suspense fallback={<div className="flex h-screen items-center justify-center bg-gray-900 text-white">Loading...</div>}>
+      <DashboardContent />
+    </Suspense>
+  )
 }

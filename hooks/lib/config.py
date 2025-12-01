@@ -28,6 +28,9 @@ load_env()
 BRIDGE_URL = os.getenv("BRIDGE_URL", "http://127.0.0.1:8765")
 BRIDGE_SECRET = os.getenv("BRIDGE_SECRET", "")
 
+# Web UI URL (for session links in notifications)
+WEB_UI_URL = os.getenv("WEB_UI_URL", "http://127.0.0.1:3000")
+
 # Timeouts (in seconds)
 DEFAULT_TIMEOUT = int(os.getenv("DEFAULT_TIMEOUT", "300"))
 PERMISSION_TIMEOUT = int(os.getenv("PERMISSION_TIMEOUT", "120"))

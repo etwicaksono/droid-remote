@@ -17,6 +17,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "lib"))
 
 from bridge_client import register_session, notify
 from formatters import format_session_name
+from config import WEB_UI_URL
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -57,12 +58,16 @@ def main():
     # Format start time
     start_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     
+    # Build session URL
+    session_url = f"{WEB_UI_URL}/?session={session_id}"
+    
     # Send start notification
     message = (
         f"▶️ *[{session_name}]* Session Started\n\n"
         f"📁 Project: `{project_dir}`\n"
         f"🕐 Time: {start_time}\n"
-        f"🔄 Trigger: {trigger}"
+        f"🔄 Trigger: {trigger}\n\n"
+        f"🔗 [Open in Web UI]({session_url})"
     )
     
     notify(
