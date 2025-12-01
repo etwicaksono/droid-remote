@@ -512,8 +512,12 @@ export function SessionCard({ session }: SessionCardProps) {
                 {/* Control Actions and Thinking Mode */}
                 <div className="flex items-center justify-between gap-2">
                   <Button onClick={handleRelease} disabled={loading} className="flex-1">
-                    <Square className="h-4 w-4 mr-2" />
-                    Release to CLI
+                    {loading ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <Square className="h-4 w-4 mr-2" />
+                    )}
+                    {loading ? 'Releasing...' : 'Release to CLI'}
                   </Button>
                   
                   {supportsReasoning && (
@@ -578,8 +582,12 @@ export function SessionCard({ session }: SessionCardProps) {
                 <div className="flex gap-2">
                   {canHandoff && (
                     <Button onClick={handleHandoff} disabled={loading} className="flex-1">
-                      <Play className="h-4 w-4 mr-2" />
-                      Take Control
+                      {loading ? (
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      ) : (
+                        <Play className="h-4 w-4 mr-2" />
+                      )}
+                      {loading ? 'Taking control...' : 'Take Control'}
                     </Button>
                   )}
                   {!canHandoff && (
