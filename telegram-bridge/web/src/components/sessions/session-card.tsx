@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, type FormEvent } from 'react'
-import { Clock, Folder, Terminal, Radio, Play, Square, Loader2 } from 'lucide-react'
+import { Clock, Folder, Terminal, Radio, Play, Square, Loader2, Copy, Check } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -105,6 +105,7 @@ export function SessionCard({ session }: SessionCardProps) {
   const [selectedModel, setSelectedModel] = useState('claude-sonnet-4-5-20250929')
   const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort>('medium')
   const [settingsLoaded, setSettingsLoaded] = useState(false)
+  const [copiedSessionId, setCopiedSessionId] = useState(false)
   const { respond, approve, deny, handoff, release, executeTask, cancelTask, addChatMessage, loading } = useSessionActions()
 
   const currentModel = AVAILABLE_MODELS.find(m => m.id === selectedModel)
@@ -345,6 +346,16 @@ export function SessionCard({ session }: SessionCardProps) {
     }
   }
 
+  const handleCopySessionId = async () => {
+    try {
+      await navigator.clipboard.writeText(session.id)
+      setCopiedSessionId(true)
+      setTimeout(() => setCopiedSessionId(false), 2000)
+    } catch (error) {
+      console.error('Failed to copy session ID:', error)
+    }
+  }
+
   return (
     <Card className="overflow-hidden">
       <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between space-y-2 sm:space-y-0 pb-2">
@@ -354,9 +365,22 @@ export function SessionCard({ session }: SessionCardProps) {
             <span className="font-semibold truncate">{session.name}</span>
           </div>
           <div className="flex flex-col gap-1 text-xs text-muted-foreground pl-4">
-            <span className="font-mono truncate" title={session.id}>
-              Session: {session.id.slice(0, 8)}...
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="font-mono text-xs select-all">
+                {session.id}
+              </span>
+              <button
+                onClick={handleCopySessionId}
+                className="p-1 hover:bg-gray-700 rounded transition-colors"
+                title="Copy session ID"
+              >
+                {copiedSessionId ? (
+                  <Check className="h-3 w-3 text-green-500" />
+                ) : (
+                  <Copy className="h-3 w-3" />
+                )}
+              </button>
+            </div>
             <span className="truncate" title={session.project_dir}>
               📁 {session.project_dir}
             </span>
