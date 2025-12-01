@@ -22,6 +22,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "lib"))
 
 from bridge_client import register_session, notify, update_session_status, wait_for_response
 from formatters import format_session_name, format_stop_message
+from config import WEB_UI_URL
 
 # Log to a file to avoid corrupting JSON output
 log_file = os.path.join(os.path.dirname(__file__), "stop_hook.log")
@@ -74,7 +75,12 @@ def main():
     summary = input_data.get("summary")
     
     # Send stop notification asking for input
-    message = format_stop_message(session_name, summary)
+    message = format_stop_message(
+        session_name=session_name,
+        summary=summary,
+        session_id=session_id,
+        web_ui_url=WEB_UI_URL
+    )
     notify(
         session_id=session_id,
         session_name=session_name,

@@ -108,16 +108,31 @@ def format_permission_request(
 
 def format_stop_message(
     session_name: str,
-    summary: Optional[str] = None
+    summary: Optional[str] = None,
+    session_id: Optional[str] = None,
+    web_ui_url: Optional[str] = None
 ) -> str:
-    """Format stop/completion message"""
-    base_msg = f"✅ *[{session_name}]* Droid has stopped."
+    """Format stop/completion message (matches Web UI style)"""
+    lines = [
+        f"✅ *Task Completed*",
+        f"📁 Project: `{session_name}`",
+    ]
     
     if summary:
-        base_msg += f"\n\n{summary}"
+        # Escape markdown special characters in summary
+        safe_summary = summary.replace("_", "\\_").replace("*", "\\*").replace("`", "\\`")
+        lines.append("")
+        lines.append(f"📝 *Result:*")
+        lines.append(safe_summary)
     
-    base_msg += "\n\nReply with your next instruction or /done to end."
-    return base_msg
+    if session_id and web_ui_url:
+        lines.append("")
+        lines.append(f"🔗 [Open in Web UI]({web_ui_url}/session/{session_id})")
+    
+    lines.append("")
+    lines.append("Reply with your next instruction or /done to end.")
+    
+    return "\n".join(lines)
 
 
 def format_session_list(sessions: list) -> str:
