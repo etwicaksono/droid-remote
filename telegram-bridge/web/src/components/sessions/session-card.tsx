@@ -468,7 +468,7 @@ export function SessionCard({ session }: SessionCardProps) {
           <div className="space-y-3 pt-2 border-t border-border">
             {/* Chat History */}
             {(chatHistory.length > 0 || executing) && (
-              <div className="space-y-3 max-h-80 overflow-y-auto overflow-x-hidden">
+              <div className="space-y-3 max-h-[calc(100vh-400px)] min-h-[200px] overflow-y-auto overflow-x-hidden">
                 {chatHistory.map((msg) => (
                   <ChatBubble key={msg.id} message={msg} />
                 ))}
