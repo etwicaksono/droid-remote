@@ -264,11 +264,13 @@ async def execute_task(data: TaskExecuteRequest, request: Request):
         })
     
     # Execute the task
+    # Note: Don't pass data.session_id (bridge session) to droid exec
+    # Let task_executor manage droid sessions internally via _session_map
     result = await task_executor.execute_task(
         task_id=task_id,
         prompt=data.prompt,
         project_dir=data.project_dir,
-        session_id=data.session_id,
+        session_id=None,  # Let droid exec manage its own sessions
         autonomy_level=data.autonomy_level,
         model=data.model,
         reasoning_effort=data.reasoning_effort,
