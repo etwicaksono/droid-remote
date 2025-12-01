@@ -17,7 +17,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "lib"))
 
 from bridge_client import register_session, notify
 from formatters import format_session_name
-from config import WEB_UI_URL
+
+# Web UI URL - hardcoded for reliability since Factory may copy hooks elsewhere
+WEB_UI_URL = os.environ.get("WEB_UI_URL", "http://192.168.100.8:3000")
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
