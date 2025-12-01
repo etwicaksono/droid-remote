@@ -59,7 +59,7 @@ def main():
     start_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     
     # Build session URL
-    session_url = f"{WEB_UI_URL}/?session={session_id}"
+    session_url = f"{WEB_UI_URL}/session/{session_id}"
     
     # Send start notification
     message = (

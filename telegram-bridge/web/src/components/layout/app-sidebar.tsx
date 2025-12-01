@@ -1,6 +1,8 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { Terminal, Menu, Plus, ShieldCheck, History, Circle, X, Trash2 } from 'lucide-react'
 import { cn, formatRelativeTime } from '@/lib/utils'
 import type { Session, ControlState } from '@/types'
@@ -8,10 +10,7 @@ import type { Session, ControlState } from '@/types'
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8765'
 
 interface AppSidebarProps {
-  selectedSessionId: string | null
-  onSelectSession: (sessionId: string) => void
-  onSelectView: (view: 'new' | 'permissions' | 'history') => void
-  currentView: 'session' | 'new' | 'permissions' | 'history'
+  currentPath: string
 }
 
 const STATUS_CONFIG: Record<ControlState, { color: string; label: string }> = {
@@ -21,16 +20,17 @@ const STATUS_CONFIG: Record<ControlState, { color: string; label: string }> = {
   released: { color: 'bg-gray-500', label: 'Released' },
 }
 
-export function AppSidebar({
-  selectedSessionId,
-  onSelectSession,
-  onSelectView,
-  currentView,
-}: AppSidebarProps) {
+export function AppSidebar({ currentPath }: AppSidebarProps) {
+  const router = useRouter()
   const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
   const [sessions, setSessions] = useState<Session[]>([])
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
+  
+  // Extract selected session ID from path
+  const selectedSessionId = currentPath.startsWith('/session/') 
+    ? currentPath.replace('/session/', '') 
+    : null
 
   // Fetch sessions
   useEffect(() => {
@@ -58,14 +58,9 @@ export function AppSidebar({
     return () => clearInterval(interval)
   }, [])
 
-  const handleSelectSession = (sessionId: string) => {
-    onSelectSession(sessionId)
-    setMobileOpen(false) // Close mobile menu after selection
-  }
-
-  const handleSelectView = (view: 'new' | 'permissions' | 'history') => {
-    onSelectView(view)
-    setMobileOpen(false) // Close mobile menu after selection
+  const handleNavigate = (path: string) => {
+    router.push(path)
+    setMobileOpen(false) // Close mobile menu after navigation
   }
 
   const handleDeleteSession = async (sessionId: string) => {
@@ -74,9 +69,9 @@ export function AppSidebar({
         method: 'DELETE',
       })
       if (response.ok) {
-        // If deleting the selected session, clear selection
+        // If deleting the selected session, go home
         if (selectedSessionId === sessionId) {
-          onSelectSession('')
+          router.push('/')
         }
         // Refresh sessions list
         const fetchResponse = await fetch(`${API_BASE}/sessions`)
@@ -144,47 +139,50 @@ export function AppSidebar({
 
         {/* Action Buttons */}
         <div className="flex flex-col p-2 border-b border-gray-800">
-          {/* New Session */}
-          <button
-            onClick={() => handleSelectView('new')}
+          {/* Custom Task */}
+          <Link
+            href="/"
+            onClick={() => setMobileOpen(false)}
             className={cn(
               'flex items-center gap-2 p-3 rounded-md text-sm font-medium transition-colors',
-              currentView === 'new'
+              currentPath === '/'
                 ? 'bg-gray-800 text-white'
                 : 'text-gray-400 hover:bg-gray-800/50 hover:text-white'
             )}
           >
             <Plus className="h-4 w-4 flex-shrink-0" />
-            {!collapsed && <span>New Session</span>}
-          </button>
+            {!collapsed && <span>Custom Task</span>}
+          </Link>
 
           {/* Permissions */}
-          <button
-            onClick={() => handleSelectView('permissions')}
+          <Link
+            href="/permissions"
+            onClick={() => setMobileOpen(false)}
             className={cn(
               'flex items-center gap-2 p-3 rounded-md text-sm font-medium transition-colors',
-              currentView === 'permissions'
+              currentPath === '/permissions'
                 ? 'bg-gray-800 text-white'
                 : 'text-gray-400 hover:bg-gray-800/50 hover:text-white'
             )}
           >
             <ShieldCheck className="h-4 w-4 flex-shrink-0" />
             {!collapsed && <span>Permissions</span>}
-          </button>
+          </Link>
 
           {/* History */}
-          <button
-            onClick={() => handleSelectView('history')}
+          <Link
+            href="/history"
+            onClick={() => setMobileOpen(false)}
             className={cn(
               'flex items-center gap-2 p-3 rounded-md text-sm font-medium transition-colors',
-              currentView === 'history'
+              currentPath === '/history'
                 ? 'bg-gray-800 text-white'
                 : 'text-gray-400 hover:bg-gray-800/50 hover:text-white'
             )}
           >
             <History className="h-4 w-4 flex-shrink-0" />
             {!collapsed && <span>History</span>}
-          </button>
+          </Link>
         </div>
 
         {/* Sessions Section */}
@@ -223,9 +221,10 @@ export function AppSidebar({
                         : 'text-gray-400 hover:bg-gray-800/50 hover:text-white'
                     )}
                   >
-                    <button
-                      onClick={() => handleSelectSession(session.id)}
-                      className="w-full text-left"
+                    <Link
+                      href={`/session/${session.id}`}
+                      onClick={() => setMobileOpen(false)}
+                      className="w-full text-left block"
                     >
                       {collapsed ? (
                         // Collapsed view: just indicator bar
@@ -244,7 +243,7 @@ export function AppSidebar({
                           </div>
                         </div>
                       )}
-                    </button>
+                    </Link>
                     
                     {/* Delete button (visible on hover) */}
                     {!collapsed && deleteConfirmId !== session.id && (
