@@ -64,7 +64,7 @@ export function TaskForm({ onComplete }: TaskFormProps) {
         </p>
       </CardHeader>
       <CardContent>
-        <form className="space-y-4" onSubmit={handleSubmit}>
+        <form className="space-y-3" onSubmit={handleSubmit}>
           <div className="space-y-2">
             <Label htmlFor="projectDir">Project Directory</Label>
             <Input
@@ -107,12 +107,14 @@ export function TaskForm({ onComplete }: TaskFormProps) {
             {loading ? (
               <>
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                Executing...
+                <span className="hidden sm:inline">Executing...</span>
+                <span className="sm:hidden">Running...</span>
               </>
             ) : (
               <>
                 <Play className="h-4 w-4 mr-2" />
-                Execute Task
+                <span className="hidden sm:inline">Execute Task</span>
+                <span className="sm:hidden">Execute</span>
               </>
             )}
           </Button>
@@ -143,7 +145,7 @@ export function TaskForm({ onComplete }: TaskFormProps) {
               <p className="text-sm text-red-400">{result.error}</p>
             )}
             {result.result && (
-              <div className="text-sm whitespace-pre-wrap overflow-auto max-h-60">
+              <div className="text-sm whitespace-pre-wrap overflow-auto max-h-40 sm:max-h-60">
                 {result.result}
               </div>
             )}
