@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, type FormEvent } from 'react'
-import { Clock, Folder, Terminal, Radio, Play, Square, Loader2, Settings2, Brain } from 'lucide-react'
+import { Clock, Folder, Terminal, Radio, Play, Square, Loader2, Brain } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -101,7 +101,6 @@ export function SessionCard({ session }: SessionCardProps) {
   const [taskPrompt, setTaskPrompt] = useState('')
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([])
   const [executing, setExecuting] = useState(false)
-  const [showSettings, setShowSettings] = useState(false)
   const [selectedModel, setSelectedModel] = useState('claude-sonnet-4-5-20250929')
   const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort>('medium')
   const [settingsLoaded, setSettingsLoaded] = useState(false)
@@ -387,26 +386,27 @@ export function SessionCard({ session }: SessionCardProps) {
         {/* Task execution form (Remote Control mode) */}
         {isRemoteControlled && (
           <div className="space-y-3 pt-2 border-t border-border">
-            {/* Settings Bar */}
-            <div className="flex items-center gap-2 text-xs">
-              <Button
-                size="sm"
-                variant="ghost"
-                className="h-7 px-2"
-                onClick={() => setShowSettings(!showSettings)}
-              >
-                <Settings2 className="h-3 w-3 mr-1" />
-                {currentModel?.name || 'Model'}
-                {supportsReasoning && reasoningEffort !== 'off' && (
-                  <Brain className="h-3 w-3 ml-1 text-purple-400" />
+            {/* Chat History */}
+            {(chatHistory.length > 0 || executing) && (
+              <div className="space-y-3 max-h-80 overflow-y-auto overflow-x-hidden">
+                {chatHistory.map((msg) => (
+                  <ChatBubble key={msg.id} message={msg} />
+                ))}
+                {executing && (
+                  <div className="flex justify-start">
+                    <div className="bg-muted rounded-lg px-3 py-2 flex items-center gap-2 text-sm text-muted-foreground">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Droid is thinking...
+                    </div>
+                  </div>
                 )}
-              </Button>
-            </div>
+              </div>
+            )}
 
-            {/* Settings Panel */}
-            {showSettings && (
-              <div className="p-3 rounded-md bg-muted/50 space-y-3">
-                <div className="space-y-1">
+            {/* Model Settings - Always Visible */}
+            <div className="space-y-2">
+              <div className="flex flex-col sm:flex-row gap-2">
+                <div className="flex-1 space-y-1">
                   <label className="text-xs font-medium">Model</label>
                   <select
                     value={selectedModel}
@@ -422,7 +422,7 @@ export function SessionCard({ session }: SessionCardProps) {
                 </div>
                 
                 {supportsReasoning && (
-                  <div className="space-y-1">
+                  <div className="flex-1 space-y-1">
                     <label className="text-xs font-medium flex items-center gap-1">
                       <Brain className="h-3 w-3" />
                       Thinking Mode
@@ -443,24 +443,7 @@ export function SessionCard({ session }: SessionCardProps) {
                   </div>
                 )}
               </div>
-            )}
-
-            {/* Chat History */}
-            {(chatHistory.length > 0 || executing) && (
-              <div className="space-y-3 max-h-80 overflow-y-auto overflow-x-hidden">
-                {chatHistory.map((msg) => (
-                  <ChatBubble key={msg.id} message={msg} />
-                ))}
-                {executing && (
-                  <div className="flex justify-start">
-                    <div className="bg-muted rounded-lg px-3 py-2 flex items-center gap-2 text-sm text-muted-foreground">
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Droid is thinking...
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
+            </div>
 
             {/* Input Form */}
             <form className="flex gap-2" onSubmit={handleTaskSubmit}>
