@@ -357,8 +357,8 @@ export function SessionCard({ session }: SessionCardProps) {
   }
 
   return (
-    <Card className="overflow-hidden">
-      <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between space-y-2 sm:space-y-0 pb-2">
+    <Card className="overflow-hidden flex flex-col h-full">
+      <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between space-y-2 sm:space-y-0 pb-2 shrink-0">
         <div className="flex flex-col gap-1 min-w-0 w-full sm:w-auto">
           <div className="flex items-center gap-2">
             <span className={cn('h-2 w-2 rounded-full shrink-0', statusConfig.color)} />
@@ -396,8 +396,8 @@ export function SessionCard({ session }: SessionCardProps) {
         </div>
       </CardHeader>
 
-      <CardContent className="space-y-3">
-        <div className="flex flex-col sm:flex-row sm:flex-wrap gap-1 sm:gap-x-4 sm:gap-y-1 text-xs text-muted-foreground">
+      <CardContent className="flex-1 flex flex-col space-y-3 overflow-hidden">
+        <div className="flex flex-col sm:flex-row sm:flex-wrap gap-1 sm:gap-x-4 sm:gap-y-1 text-xs text-muted-foreground shrink-0">
           <span className="flex items-center gap-1 truncate">
             <Folder className="h-3 w-3 shrink-0" />
             <span className="truncate">{session.project_dir}</span>
@@ -409,7 +409,7 @@ export function SessionCard({ session }: SessionCardProps) {
         </div>
 
         {/* Control State Actions */}
-        <div className="flex flex-col sm:flex-row gap-2">
+        <div className="flex flex-col sm:flex-row gap-2 shrink-0">
           {canHandoff && (
             <Button size="sm" variant="outline" onClick={handleHandoff} disabled={loading}>
               <Play className="h-3 w-3 mr-1" />
@@ -425,7 +425,7 @@ export function SessionCard({ session }: SessionCardProps) {
         </div>
 
         {hasPendingRequest && session.pending_request && (
-          <div className="rounded-md bg-muted p-3">
+          <div className="rounded-md bg-muted p-3 shrink-0">
             <p className="text-sm whitespace-pre-wrap">{session.pending_request.message}</p>
 
             {session.pending_request.tool_name && (
@@ -450,7 +450,7 @@ export function SessionCard({ session }: SessionCardProps) {
 
         {/* Response form for pending requests (CLI mode) */}
         {!isRemoteControlled && (session.status === 'waiting' || hasPendingRequest) && (
-          <form className="flex gap-2" onSubmit={handleSubmit}>
+          <form className="flex gap-2 shrink-0" onSubmit={handleSubmit}>
             <Input
               className="flex-1"
               placeholder="Send response..."
@@ -465,10 +465,10 @@ export function SessionCard({ session }: SessionCardProps) {
 
         {/* Task execution form (Remote Control mode) */}
         {isRemoteControlled && (
-          <div className="space-y-3 pt-2 border-t border-border">
+          <div className="flex-1 flex flex-col pt-2 border-t border-border min-h-0">
             {/* Chat History */}
             {(chatHistory.length > 0 || executing) && (
-              <div className="space-y-3 max-h-[calc(100vh-400px)] min-h-[200px] overflow-y-auto overflow-x-hidden">
+              <div className="flex-1 space-y-3 overflow-y-auto overflow-x-hidden mb-3 min-h-0">
                 {chatHistory.map((msg) => (
                   <ChatBubble key={msg.id} message={msg} />
                 ))}
@@ -484,7 +484,7 @@ export function SessionCard({ session }: SessionCardProps) {
             )}
 
             {/* Input Form with Inline Model Selector */}
-            <div className="space-y-2">
+            <div className="space-y-2 shrink-0">
               <form className="flex gap-2" onSubmit={handleTaskSubmit}>
                 {/* Model Selector - Inline Left */}
                 <select
