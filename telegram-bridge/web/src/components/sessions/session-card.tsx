@@ -4,7 +4,6 @@ import { useState, useEffect, type FormEvent } from 'react'
 import { Clock, Folder, Terminal, Radio, Play, Square, Loader2, Copy, Check } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { useSessionActions } from '@/hooks/use-session-actions'
@@ -97,7 +96,6 @@ interface ChatMessage {
 }
 
 export function SessionCard({ session }: SessionCardProps) {
-  const [message, setMessage] = useState('')
   const [taskPrompt, setTaskPrompt] = useState('')
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([])
   const [executing, setExecuting] = useState(false)
@@ -107,7 +105,7 @@ export function SessionCard({ session }: SessionCardProps) {
   const [settingsLoaded, setSettingsLoaded] = useState(false)
   const [copiedSessionId, setCopiedSessionId] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
-  const { respond, approve, deny, handoff, release, executeTask, cancelTask, addChatMessage, loading } = useSessionActions()
+  const { approve, deny, handoff, release, executeTask, cancelTask, addChatMessage, loading } = useSessionActions()
 
   const currentModel = AVAILABLE_MODELS.find(m => m.id === selectedModel)
   const supportsReasoning = currentModel?.reasoning ?? false
@@ -183,17 +181,6 @@ export function SessionCard({ session }: SessionCardProps) {
   const hasPendingRequest = session.pending_request !== null
   const isRemoteControlled = controlState === 'remote_active'
   const canHandoff = controlState === 'cli_active' || controlState === 'cli_waiting' || controlState === 'released'
-
-  const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault()
-    if (!message.trim() || !session.pending_request) return
-
-    respond({
-      sessionId: session.id,
-      response: message,
-    })
-    setMessage('')
-  }
 
   const handleTaskSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
@@ -437,21 +424,6 @@ export function SessionCard({ session }: SessionCardProps) {
               </div>
             )}
           </div>
-        )}
-
-        {/* Response form for pending requests (CLI mode) */}
-        {!isRemoteControlled && (session.status === 'waiting' || hasPendingRequest) && (
-          <form className="flex gap-2 shrink-0" onSubmit={handleSubmit}>
-            <Input
-              className="flex-1"
-              placeholder="Send response..."
-              value={message}
-              onChange={(e) => setMessage(e.target.value)}
-            />
-            <Button disabled={!message.trim() || !hasPendingRequest} type="submit">
-              Send
-            </Button>
-          </form>
         )}
 
         {/* Chat Area - Always visible for consistent layout */}
