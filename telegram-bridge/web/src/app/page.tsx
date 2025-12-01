@@ -30,7 +30,7 @@ export default function DashboardPage() {
           
           // Auto-select first session if none selected
           if (!selectedSessionId && fetchedSessions.length > 0) {
-            setSelectedSessionId(fetchedSessions[0].session_id)
+            setSelectedSessionId(fetchedSessions[0].id)
           }
         }
       } catch (error) {
@@ -53,7 +53,7 @@ export default function DashboardPage() {
     setCurrentView(view)
   }
 
-  const selectedSession = sessions.find((s) => s.session_id === selectedSessionId)
+  const selectedSession = sessions.find((s) => s.id === selectedSessionId)
 
   return (
     <div className="flex h-screen bg-gray-900 text-white overflow-hidden">

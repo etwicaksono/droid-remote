@@ -171,16 +171,16 @@ export function AppSidebar({
           ) : (
             <div className="p-2">
               {sessions.map((session) => {
-                const isSelected = selectedSessionId === session.session_id
-                const statusInfo = STATUS_CONFIG[session.control_state] || {
+                const isSelected = selectedSessionId === session.id
+                const statusInfo = STATUS_CONFIG[session.control_state || 'released'] || {
                   color: 'bg-gray-500',
                   label: 'Unknown',
                 }
 
                 return (
                   <button
-                    key={session.session_id}
-                    onClick={() => handleSelectSession(session.session_id)}
+                    key={session.id}
+                    onClick={() => handleSelectSession(session.id)}
                     className={cn(
                       'w-full text-left p-3 rounded-md transition-colors mb-1',
                       isSelected
