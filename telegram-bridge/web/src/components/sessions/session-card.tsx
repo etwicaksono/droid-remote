@@ -1,12 +1,13 @@
 'use client'
 
-import { useState, useEffect, type FormEvent } from 'react'
+import { useState, useEffect, useRef, useCallback, type FormEvent } from 'react'
 import { Clock, Folder, Terminal, Radio, Play, Square, Loader2, Copy, Check } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { useSessionActions } from '@/hooks/use-session-actions'
+import { getSocket } from '@/lib/socket'
 import { cn, formatRelativeTime } from '@/lib/utils'
 import type { Session, ControlState, ReasoningEffort } from '@/types'
 
@@ -27,6 +28,8 @@ const REASONING_LEVELS: { id: ReasoningEffort; name: string }[] = [
   { id: 'medium', name: 'Medium' },
   { id: 'high', name: 'High' },
 ]
+
+const MAX_MESSAGE_INPUT_HEIGHT = 240
 
 // Generate UUID that works in all browsers (crypto.randomUUID requires HTTPS)
 function generateUUID(): string {
@@ -120,9 +123,21 @@ export function SessionCard({ session }: SessionCardProps) {
   const [actionError, setActionError] = useState<string | null>(null)
   const [controlAction, setControlAction] = useState<'handoff' | 'release' | null>(null)
   const { approve, deny, handoff, release, executeTask, cancelTask, addChatMessage, loading } = useSessionActions()
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null)
 
   const currentModel = AVAILABLE_MODELS.find(m => m.id === selectedModel)
   const supportsReasoning = currentModel?.reasoning ?? false
+
+  const adjustTextareaHeight = useCallback(() => {
+    const textarea = textareaRef.current
+    if (!textarea) return
+
+    textarea.style.height = 'auto'
+    const nextHeight = textarea.scrollHeight
+    const clampedHeight = Math.min(nextHeight, MAX_MESSAGE_INPUT_HEIGHT)
+    textarea.style.height = `${clampedHeight}px`
+    textarea.style.overflowY = nextHeight > MAX_MESSAGE_INPUT_HEIGHT ? 'auto' : 'hidden'
+  }, [])
 
   // Load chat history and settings from API on mount
   useEffect(() => {
@@ -188,6 +203,60 @@ export function SessionCard({ session }: SessionCardProps) {
     }
     saveSettings()
   }, [selectedModel, reasoningEffort, session.id, settingsLoaded])
+
+  // Listen for task events via WebSocket (sync across devices)
+  useEffect(() => {
+    const socket = getSocket()
+    
+    const handleTaskStarted = (data: { task_id: string; project_dir: string; session_id?: string }) => {
+      // Check if this task is for our session
+      if (data.session_id === session.id || data.project_dir === session.project_dir) {
+        setExecuting(true)
+        setCurrentTaskId(data.task_id)
+      }
+    }
+    
+    const handleTaskCompleted = async (data: { task_id: string; success: boolean; result: string; session_id?: string }) => {
+      // Check if this is for our session
+      if (data.task_id === currentTaskId || data.session_id === session.id) {
+        setExecuting(false)
+        setCurrentTaskId(null)
+        
+        // Refresh chat history to get the latest messages (for other devices)
+        try {
+          const chatRes = await fetch(`${API_BASE}/sessions/${session.id}/chat`)
+          if (chatRes.ok) {
+            const messages = await chatRes.json()
+            setChatHistory(messages.map((msg: { id: string; type: string; content: string; created_at: string }) => ({
+              id: msg.id,
+              type: msg.type as 'user' | 'assistant',
+              content: msg.content,
+              timestamp: new Date(msg.created_at),
+            })))
+          }
+        } catch {
+          // Ignore fetch errors
+        }
+      }
+    }
+    
+    const handleTaskCancelled = (data: { task_id: string }) => {
+      if (data.task_id === currentTaskId) {
+        setExecuting(false)
+        setCurrentTaskId(null)
+      }
+    }
+    
+    socket.on('task_started', handleTaskStarted)
+    socket.on('task_completed', handleTaskCompleted)
+    socket.on('task_cancelled', handleTaskCancelled)
+    
+    return () => {
+      socket.off('task_started', handleTaskStarted)
+      socket.off('task_completed', handleTaskCompleted)
+      socket.off('task_cancelled', handleTaskCancelled)
+    }
+  }, [session.project_dir, session.id, currentTaskId])
 
   const statusConfig = STATUS_CONFIG[session.status]
   const controlState = session.control_state || 'cli_active'
@@ -374,6 +443,11 @@ export function SessionCard({ session }: SessionCardProps) {
     }
   }, [controlState, controlAction])
 
+  useEffect(() => {
+    if (!isRemoteControlled) return
+    adjustTextareaHeight()
+  }, [taskPrompt, isRemoteControlled, adjustTextareaHeight])
+
   const handleCopySessionId = async () => {
     try {
       await navigator.clipboard.writeText(session.id)
@@ -516,12 +590,13 @@ export function SessionCard({ session }: SessionCardProps) {
 
                   {/* Text Input */}
                   <Textarea
+                    ref={textareaRef}
                     placeholder="Message..."
                     rows={1}
                     value={taskPrompt}
                     onChange={(e) => setTaskPrompt(e.target.value)}
                     disabled={executing}
-                    className="flex-1 min-h-[40px] resize-none"
+                    className="flex-1 min-h-[40px] resize-none overflow-y-auto"
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' && !e.shiftKey) {
                         e.preventDefault()
@@ -530,6 +605,7 @@ export function SessionCard({ session }: SessionCardProps) {
                         }
                       }
                     }}
+                    style={{ maxHeight: `${MAX_MESSAGE_INPUT_HEIGHT}px` }}
                   />
 
                   {/* Send/Cancel Buttons */}

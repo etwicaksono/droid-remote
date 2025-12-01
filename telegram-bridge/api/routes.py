@@ -280,7 +280,8 @@ async def execute_task(data: TaskExecuteRequest, request: Request):
         await sio.emit("task_started", {
             "task_id": task_id,
             "project_dir": data.project_dir,
-            "prompt": data.prompt
+            "prompt": data.prompt,
+            "session_id": data.session_id
         })
     
     # Execute the task

@@ -8,6 +8,9 @@ interface ServerToClientEvents {
   notification: (notification: Notification) => void
   session_status: (data: { sessionId: string; status: string }) => void
   response_delivered: (data: { sessionId: string; requestId: string }) => void
+  task_started: (data: { task_id: string; project_dir: string; prompt: string; session_id?: string }) => void
+  task_completed: (data: { task_id: string; success: boolean; result: string; session_id?: string }) => void
+  task_cancelled: (data: { task_id: string }) => void
 }
 
 interface ClientToServerEvents {
