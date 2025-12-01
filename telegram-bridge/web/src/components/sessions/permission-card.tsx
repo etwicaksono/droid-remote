@@ -74,7 +74,7 @@ export function PermissionCard({ permission, sessionName, onResolved }: Permissi
         )}
 
         {permission.tool_input && Object.keys(permission.tool_input).length > 0 && (
-          <pre className="text-xs bg-muted p-2 rounded overflow-auto max-h-32">
+          <pre className="text-xs bg-muted p-2 rounded overflow-auto max-h-24 sm:max-h-32">
             {JSON.stringify(permission.tool_input, null, 2)}
           </pre>
         )}
@@ -90,12 +90,12 @@ export function PermissionCard({ permission, sessionName, onResolved }: Permissi
         </div>
 
         {isPending && (
-          <div className="flex gap-2 pt-2">
+          <div className="flex flex-col sm:flex-row gap-2 pt-2">
             <Button
               size="sm"
               onClick={() => handleResolve('approved')}
               disabled={loading}
-              className="flex-1"
+              className="w-full sm:flex-1"
             >
               <Check className="h-3 w-3 mr-1" />
               Approve
@@ -105,7 +105,7 @@ export function PermissionCard({ permission, sessionName, onResolved }: Permissi
               variant="destructive"
               onClick={() => handleResolve('denied')}
               disabled={loading}
-              className="flex-1"
+              className="w-full sm:flex-1"
             >
               <X className="h-3 w-3 mr-1" />
               Deny
