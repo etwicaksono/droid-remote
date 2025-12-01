@@ -145,15 +145,20 @@ async def notify_session(session_id: str, data: NotifyRequest, request: Request)
             name=data.session_name
         )
     
-    # Create pending request
+    # Create pending request only for actionable notifications (permission or has buttons)
     request_id = str(uuid.uuid4())
+    needs_action = data.type == NotificationType.PERMISSION or (data.buttons and len(data.buttons) > 0)
+    
     pending = PendingRequest(
         id=request_id,
         type=data.type,
         message=data.message,
         buttons=[Button(**b.model_dump()) for b in data.buttons] if data.buttons else []
     )
-    session_registry.set_pending_request(session_id, pending)
+    
+    # Only set pending_request if user action is needed
+    if needs_action:
+        session_registry.set_pending_request(session_id, pending)
     
     # Send to Telegram
     bot_manager = request.app.state.bot_manager()
