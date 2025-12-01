@@ -10,68 +10,88 @@
 
 ## 1. Overview
 
-After user testing, **droid exec supports image URLs** when using vision-capable models. This plan outlines adding image upload functionality to the web UI, with local hosting for simplicity.
+After user testing, **droid exec supports image URLs** when using vision-capable models. This plan outlines adding image upload functionality to the web UI with Cloudinary cloud hosting.
 
 ---
 
 ## 2. Confirmed Working
 
-**User Test Result:**
+**User Test Results:**
 ```
-✅ Sending image URLs to droid exec works
-✅ Vision models can process images
+✅ Sending public image URLs to droid exec works perfectly
+✅ Vision models process images correctly
 ✅ No special flags needed in droid exec
+❌ Localhost URLs do NOT work (droid exec times out)
 ```
 
 **Example that works:**
 ```bash
-droid exec "Analyze this screenshot: https://example.com/image.png" --model gpt-5-2025-08-07
+droid exec "Analyze this screenshot: https://example.com/image.png" --model gpt-5.1
 ```
+
+**Why not localhost:**
+- Testing showed droid exec **cannot access localhost URLs**
+- Security restriction prevents accessing internal network
+- Need public URLs accessible from internet
 
 ---
 
 ## 3. Architecture Choice
 
-**Selected: Local Flask Hosting (Option 2)**
+**Selected: Cloudinary (Cloud Storage)**
 
-**Reasons:**
-- ✅ Self-contained - no external dependencies
-- ✅ Works on local network (already required)
-- ✅ No API keys or cloud accounts needed
-- ✅ Simple to implement
-- ✅ User controls data (privacy)
+**Why Cloudinary:**
+- ✅ Public URLs that droid exec can access (localhost blocked)
+- ✅ Free tier: 25GB storage, 25GB bandwidth/month
+- ✅ Reliable CDN delivery
+- ✅ Automatic image optimization
+- ✅ No local storage cleanup needed
+- ✅ Works from any device (not just local network)
+- ✅ Simple API integration
 
-**Future upgrade path to Cloudinary available**
+**Cloudinary Free Tier:**
+- 25 GB storage
+- 25 GB monthly bandwidth
+- 25k transformations/month
+- Perfect for this use case
 
 ---
 
 ## 4. System Architecture
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                        Web UI                           │
-├─────────────────────────────────────────────────────────┤
-│                                                         │
-│  1. User selects image (file input / drag & drop)      │
-│     ↓                                                   │
-│  2. Frontend uploads via POST /api/upload-image         │
-│     ↓                                                   │
-│  3. Backend saves to /uploads/session-{id}-{hash}.png  │
-│     ↓                                                   │
-│  4. Backend returns: { url: "/uploads/..." }           │
-│     ↓                                                   │
-│  5. Frontend shows preview                              │
-│     ↓                                                   │
-│  6. User sends message with image URL                   │
-│     ↓                                                   │
-│  7. Backend executes:                                   │
-│     droid exec "prompt\nImage: http://host/uploads/..." │
-│     ↓                                                   │
-│  8. Droid processes image with vision model             │
-│     ↓                                                   │
-│  9. Response displayed in chat                          │
-│                                                         │
-└─────────────────────────────────────────────────────────┘
+┌───────────────────────────────────────────────────────────────┐
+│                          Web UI                               │
+├───────────────────────────────────────────────────────────────┤
+│                                                               │
+│  1. User selects image (file input / drag & drop)            │
+│     ↓                                                         │
+│  2. Frontend uploads via POST /api/upload-image               │
+│     ↓                                                         │
+│  3. Backend uploads to Cloudinary API                         │
+│     POST https://api.cloudinary.com/v1_1/{cloud}/upload      │
+│     ↓                                                         │
+│  4. Cloudinary returns public URL:                            │
+│     https://res.cloudinary.com/{cloud}/image/upload/...      │
+│     ↓                                                         │
+│  5. Backend saves URL to database (optional)                  │
+│     ↓                                                         │
+│  6. Backend returns: { url: "https://res.cloudinary..." }    │
+│     ↓                                                         │
+│  7. Frontend shows preview                                    │
+│     ↓                                                         │
+│  8. User sends message with image URL                         │
+│     ↓                                                         │
+│  9. Backend executes:                                         │
+│     droid exec "prompt\nImage: https://res.cloudinary..."    │
+│     ↓                                                         │
+│  10. Droid fetches image from Cloudinary CDN                  │
+│     ↓                                                         │
+│  11. Vision model processes image                             │
+│     ↓                                                         │
+│  12. Response displayed in chat                               │
+│                                                               │
+└───────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -81,13 +101,11 @@ droid exec "Analyze this screenshot: https://example.com/image.png" --model gpt-
 ```
 droid-remote/
 ├── telegram-bridge/
-│   ├── uploads/                          # New directory
-│   │   ├── .gitignore                    # Ignore all uploads
-│   │   └── session-abc123-img1.png       # Uploaded images
+│   ├── .env                              # Add Cloudinary credentials
 │   │
 │   ├── api/
-│   │   ├── routes.py                     # Add upload & static endpoints
-│   │   └── image_handler.py              # New: Image processing utils
+│   │   ├── routes.py                     # Add /api/upload-image endpoint
+│   │   └── cloudinary_handler.py         # New: Cloudinary upload utils
 │   │
 │   ├── core/
 │   │   └── task_executor.py              # Update to include image URLs
@@ -98,7 +116,7 @@ droid-remote/
 │       │
 │       ├── components/ui/
 │       │   ├── image-upload.tsx          # New: Upload component
-│       │   └── image-preview.tsx         # New: Preview component
+│       │   └── image-preview.tsx         # New: Preview component (optional)
 │       │
 │       └── lib/
 │           └── api.ts                    # Add uploadImage function
@@ -111,56 +129,88 @@ droid-remote/
 
 ## 6. Implementation Steps
 
-### Step 1: Backend - Upload Directory Setup
+### Step 1: Cloudinary Account Setup
 
-**Create uploads directory:**
+**Create Cloudinary account:**
+1. Go to https://cloudinary.com/users/register_free
+2. Sign up for free account
+3. Get credentials from dashboard:
+   - Cloud name
+   - API key
+   - API secret
+
+**Add to `.env` file:**
 ```bash
-mkdir telegram-bridge/uploads
-echo "*" > telegram-bridge/uploads/.gitignore
-echo "!.gitignore" >> telegram-bridge/uploads/.gitignore
+# telegram-bridge/.env
+CLOUDINARY_CLOUD_NAME=your_cloud_name
+CLOUDINARY_API_KEY=your_api_key
+CLOUDINARY_API_SECRET=your_api_secret
 ```
 
-**Purpose:** Store uploaded images (excluded from git)
+**Install Cloudinary SDK:**
+```bash
+cd telegram-bridge
+pip install cloudinary
+```
 
 ---
 
-### Step 2: Backend - Image Upload Endpoint
+### Step 2: Backend - Cloudinary Handler
 
-**File:** `telegram-bridge/api/image_handler.py`
+**File:** `telegram-bridge/api/cloudinary_handler.py`
 
-**Create new utility module:**
+**Create Cloudinary upload utility:**
 ```python
 import os
-import hashlib
-import uuid
-from pathlib import Path
-from datetime import datetime
+import cloudinary
+import cloudinary.uploader
 from werkzeug.utils import secure_filename
 
-UPLOAD_DIR = Path(__file__).parent.parent / "uploads"
+# Configure Cloudinary
+cloudinary.config(
+    cloud_name=os.getenv('CLOUDINARY_CLOUD_NAME'),
+    api_key=os.getenv('CLOUDINARY_API_KEY'),
+    api_secret=os.getenv('CLOUDINARY_API_SECRET'),
+    secure=True
+)
+
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'}
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
 
 def allowed_file(filename):
+    """Check if file extension is allowed"""
     return '.' in filename and \
            filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-def generate_filename(session_id, original_filename):
-    """Generate unique filename: session-{id}-{timestamp}-{hash}.{ext}"""
-    ext = original_filename.rsplit('.', 1)[1].lower()
-    timestamp = int(datetime.now().timestamp())
-    hash_str = hashlib.md5(f"{session_id}{timestamp}{uuid.uuid4()}".encode()).hexdigest()[:8]
-    return f"session-{session_id}-{timestamp}-{hash_str}.{ext}"
-
-def save_upload(file, session_id):
-    """Save uploaded file and return filename"""
+def upload_to_cloudinary(file, session_id):
+    """
+    Upload file to Cloudinary and return public URL
+    
+    Args:
+        file: Flask request.files object
+        session_id: Session ID for organizing uploads
+        
+    Returns:
+        dict: {
+            'url': 'https://res.cloudinary.com/...',
+            'public_id': 'droid-remote/session-abc123-...',
+            'width': 1920,
+            'height': 1080,
+            'format': 'png'
+        }
+        
+    Raises:
+        ValueError: If file is invalid
+    """
+    # Validate file exists
     if not file or file.filename == '':
         raise ValueError("No file provided")
     
+    # Validate file type
     if not allowed_file(file.filename):
-        raise ValueError(f"File type not allowed. Allowed: {ALLOWED_EXTENSIONS}")
+        raise ValueError(f"File type not allowed. Allowed: {', '.join(ALLOWED_EXTENSIONS)}")
     
-    # Check file size
+    # Validate file size
     file.seek(0, os.SEEK_END)
     size = file.tell()
     file.seek(0)
@@ -168,26 +218,42 @@ def save_upload(file, session_id):
     if size > MAX_FILE_SIZE:
         raise ValueError(f"File too large. Max size: {MAX_FILE_SIZE // 1024 // 1024}MB")
     
-    # Generate filename and save
-    filename = generate_filename(session_id, secure_filename(file.filename))
-    filepath = UPLOAD_DIR / filename
+    # Upload to Cloudinary
+    try:
+        result = cloudinary.uploader.upload(
+            file,
+            folder=f"droid-remote",  # Organize by folder
+            public_id=f"session-{session_id}-{secure_filename(file.filename)}",
+            resource_type="image",
+            overwrite=False,
+            unique_filename=True,  # Add unique suffix if file exists
+            # Optional: Add transformations
+            # transformation=[
+            #     {'quality': 'auto'},  # Auto quality
+            #     {'fetch_format': 'auto'}  # Auto format (WebP when supported)
+            # ]
+        )
+        
+        return {
+            'url': result['secure_url'],
+            'public_id': result['public_id'],
+            'width': result.get('width'),
+            'height': result.get('height'),
+            'format': result.get('format'),
+            'size': result.get('bytes')
+        }
     
-    # Ensure upload directory exists
-    UPLOAD_DIR.mkdir(exist_ok=True)
-    
-    file.save(filepath)
-    return filename
+    except cloudinary.exceptions.Error as e:
+        raise ValueError(f"Cloudinary upload failed: {str(e)}")
 
-def cleanup_old_images(max_age_hours=24):
-    """Delete images older than max_age_hours"""
-    import time
-    now = time.time()
-    cutoff = now - (max_age_hours * 3600)
-    
-    for filepath in UPLOAD_DIR.glob("session-*"):
-        if filepath.stat().st_mtime < cutoff:
-            filepath.unlink()
-            print(f"Deleted old image: {filepath.name}")
+def delete_from_cloudinary(public_id):
+    """Delete image from Cloudinary by public_id"""
+    try:
+        result = cloudinary.uploader.destroy(public_id, resource_type="image")
+        return result.get('result') == 'ok'
+    except Exception as e:
+        print(f"Failed to delete image {public_id}: {e}")
+        return False
 ```
 
 ---
@@ -196,16 +262,16 @@ def cleanup_old_images(max_age_hours=24):
 
 **File:** `telegram-bridge/api/routes.py`
 
-**Add new endpoints:**
+**Add upload endpoint:**
 ```python
-from flask import request, jsonify, send_from_directory
-from .image_handler import save_upload, cleanup_old_images, UPLOAD_DIR
+from flask import request, jsonify
+from .cloudinary_handler import upload_to_cloudinary, delete_from_cloudinary
 
 # Add after existing routes
 
 @app.route('/api/upload-image', methods=['POST'])
 def upload_image():
-    """Upload image and return URL"""
+    """Upload image to Cloudinary and return public URL"""
     try:
         if 'image' not in request.files:
             return jsonify({'error': 'No image provided'}), 400
@@ -213,13 +279,18 @@ def upload_image():
         file = request.files['image']
         session_id = request.form.get('session_id', 'unknown')
         
-        filename = save_upload(file, session_id)
+        # Upload to Cloudinary
+        result = upload_to_cloudinary(file, session_id)
         
-        # Return URL (client will prepend host)
+        # Return public URL and metadata
         return jsonify({
             'success': True,
-            'filename': filename,
-            'url': f'/uploads/{filename}'
+            'url': result['url'],
+            'public_id': result['public_id'],
+            'width': result.get('width'),
+            'height': result.get('height'),
+            'format': result.get('format'),
+            'size': result.get('size')
         })
     
     except ValueError as e:
@@ -228,18 +299,21 @@ def upload_image():
         print(f"Upload error: {e}")
         return jsonify({'error': 'Upload failed'}), 500
 
-@app.route('/uploads/<path:filename>')
-def serve_upload(filename):
-    """Serve uploaded images"""
-    return send_from_directory(UPLOAD_DIR, filename)
-
-@app.route('/api/cleanup-images', methods=['POST'])
-def cleanup_images():
-    """Cleanup old images (called by cron or manually)"""
+@app.route('/api/delete-image', methods=['POST'])
+def delete_image():
+    """Delete image from Cloudinary (optional endpoint)"""
     try:
-        max_age = request.json.get('max_age_hours', 24)
-        cleanup_old_images(max_age)
-        return jsonify({'success': True})
+        data = request.json
+        public_id = data.get('public_id')
+        
+        if not public_id:
+            return jsonify({'error': 'public_id required'}), 400
+        
+        success = delete_from_cloudinary(public_id)
+        
+        return jsonify({
+            'success': success
+        })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 ```
@@ -263,16 +337,11 @@ async def execute_task(
     
     # Build prompt with images
     full_prompt = prompt
-    if images:
-        # Get base URL from config or environment
-        base_url = os.getenv('BASE_URL', 'http://localhost:5000')
-        
+    if images and len(images) > 0:
         # Append image URLs to prompt
+        # Cloudinary URLs are already full public URLs
         full_prompt += "\n\nImages:"
         for img_url in images:
-            # Convert relative URL to absolute
-            if img_url.startswith('/uploads/'):
-                img_url = f"{base_url}{img_url}"
             full_prompt += f"\n{img_url}"
     
     # Rest of existing code...
@@ -327,7 +396,14 @@ def execute_task_endpoint():
 export async function uploadImage(
   file: File, 
   sessionId: string
-): Promise<{ url: string; filename: string }> {
+): Promise<{
+  url: string;
+  public_id: string;
+  width?: number;
+  height?: number;
+  format?: string;
+  size?: number;
+}> {
   const formData = new FormData();
   formData.append('image', file);
   formData.append('session_id', sessionId);
@@ -342,7 +418,8 @@ export async function uploadImage(
     throw new Error(error.error || 'Upload failed');
   }
   
-  return response.json();
+  const data = await response.json();
+  return data;  // Returns Cloudinary public URL and metadata
 }
 
 // Update executeTask to accept images
@@ -520,11 +597,10 @@ export function SessionCard({ session }: SessionCardProps) {
   const handleImageUpload = async (file: File) => {
     setUploadingImage(true);
     try {
-      const { url } = await uploadImage(file, session.session_id);
+      const result = await uploadImage(file, session.session_id);
       
-      // Store full URL with host
-      const fullUrl = `${window.location.origin}${url}`;
-      setUploadedImages([...uploadedImages, fullUrl]);
+      // Cloudinary returns full public URL
+      setUploadedImages([...uploadedImages, result.url]);
       
       toast.success('Image uploaded');
     } catch (error) {
@@ -699,19 +775,22 @@ cursor.execute("""
 
 ### Step 11: Environment Configuration
 
-**File:** `telegram-bridge/.env` (or config)
+**File:** `telegram-bridge/.env`
 
 ```bash
-# Base URL for image serving (used in task_executor.py)
-BASE_URL=http://localhost:5000
+# Cloudinary Configuration (required)
+CLOUDINARY_CLOUD_NAME=your_cloud_name_here
+CLOUDINARY_API_KEY=your_api_key_here
+CLOUDINARY_API_SECRET=your_api_secret_here
 
-# Or for network access:
-# BASE_URL=http://192.168.1.100:5000
-
-# Upload settings
+# Upload Settings (optional)
 MAX_UPLOAD_SIZE_MB=10
-UPLOAD_CLEANUP_HOURS=24
 ```
+
+**Get Cloudinary credentials:**
+1. Login to https://cloudinary.com/console
+2. Copy Cloud name, API Key, API Secret from dashboard
+3. Add to `.env` file
 
 ---
 
@@ -787,12 +866,11 @@ const MODELS = [
 - [ ] Upload endpoint accepts images
 - [ ] Validates file types (png, jpg, gif, etc.)
 - [ ] Validates file size (< 10MB)
-- [ ] Generates unique filenames
-- [ ] Saves to /uploads directory
-- [ ] Returns correct URL
-- [ ] Static file serving works
-- [ ] Cleanup removes old images
+- [ ] Uploads to Cloudinary successfully
+- [ ] Returns public URL from Cloudinary
+- [ ] Cloudinary credentials loaded from .env
 - [ ] Error handling for invalid uploads
+- [ ] Error handling for Cloudinary API failures
 
 **Frontend:**
 - [ ] File input accepts images
@@ -825,37 +903,7 @@ const MODELS = [
 
 ## 9. Future Enhancements
 
-### Phase 2: Cloud Storage (Cloudinary)
-
-**When local storage becomes limiting:**
-
-```python
-# telegram-bridge/core/cloudinary_handler.py
-import cloudinary
-import cloudinary.uploader
-
-cloudinary.config(
-    cloud_name = os.getenv('CLOUDINARY_CLOUD_NAME'),
-    api_key = os.getenv('CLOUDINARY_API_KEY'),
-    api_secret = os.getenv('CLOUDINARY_API_SECRET')
-)
-
-def upload_to_cloudinary(file):
-    result = cloudinary.uploader.upload(
-        file,
-        folder="droid-remote",
-        resource_type="image"
-    )
-    return result['secure_url']
-```
-
-**Benefits:**
-- No local storage needed
-- Automatic CDN delivery
-- Image transformations
-- 25GB free tier
-
-### Phase 3: Advanced Features
+### Phase 2: Advanced Features
 
 **Image History:**
 - Show all images used in session
@@ -884,35 +932,35 @@ def upload_to_cloudinary(file):
 
 **File Type Validation:**
 ```python
-# Use python-magic for real file type detection
-import magic
+# Validate file extension
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'}
 
-def validate_file_type(filepath):
-    mime = magic.from_file(filepath, mime=True)
-    return mime in ['image/png', 'image/jpeg', 'image/gif', 'image/webp']
+def allowed_file(filename):
+    return '.' in filename and \
+           filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+# Cloudinary also validates file type on their end
 ```
 
-**Filename Sanitization:**
+**File Size Validation:**
 ```python
-# Use werkzeug.utils.secure_filename
-from werkzeug.utils import secure_filename
-safe_name = secure_filename(user_filename)
+# Check size before uploading to Cloudinary
+MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
+
+file.seek(0, os.SEEK_END)
+size = file.tell()
+file.seek(0)
+
+if size > MAX_FILE_SIZE:
+    raise ValueError(f"File too large. Max size: 10MB")
 ```
 
-**Access Control:**
-```python
-# Only allow access to images from same session
-@app.route('/uploads/<filename>')
-def serve_upload(filename):
-    # Extract session_id from filename
-    session_id = filename.split('-')[1]
-    
-    # Verify user has access to this session
-    if not has_access(current_user, session_id):
-        abort(403)
-    
-    return send_from_directory(UPLOAD_DIR, filename)
-```
+**Cloudinary Security:**
+- Cloudinary provides built-in access control
+- Public URLs are unique and unguessable
+- Can configure signed URLs for extra security
+- Automatic malware scanning available
+- DDoS protection via CDN
 
 **Rate Limiting:**
 ```python
@@ -924,6 +972,17 @@ limiter = Limiter(app, key_func=get_remote_address)
 @limiter.limit("10 per minute")  # Max 10 uploads per minute
 def upload_image():
     # ...
+```
+
+**Optional: Signed URLs for extra security:**
+```python
+# Generate signed upload URL (prevents unauthorized uploads)
+cloudinary.uploader.upload(
+    file,
+    folder="droid-remote",
+    type="authenticated",  # Requires signed URL to access
+    access_mode="authenticated"
+)
 ```
 
 ---
@@ -990,66 +1049,82 @@ try {
 
 **After mobile view task completion:**
 
-1. ✅ **Step 1-3:** Backend foundation (2 hours)
-   - Upload directory
-   - Image handler module
-   - API endpoints
+1. ✅ **Step 1:** Cloudinary account setup (15 minutes)
+   - Create free account
+   - Get credentials
+   - Add to .env file
 
-2. ✅ **Step 4-5:** Backend integration (1 hour)
+2. ✅ **Step 2-3:** Backend foundation (2 hours)
+   - Install Cloudinary SDK
+   - Cloudinary handler module
+   - Upload API endpoint
+
+3. ✅ **Step 4-5:** Backend integration (1 hour)
    - Task executor updates
    - API endpoint updates
 
-3. ✅ **Step 6-7:** Frontend components (2 hours)
+4. ✅ **Step 6-7:** Frontend components (2 hours)
    - API client updates
    - Image upload component
 
-4. ✅ **Step 8-9:** UI integration (2 hours)
+5. ✅ **Step 8-9:** UI integration (2 hours)
    - Session card integration
    - Compact paperclip UI
 
-5. ✅ **Step 10-11:** Polish (1 hour)
+6. ✅ **Step 10-12:** Polish (1 hour)
    - Database schema (optional)
    - Environment config
+   - Vision model indicators
 
-6. ✅ **Testing:** (2 hours)
+7. ✅ **Testing:** (1.5 hours)
    - All checklist items
    - Mobile testing
    - Edge cases
 
-**Total Estimate:** 10 hours (1-2 days)
+**Total Estimate:** 9.5 hours (1-2 days)
 
 ---
 
 ## 14. Success Criteria
 
 ✅ Users can upload images via web UI
+✅ Images upload to Cloudinary successfully
+✅ Public Cloudinary URLs returned to frontend
 ✅ Images display as previews before sending
 ✅ Images sent to droid exec with vision models
 ✅ Droid processes and responds to image content
 ✅ Mobile-friendly upload UI
 ✅ Error handling for all failure cases
-✅ Old images cleaned up automatically
-✅ Works on local network (existing setup)
+✅ Works from any device (public URLs)
+✅ No local storage management needed
 
 ---
 
 ## 15. Notes
 
 **Confirmed Working:**
-- ✅ Droid exec accepts image URLs
+- ✅ Droid exec accepts public image URLs
 - ✅ Vision models process images correctly
-- ✅ No special flags needed
+- ✅ No special flags needed in droid exec
+- ❌ Localhost URLs do NOT work (tested and confirmed)
+
+**Why Cloudinary:**
+- Testing proved local Flask hosting doesn't work
+- Droid exec cannot access localhost URLs (security restriction)
+- Cloudinary provides public URLs that work perfectly
+- Free tier is sufficient (25GB storage/bandwidth)
+- No cleanup needed, handled by Cloudinary
 
 **Approach:**
-- Simple local file hosting
-- No external dependencies
-- Self-contained solution
-- Easy upgrade path to cloud storage
+- Cloud-first implementation (not optional upgrade)
+- Simple Cloudinary SDK integration
+- Public URLs accessible from anywhere
+- Automatic CDN delivery and optimization
 
 **Priority:**
 - Implement after mobile view tasks complete
-- Focus on simple, working solution first
-- Add advanced features later
+- Should take ~9.5 hours total
+- Free Cloudinary account required
 
 ---
 
