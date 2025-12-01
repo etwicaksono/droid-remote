@@ -465,32 +465,29 @@ export function SessionCard({ session }: SessionCardProps) {
 
         {/* Task execution form (Remote Control mode) */}
         {isRemoteControlled && (
-          <div className="flex-1 flex flex-col pt-2 border-t border-border min-h-0">
-            {/* Chat History - Always rendered to push input to bottom */}
-            <div className="flex-1 flex flex-col overflow-y-auto overflow-x-hidden mb-3 min-h-0">
-              {chatHistory.length === 0 && !executing ? (
-                <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">
+          <div className="flex-1 flex flex-col pt-2 border-t border-border min-h-0 overflow-hidden">
+            {/* Chat History - scrollable area */}
+            <div className="flex-1 overflow-y-auto overflow-x-hidden space-y-3 min-h-0">
+              {chatHistory.length === 0 && !executing && (
+                <div className="text-center text-muted-foreground text-sm py-8">
                   Start a conversation...
                 </div>
-              ) : (
-                <div className="space-y-3 mt-auto">
-                  {chatHistory.map((msg) => (
-                    <ChatBubble key={msg.id} message={msg} />
-                  ))}
-                  {executing && (
-                    <div className="flex justify-start">
-                      <div className="bg-muted rounded-lg px-3 py-2 flex items-center gap-2 text-sm text-muted-foreground">
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        Droid is thinking...
-                      </div>
-                    </div>
-                  )}
+              )}
+              {chatHistory.map((msg) => (
+                <ChatBubble key={msg.id} message={msg} />
+              ))}
+              {executing && (
+                <div className="flex justify-start">
+                  <div className="bg-muted rounded-lg px-3 py-2 flex items-center gap-2 text-sm text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Droid is thinking...
+                  </div>
                 </div>
               )}
             </div>
 
-            {/* Input Form with Inline Model Selector */}
-            <div className="space-y-2 shrink-0">
+            {/* Input Form - always at bottom */}
+            <div className="pt-3 space-y-2">
               <form className="flex gap-2" onSubmit={handleTaskSubmit}>
                 {/* Model Selector - Inline Left */}
                 <select

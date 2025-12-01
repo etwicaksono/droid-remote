@@ -128,7 +128,7 @@ def main():
     """Main entry point"""
     import uvicorn
     
-    host = os.getenv("BRIDGE_HOST", "127.0.0.1")
+    host = os.getenv("BRIDGE_HOST", "0.0.0.0")
     port = int(os.getenv("BRIDGE_PORT", "8765"))
     
     logger.info(f"Starting server on {host}:{port}")
