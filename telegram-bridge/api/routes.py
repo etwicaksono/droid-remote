@@ -273,13 +273,26 @@ async def execute_task(data: TaskExecuteRequest, request: Request):
         })
     
     # Execute the task
-    # Note: Don't pass data.session_id (bridge session) to droid exec
-    # Let task_executor manage droid sessions internally via _session_map
+    # Determine which session_id to use:
+    # 1. If there's an active CLI session for this project → use its session_id
+    # 2. Otherwise, let task_executor manage via _session_map
+    
+    droid_session_id = None
+    
+    # Check if data.session_id corresponds to an active CLI session
+    if data.session_id:
+        session = session_registry.get(data.session_id)
+        if session and session.project_dir == data.project_dir:
+            # This is an active CLI session for this project
+            # The session_id IS the droid session_id from Factory.ai
+            droid_session_id = data.session_id
+            logger.info(f"Using CLI session {droid_session_id} for task execution")
+    
     result = await task_executor.execute_task(
         task_id=task_id,
         prompt=data.prompt,
         project_dir=data.project_dir,
-        session_id=None,  # Let droid exec manage its own sessions
+        session_id=droid_session_id,  # Use CLI session if available
         autonomy_level=data.autonomy_level,
         model=data.model,
         reasoning_effort=data.reasoning_effort,

@@ -419,7 +419,14 @@ class TaskExecutor:
             return False
         
         if task.process:
-            task.process.terminate()
+            try:
+                # Use kill() for immediate termination
+                # terminate() can take 30+ seconds if process is waiting on LLM API
+                task.process.kill()
+                logger.info(f"Force killed task {task_id} (immediate cancellation)")
+            except Exception as e:
+                logger.error(f"Error cancelling task {task_id}: {e}")
+            
             task.status = TaskStatus.CANCELLED
             return True
         
