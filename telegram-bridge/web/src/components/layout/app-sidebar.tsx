@@ -37,8 +37,8 @@ export function AppSidebar({
       try {
         const response = await fetch(`${API_BASE}/sessions`)
         if (response.ok) {
-          const data = await response.json()
-          setSessions(data.sessions || [])
+          const fetchedSessions: Session[] = await response.json()
+          setSessions(fetchedSessions)
         }
       } catch (error) {
         console.error('Failed to fetch sessions:', error)

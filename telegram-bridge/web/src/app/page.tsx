@@ -24,12 +24,11 @@ export default function DashboardPage() {
       try {
         const response = await fetch(`${API_BASE}/sessions`)
         if (response.ok) {
-          const data = await response.json()
-          const fetchedSessions = data.sessions || []
+          const fetchedSessions: Session[] = await response.json()
           setSessions(fetchedSessions)
           
           // Auto-select first session if none selected
-          if (!selectedSessionId && fetchedSessions.length > 0) {
+          if (!selectedSessionId && fetchedSessions.length > 0 && fetchedSessions[0]) {
             setSelectedSessionId(fetchedSessions[0].id)
           }
         }
