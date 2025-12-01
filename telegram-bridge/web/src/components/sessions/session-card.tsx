@@ -348,9 +348,19 @@ export function SessionCard({ session }: SessionCardProps) {
   return (
     <Card className="overflow-hidden">
       <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between space-y-2 sm:space-y-0 pb-2">
-        <div className="flex items-center gap-2 min-w-0 w-full sm:w-auto">
-          <span className={cn('h-2 w-2 rounded-full shrink-0', statusConfig.color)} />
-          <span className="font-semibold truncate">{session.name}</span>
+        <div className="flex flex-col gap-1 min-w-0 w-full sm:w-auto">
+          <div className="flex items-center gap-2">
+            <span className={cn('h-2 w-2 rounded-full shrink-0', statusConfig.color)} />
+            <span className="font-semibold truncate">{session.name}</span>
+          </div>
+          <div className="flex flex-col gap-1 text-xs text-muted-foreground pl-4">
+            <span className="font-mono truncate" title={session.id}>
+              Session: {session.id.slice(0, 8)}...
+            </span>
+            <span className="truncate" title={session.project_dir}>
+              📁 {session.project_dir}
+            </span>
+          </div>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <Badge variant="outline" className="text-xs">
