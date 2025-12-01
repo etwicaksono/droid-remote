@@ -74,7 +74,7 @@ export function SessionTimeline({ sessionId, limit = 30 }: SessionTimelineProps)
     <Card>
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
-          <CardTitle className="text-lg">Session Timeline</CardTitle>
+          <CardTitle className="text-base sm:text-lg">Session Timeline</CardTitle>
           <Button size="sm" variant="ghost" onClick={fetchTimeline}>
             <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
           </Button>
@@ -90,7 +90,7 @@ export function SessionTimeline({ sessionId, limit = 30 }: SessionTimelineProps)
             {/* Timeline line */}
             <div className="absolute left-[7px] top-2 bottom-2 w-0.5 bg-border" />
             
-            <div className="space-y-3">
+            <div className="space-y-2 sm:space-y-3">
               {items.map((item, i) => (
                 <div key={i} className="flex gap-3 relative">
                   {/* Dot */}
@@ -100,11 +100,11 @@ export function SessionTimeline({ sessionId, limit = 30 }: SessionTimelineProps)
                   
                   {/* Content */}
                   <div className="flex-1 min-w-0 pb-2">
-                    <div className="flex items-center gap-2">
-                      <Badge variant="outline" className="text-xs">
+                    <div className="flex flex-wrap items-center gap-1 sm:gap-2">
+                      <Badge variant="outline" className="text-[10px] sm:text-xs">
                         {item.type}
                       </Badge>
-                      <span className="text-xs text-muted-foreground">
+                      <span className="text-[10px] sm:text-xs text-muted-foreground">
                         {formatRelativeTime(item.created_at)}
                       </span>
                     </div>
