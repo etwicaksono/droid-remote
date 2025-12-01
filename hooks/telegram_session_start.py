@@ -69,7 +69,7 @@ def main():
         session_id=session_id,
         session_name=session_name,
         message=message,
-        notification_type="start"
+        notification_type="info"  # Use valid NotificationType enum value
     )
     
     logger.info(f"Session {session_name} ({session_id}) started")

@@ -79,7 +79,7 @@ def main():
         session_id=session_id,
         session_name=session_name,
         message=message,
-        notification_type="stop",
+        notification_type="info",  # Use valid NotificationType enum value
         buttons=[]
     )
     
