@@ -149,16 +149,20 @@ async def notify_session(session_id: str, data: NotifyRequest, request: Request)
     request_id = str(uuid.uuid4())
     needs_action = data.type == NotificationType.PERMISSION or (data.buttons and len(data.buttons) > 0)
     
-    pending = PendingRequest(
-        id=request_id,
-        type=data.type,
-        message=data.message,
-        buttons=[Button(**b.model_dump()) for b in data.buttons] if data.buttons else []
-    )
+    logger.info(f"Notify: type={data.type}, needs_action={needs_action}, buttons={len(data.buttons) if data.buttons else 0}")
     
     # Only set pending_request if user action is needed
     if needs_action:
+        pending = PendingRequest(
+            id=request_id,
+            type=data.type,
+            message=data.message,
+            buttons=[Button(**b.model_dump()) for b in data.buttons] if data.buttons else []
+        )
         session_registry.set_pending_request(session_id, pending)
+    else:
+        # Clear any existing pending_request for this session (info notifications should clear it)
+        session_registry.set_pending_request(session_id, None)
     
     # Send to Telegram
     bot_manager = request.app.state.bot_manager()
@@ -171,10 +175,7 @@ async def notify_session(session_id: str, data: NotifyRequest, request: Request)
             type=data.type,
             buttons=data.buttons
         )
-        message_id = await bot_manager.send_notification(notification)
-        if message_id:
-            pending.telegram_message_id = message_id
-            session_registry.set_pending_request(session_id, pending)
+        await bot_manager.send_notification(notification)
     
     # Emit Socket.IO events
     sio = getattr(request.app.state, "sio", None)
