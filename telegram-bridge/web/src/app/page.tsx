@@ -89,16 +89,18 @@ export default function DashboardPage() {
         </header>
 
         {/* Content Area */}
-        <div className="flex-1 overflow-y-auto">
-          <div className="min-h-full p-4">
+        <div className="flex-1 flex flex-col overflow-hidden">
+          <div className="flex-1 flex flex-col p-4 min-h-0">
             {currentView === 'session' && selectedSession && (
               <Suspense fallback={<SessionSkeleton />}>
-                <SessionCard session={selectedSession} />
+                <div className="flex-1 flex flex-col min-h-0">
+                  <SessionCard session={selectedSession} />
+                </div>
               </Suspense>
             )}
 
             {currentView === 'session' && !selectedSession && (
-              <div className="flex items-center justify-center min-h-[calc(100vh-5rem)] text-gray-500">
+              <div className="flex-1 flex items-center justify-center text-gray-500">
                 <div className="text-center">
                   <p className="text-lg mb-2">No session selected</p>
                   <p className="text-sm">Select a session from the sidebar or create a new one</p>
