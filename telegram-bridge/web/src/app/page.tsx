@@ -65,9 +65,9 @@ export default function DashboardPage() {
       />
 
       {/* Main Content */}
-      <main className="flex-1 flex flex-col overflow-hidden">
+      <main className="flex-1 flex flex-col overflow-hidden pl-0 md:pl-0">
         {/* Header */}
-        <header className="flex items-center justify-between p-4 border-b border-gray-800">
+        <header className="flex items-center justify-between p-4 pl-16 md:pl-4 border-b border-gray-800">
           <div>
             <h1 className="text-lg font-semibold">
               {currentView === 'session' && selectedSession
@@ -83,27 +83,29 @@ export default function DashboardPage() {
         </header>
 
         {/* Content Area */}
-        <div className="flex-1 overflow-y-auto p-4">
-          {currentView === 'session' && selectedSession && (
-            <Suspense fallback={<SessionSkeleton />}>
-              <SessionCard session={selectedSession} />
-            </Suspense>
-          )}
+        <div className="flex-1 overflow-y-auto">
+          <div className="min-h-full p-4">
+            {currentView === 'session' && selectedSession && (
+              <Suspense fallback={<SessionSkeleton />}>
+                <SessionCard session={selectedSession} />
+              </Suspense>
+            )}
 
-          {currentView === 'session' && !selectedSession && (
-            <div className="flex items-center justify-center h-full text-gray-500">
-              <div className="text-center">
-                <p className="text-lg mb-2">No session selected</p>
-                <p className="text-sm">Select a session from the sidebar or create a new one</p>
+            {currentView === 'session' && !selectedSession && (
+              <div className="flex items-center justify-center min-h-[calc(100vh-5rem)] text-gray-500">
+                <div className="text-center">
+                  <p className="text-lg mb-2">No session selected</p>
+                  <p className="text-sm">Select a session from the sidebar or create a new one</p>
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {currentView === 'new' && <TaskForm />}
+            {currentView === 'new' && <TaskForm />}
 
-          {currentView === 'permissions' && <PermissionHistory />}
+            {currentView === 'permissions' && <PermissionHistory />}
 
-          {currentView === 'history' && <TaskHistory limit={20} />}
+            {currentView === 'history' && <TaskHistory limit={20} />}
+          </div>
         </div>
       </main>
     </div>
