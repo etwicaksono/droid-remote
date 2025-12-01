@@ -25,11 +25,17 @@ export default function DashboardPage() {
         const response = await fetch(`${API_BASE}/sessions`)
         if (response.ok) {
           const fetchedSessions: Session[] = await response.json()
-          setSessions(fetchedSessions)
+          // Sort by last_activity (most recent first)
+          const sortedSessions = fetchedSessions.sort((a, b) => {
+            const dateA = new Date(a.last_activity).getTime()
+            const dateB = new Date(b.last_activity).getTime()
+            return dateB - dateA // Descending order (newest first)
+          })
+          setSessions(sortedSessions)
           
-          // Auto-select first session if none selected
-          if (!selectedSessionId && fetchedSessions.length > 0 && fetchedSessions[0]) {
-            setSelectedSessionId(fetchedSessions[0].id)
+          // Auto-select first session if none selected (will be most recent)
+          if (!selectedSessionId && sortedSessions.length > 0 && sortedSessions[0]) {
+            setSelectedSessionId(sortedSessions[0].id)
           }
         }
       } catch (error) {

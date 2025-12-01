@@ -38,7 +38,13 @@ export function AppSidebar({
         const response = await fetch(`${API_BASE}/sessions`)
         if (response.ok) {
           const fetchedSessions: Session[] = await response.json()
-          setSessions(fetchedSessions)
+          // Sort by last_activity (most recent first)
+          const sortedSessions = fetchedSessions.sort((a, b) => {
+            const dateA = new Date(a.last_activity).getTime()
+            const dateB = new Date(b.last_activity).getTime()
+            return dateB - dateA // Descending order (newest first)
+          })
+          setSessions(sortedSessions)
         }
       } catch (error) {
         console.error('Failed to fetch sessions:', error)

@@ -112,6 +112,10 @@ export function SessionCard({ session }: SessionCardProps) {
 
   // Load chat history and settings from API on mount
   useEffect(() => {
+    // Clear chat history immediately when session changes
+    setChatHistory([])
+    setSettingsLoaded(false)
+    
     const loadData = async () => {
       try {
         // Load chat history
@@ -130,6 +134,8 @@ export function SessionCard({ session }: SessionCardProps) {
                 turns: msg.num_turns
               } : undefined
             })))
+          } else {
+            setChatHistory([])
           }
         }
         
