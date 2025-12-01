@@ -47,18 +47,21 @@ export function TaskHistory({ sessionId, limit = 10 }: TaskHistoryProps) {
   return (
     <Card>
       <CardHeader className="pb-2">
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-lg">Task History</CardTitle>
-          <div className="flex gap-2">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+          <CardTitle className="text-base sm:text-lg">Task History</CardTitle>
+          <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
             <Button
               size="sm"
               variant={showFailed ? 'default' : 'outline'}
               onClick={() => setShowFailed(!showFailed)}
+              className="w-full sm:w-auto"
             >
-              {showFailed ? 'All Tasks' : 'Failed Only'}
+              <span className="hidden sm:inline">{showFailed ? 'Show All Tasks' : 'Show Failed Only'}</span>
+              <span className="sm:hidden">{showFailed ? 'All' : 'Failed'}</span>
             </Button>
-            <Button size="sm" variant="ghost" onClick={fetchTasks}>
+            <Button size="sm" variant="ghost" onClick={fetchTasks} className="w-full sm:w-auto">
               <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+              <span className="ml-2 sm:hidden">Refresh</span>
             </Button>
           </div>
         </div>
@@ -104,7 +107,7 @@ function TaskItem({ task }: { task: Task }) {
         </Badge>
       </div>
 
-      <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
+      <div className="flex flex-wrap items-center gap-2 sm:gap-4 mt-2 text-xs text-muted-foreground">
         <span className="flex items-center gap-1">
           <Clock className="h-3 w-3" />
           {formatRelativeTime(task.created_at)}
@@ -136,7 +139,7 @@ function TaskItem({ task }: { task: Task }) {
             </div>
           )}
           {task.result && (
-            <pre className="text-xs bg-muted p-2 rounded overflow-auto max-h-40 whitespace-pre-wrap">
+            <pre className="text-xs bg-muted p-2 rounded overflow-auto max-h-32 sm:max-h-40 whitespace-pre-wrap">
               {task.result}
             </pre>
           )}
