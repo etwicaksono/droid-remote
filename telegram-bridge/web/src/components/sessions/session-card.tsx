@@ -302,34 +302,35 @@ export function SessionCard({ session }: SessionCardProps) {
 
   return (
     <Card className="overflow-hidden">
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-        <div className="flex items-center gap-2">
-          <span className={cn('h-2 w-2 rounded-full', statusConfig.color)} />
-          <span className="font-semibold">{session.name}</span>
+      <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between space-y-2 sm:space-y-0 pb-2">
+        <div className="flex items-center gap-2 min-w-0 w-full sm:w-auto">
+          <span className={cn('h-2 w-2 rounded-full shrink-0', statusConfig.color)} />
+          <span className="font-semibold truncate">{session.name}</span>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <Badge variant="outline" className="text-xs">
             <Radio className="h-3 w-3 mr-1" />
-            {controlConfig.label}
+            <span className="hidden sm:inline">{controlConfig.label}</span>
+            <span className="sm:hidden">{controlConfig.label.split(' ')[0]}</span>
           </Badge>
           <Badge variant={statusConfig.variant}>{statusConfig.label}</Badge>
         </div>
       </CardHeader>
 
       <CardContent className="space-y-3">
-        <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-          <span className="flex items-center gap-1">
-            <Folder className="h-3 w-3" />
-            {session.project_dir}
+        <div className="flex flex-col sm:flex-row sm:flex-wrap gap-1 sm:gap-x-4 sm:gap-y-1 text-xs text-muted-foreground">
+          <span className="flex items-center gap-1 truncate">
+            <Folder className="h-3 w-3 shrink-0" />
+            <span className="truncate">{session.project_dir}</span>
           </span>
           <span className="flex items-center gap-1">
-            <Clock className="h-3 w-3" />
+            <Clock className="h-3 w-3 shrink-0" />
             {formatRelativeTime(session.last_activity)}
           </span>
         </div>
 
         {/* Control State Actions */}
-        <div className="flex gap-2">
+        <div className="flex flex-col sm:flex-row gap-2">
           {canHandoff && (
             <Button size="sm" variant="outline" onClick={handleHandoff} disabled={loading}>
               <Play className="h-3 w-3 mr-1" />
@@ -507,7 +508,7 @@ function ChatBubble({ message }: { message: ChatMessage }) {
     <div className={cn('flex', isUser ? 'justify-end' : 'justify-start')}>
       <div
         className={cn(
-          'max-w-[85%] rounded-lg px-3 py-2',
+          'max-w-[90%] sm:max-w-[85%] rounded-lg px-3 py-2',
           isUser
             ? 'bg-blue-600 text-white'
             : message.status === 'error'
