@@ -101,10 +101,11 @@ export function SessionCard({ session }: SessionCardProps) {
   const [taskPrompt, setTaskPrompt] = useState('')
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([])
   const [executing, setExecuting] = useState(false)
+  const [currentTaskId, setCurrentTaskId] = useState<string | null>(null)
   const [selectedModel, setSelectedModel] = useState('claude-sonnet-4-5-20250929')
   const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort>('medium')
   const [settingsLoaded, setSettingsLoaded] = useState(false)
-  const { respond, approve, deny, handoff, release, executeTask, addChatMessage, loading } = useSessionActions()
+  const { respond, approve, deny, handoff, release, executeTask, cancelTask, addChatMessage, loading } = useSessionActions()
 
   const currentModel = AVAILABLE_MODELS.find(m => m.id === selectedModel)
   const supportsReasoning = currentModel?.reasoning ?? false
@@ -219,6 +220,9 @@ export function SessionCard({ session }: SessionCardProps) {
         reasoningEffort: supportsReasoning ? reasoningEffort : undefined,
       })
       
+      // Store task_id for cancellation
+      setCurrentTaskId(result.task_id)
+      
       // Parse the result to get human-readable content
       const responseContent = parseResultContent(result.result, result.error)
 
@@ -268,6 +272,39 @@ export function SessionCard({ session }: SessionCardProps) {
       } catch {}
     } finally {
       setExecuting(false)
+      setCurrentTaskId(null)
+    }
+  }
+
+  const handleCancelTask = async () => {
+    if (!currentTaskId) return
+    
+    try {
+      await cancelTask(currentTaskId)
+      
+      const cancelMessage: ChatMessage = {
+        id: (Date.now() + 1).toString(),
+        type: 'assistant',
+        content: 'Task cancelled by user',
+        timestamp: new Date(),
+        status: 'error',
+      }
+      setChatHistory(prev => [...prev, cancelMessage])
+      
+      // Save cancel message to API
+      try {
+        await addChatMessage({
+          sessionId: session.id,
+          type: 'assistant',
+          content: 'Task cancelled by user',
+          status: 'error',
+        })
+      } catch {}
+    } catch (error) {
+      console.error('Failed to cancel task:', error)
+    } finally {
+      setExecuting(false)
+      setCurrentTaskId(null)
     }
   }
 
@@ -438,19 +475,28 @@ export function SessionCard({ session }: SessionCardProps) {
                   }}
                 />
 
-                {/* Send Button */}
-                <Button 
-                  type="submit" 
-                  disabled={!taskPrompt.trim() || executing}
-                  size="icon"
-                  className="h-10 w-10 shrink-0"
-                >
-                  {executing ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
+                {/* Send/Cancel Buttons */}
+                {executing ? (
+                  <Button 
+                    type="button"
+                    onClick={handleCancelTask}
+                    size="icon"
+                    variant="destructive"
+                    className="h-10 w-10 shrink-0"
+                    title="Cancel task"
+                  >
+                    <Square className="h-4 w-4" />
+                  </Button>
+                ) : (
+                  <Button 
+                    type="submit" 
+                    disabled={!taskPrompt.trim()}
+                    size="icon"
+                    className="h-10 w-10 shrink-0"
+                  >
                     <Play className="h-4 w-4" />
-                  )}
-                </Button>
+                  </Button>
+                )}
               </form>
 
               {/* Thinking Mode - Below Input (Conditional) */}

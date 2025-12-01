@@ -107,6 +107,17 @@ export function useSessionActions() {
     []
   )
 
+  const cancelTask = useCallback(
+    async (taskId: string) => {
+      const res = await fetch(`${API_BASE}/tasks/${taskId}/cancel`, {
+        method: 'POST',
+      })
+      if (!res.ok) throw new Error('Failed to cancel task')
+      return await res.json()
+    },
+    []
+  )
+
   const getQueue = useCallback(
     async ({ sessionId }: SessionIdParam) => {
       const res = await fetch(`${API_BASE}/sessions/${sessionId}/queue`)
@@ -204,6 +215,7 @@ export function useSessionActions() {
     handoff,
     release,
     executeTask,
+    cancelTask,
     getQueue,
     addToQueue,
     clearQueue,

@@ -295,6 +295,24 @@ async def execute_task(data: TaskExecuteRequest, request: Request):
     )
 
 
+@router.post("/tasks/{task_id}/cancel")
+async def cancel_task(task_id: str, request: Request):
+    """Cancel a running task."""
+    success = task_executor.cancel_task(task_id)
+    
+    if not success:
+        raise HTTPException(status_code=404, detail="Task not found or not running")
+    
+    # Notify cancellation
+    sio = getattr(request.app.state, "sio", None)
+    if sio:
+        await sio.emit("task_cancelled", {
+            "task_id": task_id
+        })
+    
+    return {"success": True, "message": "Task cancelled"}
+
+
 @router.get("/tasks/{project_dir:path}/session")
 async def get_project_session(project_dir: str):
     """Get the stored session ID for a project (for continuation)."""
