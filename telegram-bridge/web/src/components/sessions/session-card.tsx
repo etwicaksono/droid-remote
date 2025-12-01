@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, type FormEvent } from 'react'
-import { Clock, Folder, Terminal, Radio, Play, Square, Loader2, Brain } from 'lucide-react'
+import { Clock, Folder, Terminal, Radio, Play, Square, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -403,46 +403,33 @@ export function SessionCard({ session }: SessionCardProps) {
               </div>
             )}
 
-            {/* Model Settings - Always Visible */}
-            <div className="space-y-2">
-              <div className="flex flex-col sm:flex-row gap-2">
-                <div className="flex-1 space-y-1">
-                  <label className="text-xs font-medium">Model</label>
-                  <select
-                    value={selectedModel}
-                    onChange={(e) => setSelectedModel(e.target.value)}
-                    className="w-full h-8 px-2 text-sm rounded-md bg-background border border-border"
-                  >
-                    {AVAILABLE_MODELS.map((model) => (
-                      <option key={model.id} value={model.id}>
-                        {model.name} {model.reasoning ? '(thinking)' : ''}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                
-                {supportsReasoning && (
-                  <div className="flex-1 space-y-1">
-                    <label className="text-xs font-medium flex items-center gap-1">
-                      <Brain className="h-3 w-3" />
-                      Thinking Mode
-                    </label>
-                    <div className="flex gap-1">
-                      {REASONING_LEVELS.map((level) => (
-                        <Button
-                          key={level.id}
-                          size="sm"
-                          variant={reasoningEffort === level.id ? 'default' : 'outline'}
-                          className="h-7 px-2 text-xs flex-1"
-                          onClick={() => setReasoningEffort(level.id)}
-                        >
-                          {level.name}
-                        </Button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
+            {/* Model Settings - Compact Inline */}
+            <div className="flex items-center gap-2 text-xs">
+              <select
+                value={selectedModel}
+                onChange={(e) => setSelectedModel(e.target.value)}
+                className="flex-1 h-8 px-2 text-sm rounded-md bg-muted border border-border"
+              >
+                {AVAILABLE_MODELS.map((model) => (
+                  <option key={model.id} value={model.id}>
+                    {model.name}
+                  </option>
+                ))}
+              </select>
+              
+              {supportsReasoning && (
+                <select
+                  value={reasoningEffort}
+                  onChange={(e) => setReasoningEffort(e.target.value as ReasoningEffort)}
+                  className="h-8 px-2 text-sm rounded-md bg-muted border border-border"
+                >
+                  {REASONING_LEVELS.map((level) => (
+                    <option key={level.id} value={level.id}>
+                      {level.name}
+                    </option>
+                  ))}
+                </select>
+              )}
             </div>
 
             {/* Input Form */}
