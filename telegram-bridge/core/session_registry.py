@@ -275,9 +275,10 @@ class SessionRegistry:
         if not session:
             return None
         
-        # Only allow handoff from CLI states
-        if session.control_state not in [ControlState.CLI_ACTIVE, ControlState.CLI_WAITING]:
-            logger.warning(f"Cannot handoff session {session_id}: not in CLI state")
+        # Allow handoff from CLI states or RELEASED (re-taking control after release)
+        allowed_states = [ControlState.CLI_ACTIVE, ControlState.CLI_WAITING, ControlState.RELEASED]
+        if session.control_state not in allowed_states:
+            logger.warning(f"Cannot handoff session {session_id}: state is {session.control_state}, expected one of {allowed_states}")
             return None
         
         return self.update_control_state(session_id, ControlState.REMOTE_ACTIVE)
