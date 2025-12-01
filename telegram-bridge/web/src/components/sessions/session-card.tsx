@@ -408,22 +408,7 @@ export function SessionCard({ session }: SessionCardProps) {
           </span>
         </div>
 
-        {/* Control State Actions */}
-        <div className="flex flex-col sm:flex-row gap-2 shrink-0">
-          {canHandoff && (
-            <Button size="sm" variant="outline" onClick={handleHandoff} disabled={loading}>
-              <Play className="h-3 w-3 mr-1" />
-              Take Control
-            </Button>
-          )}
-          {isRemoteControlled && (
-            <Button size="sm" variant="outline" onClick={handleRelease} disabled={loading}>
-              <Square className="h-3 w-3 mr-1" />
-              Release to CLI
-            </Button>
-          )}
-        </div>
-
+        {/* Pending Request */}
         {hasPendingRequest && session.pending_request && (
           <div className="rounded-md bg-muted p-3 shrink-0">
             <p className="text-sm whitespace-pre-wrap">{session.pending_request.message}</p>
@@ -463,109 +448,132 @@ export function SessionCard({ session }: SessionCardProps) {
           </form>
         )}
 
-        {/* Task execution form (Remote Control mode) */}
-        {isRemoteControlled && (
-          <div className="flex-1 flex flex-col pt-2 border-t border-border min-h-0 overflow-hidden">
-            {/* Chat History - scrollable area */}
-            <div className="flex-1 overflow-y-auto overflow-x-hidden space-y-3 min-h-0">
-              {chatHistory.length === 0 && !executing && (
-                <div className="text-center text-muted-foreground text-sm py-8">
-                  Start a conversation...
+        {/* Chat Area - Always visible for consistent layout */}
+        <div className="flex-1 flex flex-col pt-2 border-t border-border min-h-0 overflow-hidden">
+          {/* Chat History - scrollable area */}
+          <div className="flex-1 overflow-y-auto overflow-x-hidden space-y-3 min-h-0">
+            {chatHistory.length === 0 && !executing && (
+              <div className="text-center text-muted-foreground text-sm py-8">
+                {isRemoteControlled ? 'Start a conversation...' : 'Take control to start a conversation'}
+              </div>
+            )}
+            {chatHistory.map((msg) => (
+              <ChatBubble key={msg.id} message={msg} />
+            ))}
+            {executing && (
+              <div className="flex justify-start">
+                <div className="bg-muted rounded-lg px-3 py-2 flex items-center gap-2 text-sm text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Droid is thinking...
                 </div>
-              )}
-              {chatHistory.map((msg) => (
-                <ChatBubble key={msg.id} message={msg} />
-              ))}
-              {executing && (
-                <div className="flex justify-start">
-                  <div className="bg-muted rounded-lg px-3 py-2 flex items-center gap-2 text-sm text-muted-foreground">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Droid is thinking...
-                  </div>
-                </div>
-              )}
-            </div>
+              </div>
+            )}
+          </div>
 
-            {/* Input Form - always at bottom */}
-            <div className="pt-3 space-y-2">
-              <form className="flex gap-2" onSubmit={handleTaskSubmit}>
-                {/* Model Selector - Inline Left */}
-                <select
-                  value={selectedModel}
-                  onChange={(e) => setSelectedModel(e.target.value)}
-                  className="h-10 px-3 text-sm rounded-md bg-muted border border-border hover:bg-muted/80 transition-colors"
-                  disabled={executing}
-                >
-                  {AVAILABLE_MODELS.map((model) => (
-                    <option key={model.id} value={model.id}>
-                      {model.name}
-                    </option>
-                  ))}
-                </select>
-
-                {/* Text Input */}
-                <Textarea
-                  placeholder="Message..."
-                  rows={1}
-                  value={taskPrompt}
-                  onChange={(e) => setTaskPrompt(e.target.value)}
-                  disabled={executing}
-                  className="flex-1 min-h-[40px] resize-none"
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                      e.preventDefault()
-                      if (taskPrompt.trim() && !executing) {
-                        handleTaskSubmit(e as unknown as FormEvent<HTMLFormElement>)
-                      }
-                    }
-                  }}
-                />
-
-                {/* Send/Cancel Buttons */}
-                {executing ? (
-                  <Button 
-                    type="button"
-                    onClick={handleCancelTask}
-                    size="icon"
-                    variant="destructive"
-                    className="h-10 w-10 shrink-0"
-                    title="Cancel task"
-                  >
-                    <Square className="h-4 w-4" />
-                  </Button>
-                ) : (
-                  <Button 
-                    type="submit" 
-                    disabled={!taskPrompt.trim()}
-                    size="icon"
-                    className="h-10 w-10 shrink-0"
-                  >
-                    <Play className="h-4 w-4" />
-                  </Button>
-                )}
-              </form>
-
-              {/* Thinking Mode - Below Input (Conditional) */}
-              {supportsReasoning && (
-                <div className="flex items-center gap-2 pl-1">
-                  <span className="text-xs text-muted-foreground">Thinking:</span>
+          {/* Input Form - always at bottom */}
+          <div className="pt-3 space-y-2">
+            {isRemoteControlled ? (
+              <>
+                <form className="flex gap-2" onSubmit={handleTaskSubmit}>
+                  {/* Model Selector - Inline Left */}
                   <select
-                    value={reasoningEffort}
-                    onChange={(e) => setReasoningEffort(e.target.value as ReasoningEffort)}
-                    className="h-7 px-2 text-xs rounded-md bg-muted border border-border hover:bg-muted/80 transition-colors"
+                    value={selectedModel}
+                    onChange={(e) => setSelectedModel(e.target.value)}
+                    className="h-10 px-3 text-sm rounded-md bg-muted border border-border hover:bg-muted/80 transition-colors"
                     disabled={executing}
                   >
-                    {REASONING_LEVELS.map((level) => (
-                      <option key={level.id} value={level.id}>
-                        {level.name}
+                    {AVAILABLE_MODELS.map((model) => (
+                      <option key={model.id} value={model.id}>
+                        {model.name}
                       </option>
                     ))}
                   </select>
+
+                  {/* Text Input */}
+                  <Textarea
+                    placeholder="Message..."
+                    rows={1}
+                    value={taskPrompt}
+                    onChange={(e) => setTaskPrompt(e.target.value)}
+                    disabled={executing}
+                    className="flex-1 min-h-[40px] resize-none"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault()
+                        if (taskPrompt.trim() && !executing) {
+                          handleTaskSubmit(e as unknown as FormEvent<HTMLFormElement>)
+                        }
+                      }
+                    }}
+                  />
+
+                  {/* Send/Cancel Buttons */}
+                  {executing ? (
+                    <Button 
+                      type="button"
+                      onClick={handleCancelTask}
+                      size="icon"
+                      variant="destructive"
+                      className="h-10 w-10 shrink-0"
+                      title="Cancel task"
+                    >
+                      <Square className="h-4 w-4" />
+                    </Button>
+                  ) : (
+                    <Button 
+                      type="submit" 
+                      disabled={!taskPrompt.trim()}
+                      size="icon"
+                      className="h-10 w-10 shrink-0"
+                    >
+                      <Play className="h-4 w-4" />
+                    </Button>
+                  )}
+                </form>
+
+                {/* Control Actions and Thinking Mode */}
+                <div className="flex items-center justify-between gap-2">
+                  <Button size="sm" variant="outline" onClick={handleRelease} disabled={loading}>
+                    <Square className="h-3 w-3 mr-1" />
+                    Release to CLI
+                  </Button>
+                  
+                  {supportsReasoning && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-muted-foreground">Thinking:</span>
+                      <select
+                        value={reasoningEffort}
+                        onChange={(e) => setReasoningEffort(e.target.value as ReasoningEffort)}
+                        className="h-7 px-2 text-xs rounded-md bg-muted border border-border hover:bg-muted/80 transition-colors"
+                        disabled={executing}
+                      >
+                        {REASONING_LEVELS.map((level) => (
+                          <option key={level.id} value={level.id}>
+                            {level.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
+              </>
+            ) : (
+              <div className="flex gap-2">
+                {canHandoff && (
+                  <Button onClick={handleHandoff} disabled={loading} className="flex-1">
+                    <Play className="h-4 w-4 mr-2" />
+                    Take Control
+                  </Button>
+                )}
+                {!canHandoff && (
+                  <div className="flex-1 h-10 flex items-center justify-center text-sm text-muted-foreground bg-muted rounded-md">
+                    CLI is active
+                  </div>
+                )}
+              </div>
+            )}
           </div>
-        )}
+        </div>
       </CardContent>
     </Card>
   )
