@@ -274,7 +274,7 @@ async def execute_task(data: TaskExecuteRequest, request: Request):
     
     # Execute the task
     # Determine which session_id to use:
-    # 1. If there's an active CLI session for this project → use its session_id
+    # 1. If there's an ACTIVE (running) CLI session for this project → use its session_id
     # 2. Otherwise, let task_executor manage via _session_map
     
     droid_session_id = None
@@ -283,10 +283,15 @@ async def execute_task(data: TaskExecuteRequest, request: Request):
     if data.session_id:
         session = session_registry.get(data.session_id)
         if session and session.project_dir == data.project_dir:
-            # This is an active CLI session for this project
-            # The session_id IS the droid session_id from Factory.ai
-            droid_session_id = data.session_id
-            logger.info(f"Using CLI session {droid_session_id} for task execution")
+            # Only use CLI session if it's still running
+            # Don't use stopped/closed sessions (they're expired on Factory.ai)
+            if session.status == 'running':
+                # This is an ACTIVE CLI session for this project
+                # The session_id IS the droid session_id from Factory.ai
+                droid_session_id = data.session_id
+                logger.info(f"Using active CLI session {droid_session_id} for task execution")
+            else:
+                logger.info(f"Session {data.session_id} is {session.status}, will use _session_map instead")
     
     result = await task_executor.execute_task(
         task_id=task_id,
