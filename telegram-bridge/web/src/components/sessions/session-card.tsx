@@ -326,12 +326,13 @@ export function SessionCard({ session }: SessionCardProps) {
       const result = await handoff({ sessionId: session.id })
       if (!result.success) {
         setActionError(result.error || 'Failed to take control')
+        setControlAction(null) // Clear on error only
       }
+      // Don't clear controlAction on success - wait for state change
     } catch (error) {
       console.error('Handoff failed:', error)
       setActionError(error instanceof Error ? error.message : 'Failed to take control')
-    } finally {
-      setControlAction(null)
+      setControlAction(null) // Clear on error only
     }
   }
 
@@ -339,12 +340,26 @@ export function SessionCard({ session }: SessionCardProps) {
     setControlAction('release')
     try {
       await release({ sessionId: session.id })
+      // Don't clear controlAction on success - wait for state change
     } catch (error) {
       console.error('Release failed:', error)
-    } finally {
-      setControlAction(null)
+      setControlAction(null) // Clear on error only
     }
   }
+
+  // Clear loading overlay when control state actually changes
+  useEffect(() => {
+    if (controlAction) {
+      // If we were taking control and now we're remote_active, clear
+      if (controlAction === 'handoff' && controlState === 'remote_active') {
+        setControlAction(null)
+      }
+      // If we were releasing and now we're not remote_active, clear
+      if (controlAction === 'release' && controlState !== 'remote_active') {
+        setControlAction(null)
+      }
+    }
+  }, [controlState, controlAction])
 
   const handleCopySessionId = async () => {
     try {
