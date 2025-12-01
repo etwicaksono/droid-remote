@@ -106,7 +106,7 @@ async def update_session(session_id: str, data: UpdateSessionRequest, request: R
 
 
 @router.delete("/sessions/{session_id}", dependencies=[Depends(verify_secret)])
-async def delete_session(session_id: str):
+async def delete_session(session_id: str, request: Request):
     """Delete a session"""
     success = session_registry.remove(session_id)
     if not success:
@@ -114,6 +114,12 @@ async def delete_session(session_id: str):
     
     # Cancel any pending waits
     message_queue.cancel_all_waits(session_id)
+    
+    # Emit sessions_update to notify connected clients
+    sio = getattr(request.app.state, "sio", None)
+    if sio:
+        sessions = session_registry.get_all()
+        await sio.emit("sessions_update", [s.model_dump(mode='json') for s in sessions])
     
     return {"success": True}
 
