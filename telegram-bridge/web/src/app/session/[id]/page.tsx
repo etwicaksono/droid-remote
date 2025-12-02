@@ -17,11 +17,13 @@ export default function SessionPage() {
   useEffect(() => {
     const fetchSession = async () => {
       try {
-        const response = await fetch(`${API_BASE}/sessions`)
+        // Fetch single session directly instead of all sessions
+        const response = await fetch(`${API_BASE}/sessions/${sessionId}`)
         if (response.ok) {
-          const sessions: Session[] = await response.json()
-          const found = sessions.find((s) => s.id === sessionId)
-          setSession(found || null)
+          const sessionData: Session = await response.json()
+          setSession(sessionData)
+        } else if (response.status === 404) {
+          setSession(null)
         }
       } catch (error) {
         console.error('Failed to fetch session:', error)
@@ -31,7 +33,8 @@ export default function SessionPage() {
     }
 
     fetchSession()
-    const interval = setInterval(fetchSession, 5000)
+    // Poll less frequently - sidebar already handles session list updates
+    const interval = setInterval(fetchSession, 10000)
     return () => clearInterval(interval)
   }, [sessionId])
 
