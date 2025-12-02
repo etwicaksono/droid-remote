@@ -2,6 +2,7 @@
 Task Executor - Spawns and manages droid exec processes
 """
 import os
+import re
 import json
 import asyncio
 import logging
@@ -227,7 +228,6 @@ class TaskExecutor:
     
     def _parse_activity_line(self, line: str) -> Optional[Dict[str, Any]]:
         """Parse a stderr line to extract tool activity information."""
-        import re
         
         # Common patterns from droid CLI output
         # [READ] (file, offset: X, limit: Y)
@@ -299,8 +299,9 @@ class TaskExecutor:
         # Add working directory
         cmd.extend(["--cwd", task.project_dir])
         
-        # Use JSON output for structured parsing
-        cmd.extend(["--output-format", "json"])
+        # Use text output for real-time activity streaming
+        # JSON format suppresses activity output
+        cmd.extend(["--output-format", "text"])
         
         # Add the prompt
         cmd.append(task.prompt)
@@ -320,26 +321,36 @@ class TaskExecutor:
         )
         task.process = process
         
-        # Stream stderr for real-time activity (droid outputs activity to stderr)
+        # Stream stdout for real-time activity (droid outputs activity to stdout in text mode)
         stderr_lines = []
         stdout_lines = []
+        final_result_lines = []
+        in_final_answer = False
         
         async def read_stderr():
             async for line in process.stderr:
                 line_str = line.decode("utf-8", errors="replace").rstrip()
                 if line_str:
                     stderr_lines.append(line_str)
-                    # Send progress update for activity lines
-                    if on_progress:
-                        activity = self._parse_activity_line(line_str)
-                        if activity:
-                            on_progress(activity)
         
         async def read_stdout():
+            nonlocal in_final_answer
             async for line in process.stdout:
                 line_str = line.decode("utf-8", errors="replace").rstrip()
                 if line_str:
                     stdout_lines.append(line_str)
+                    
+                    # Check if we're entering the final answer section
+                    if '# Answer' in line_str or line_str.startswith('Answer:'):
+                        in_final_answer = True
+                    
+                    if in_final_answer:
+                        final_result_lines.append(line_str)
+                    elif on_progress:
+                        # Send progress update for activity lines
+                        activity = self._parse_activity_line(line_str)
+                        if activity:
+                            on_progress(activity)
         
         # Read both streams concurrently
         await asyncio.gather(read_stderr(), read_stdout())
@@ -353,74 +364,56 @@ class TaskExecutor:
         if stderr_str:
             logger.warning(f"droid exec stderr: {stderr_str[:500]}")
         
-        # Parse JSON output
+        # Parse text output
         if stdout_str:
             logger.info(f"Raw stdout ({len(stdout_str)} chars): {stdout_str[:500]}")
             
-            # droid exec outputs JSON with --output-format json
-            # Clean the output - remove BOM and other invisible chars
-            clean_stdout = stdout_str.strip()
-            # Remove BOM if present
-            if clean_stdout.startswith('\ufeff'):
-                clean_stdout = clean_stdout[1:]
-            # Find the first { character (start of JSON)
-            json_start = clean_stdout.find('{')
-            if json_start > 0:
-                logger.info(f"Found JSON start at position {json_start}, skipping prefix: {repr(clean_stdout[:json_start])}")
-                clean_stdout = clean_stdout[json_start:]
+            # Extract the final answer from text output
+            result_content = '\n'.join(final_result_lines).strip()
             
-            # Try to parse the entire output first
-            output = None
-            try:
-                output = json.loads(clean_stdout)
-                logger.info(f"Parsed JSON successfully, type={output.get('type')}, has result={('result' in output)}")
-            except json.JSONDecodeError as e:
-                logger.warning(f"Full JSON parse failed: {e}")
-                logger.warning(f"First 50 chars repr: {repr(clean_stdout[:50])}")
-                # Try line by line as fallback
-                for i, line in enumerate(stdout_str.split('\n')):
-                    line = line.strip()
-                    if not line:
+            # Clean up markdown headers
+            if result_content.startswith('# Answer'):
+                result_content = result_content.replace('# Answer', '', 1).strip()
+            if result_content.startswith('Answer:'):
+                result_content = result_content.replace('Answer:', '', 1).strip()
+            
+            # If no "Answer" section found, use the last part of stdout as result
+            if not result_content:
+                # Try to find a meaningful result in the output
+                lines = stdout_str.split('\n')
+                # Skip activity lines and find content
+                content_lines = []
+                for line in reversed(lines):
+                    stripped = line.strip()
+                    if not stripped:
                         continue
-                    # Find JSON start in line
-                    j_start = line.find('{')
-                    if j_start >= 0:
-                        json_line = line[j_start:]
-                        try:
-                            parsed = json.loads(json_line)
-                            if "result" in parsed:
-                                output = parsed
-                                logger.info(f"Found JSON in line {i}: type={parsed.get('type')}")
-                                break
-                        except json.JSONDecodeError as e:
-                            logger.warning(f"Line {i} JSON parse failed: {e}, line={repr(json_line[:50])}")
-                            continue
+                    # Skip tool activity lines
+                    if stripped.startswith('[') and ']' in stripped[:20]:
+                        break
+                    content_lines.insert(0, stripped)
+                result_content = '\n'.join(content_lines).strip()
             
-            if output:
-                # Extract the actual result content
-                result_content = output.get("result", "")
-                logger.info(f"Extracted result: {result_content[:200] if result_content else 'empty'}")
-                
-                # Clean up markdown headers
-                if isinstance(result_content, str):
-                    result_content = result_content.replace("# Answer\n\n", "").strip()
-                
-                return TaskResult(
-                    success=not output.get("is_error", False),
-                    result=result_content,
-                    session_id=output.get("session_id"),
-                    duration_ms=output.get("duration_ms", 0),
-                    num_turns=output.get("num_turns", 0),
-                    raw_output=output
-                )
-            else:
-                # No valid JSON found, return raw output
-                logger.warning("No valid JSON found in output, returning raw")
-                return TaskResult(
-                    success=process.returncode == 0,
-                    result=stdout_str,
-                    error=stderr_str if process.returncode != 0 else None
-                )
+            # If still no content, use full stdout
+            if not result_content:
+                result_content = stdout_str
+            
+            # Try to extract session_id from output (look for pattern like "Session: xxx")
+            session_id = None
+            session_match = re.search(r'[Ss]ession[:\s]+([a-f0-9-]{36})', stdout_str)
+            if session_match:
+                session_id = session_match.group(1)
+                logger.info(f"Extracted session_id: {session_id}")
+            
+            logger.info(f"Extracted result ({len(result_content)} chars): {result_content[:200]}")
+            
+            return TaskResult(
+                success=process.returncode == 0,
+                result=result_content,
+                session_id=session_id,
+                duration_ms=0,
+                num_turns=0,
+                error=stderr_str if process.returncode != 0 else None
+            )
         else:
             return TaskResult(
                 success=False,
