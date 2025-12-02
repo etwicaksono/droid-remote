@@ -370,14 +370,12 @@ export function SessionCard({ session }: SessionCardProps) {
     }
     
     const handleCliThinking = (data: { session_id: string; prompt: string }) => {
-      // Check if this is for our session
       if (data.session_id === session.id) {
         setExecuting(true)
       }
     }
     
     const handleCliThinkingDone = (data: { session_id: string }) => {
-      // Check if this is for our session
       if (data.session_id === session.id) {
         setExecuting(false)
         setCurrentTaskId(null)
