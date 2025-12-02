@@ -159,7 +159,6 @@ def main():
     summary = None
     if transcript_path:
         try:
-            import os
             if os.path.exists(transcript_path):
                 with open(transcript_path, 'r', encoding='utf-8') as f:
                     lines = f.readlines()
