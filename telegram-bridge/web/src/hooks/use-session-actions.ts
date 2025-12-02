@@ -103,7 +103,10 @@ export function useSessionActions() {
             reasoning_effort: params.reasoningEffort,
           }),
         })
-        if (!res.ok) throw new Error('Task execution failed')
+        if (!res.ok) {
+          const errorData = await res.json().catch(() => ({}))
+          throw new Error(errorData.detail || errorData.error || 'Task execution failed')
+        }
         return await res.json()
       } finally {
         setLoading(false)

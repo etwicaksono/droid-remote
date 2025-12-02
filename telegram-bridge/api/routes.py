@@ -354,12 +354,16 @@ async def execute_task(data: TaskExecuteRequest, request: Request):
     
     droid_session_id = None
     
-    # Note: We don't use --session-id for Web UI tasks because:
-    # Factory.ai sessions expire after CLI response completes, so we can't
-    # continue them from Web UI. Each Web UI task creates a new Factory.ai
-    # session, but they share chat history in our database.
+    # Check if there's an active CLI session for this project
+    # If CLI is running, we can't execute via Web UI (CLI holds the Factory.ai session)
     if data.session_id:
-        logger.info(f"Web UI task for bridge session {data.session_id} - will create new Factory.ai session")
+        session = session_registry.get(data.session_id)
+        if session and session.status in ('running', 'waiting'):
+            # CLI session is active - can't run droid exec (session is locked by CLI process)
+            raise HTTPException(
+                status_code=409,  # Conflict
+                detail=f"CLI session is active (status: {session.status}). Use CLI to continue, or close CLI first."
+            )
     
     # Create progress callback to emit WebSocket events
     async def emit_progress(activity: dict):
