@@ -114,9 +114,17 @@ export function SessionCard({ session }: SessionCardProps) {
   const [controlAction, setControlAction] = useState<'handoff' | 'release' | null>(null)
   const { approve, deny, handoff, release, executeTask, cancelTask, addChatMessage, loading } = useSessionActions()
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
+  const chatContainerRef = useRef<HTMLDivElement | null>(null)
 
   const currentModel = AVAILABLE_MODELS.find(m => m.id === selectedModel)
   const supportsReasoning = currentModel?.reasoning ?? false
+
+  // Scroll chat to bottom
+  const scrollToBottom = useCallback(() => {
+    if (chatContainerRef.current) {
+      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight
+    }
+  }, [])
 
   const adjustTextareaHeight = useCallback(() => {
     const textarea = textareaRef.current
@@ -167,13 +175,15 @@ export function SessionCard({ session }: SessionCardProps) {
           if (settings.reasoning_effort) setReasoningEffort(settings.reasoning_effort as ReasoningEffort)
         }
         setSettingsLoaded(true)
+        // Scroll to bottom after loading
+        setTimeout(scrollToBottom, 100)
       } catch (err) {
         console.error('Failed to load session data:', err)
         setSettingsLoaded(true)
       }
     }
     loadData()
-  }, [session.id])
+  }, [session.id, scrollToBottom])
 
   // Save settings to API when they change (after initial load)
   useEffect(() => {
@@ -240,16 +250,46 @@ export function SessionCard({ session }: SessionCardProps) {
       }
     }
     
+    const handleChatUpdated = (data: { session_id: string; message: any }) => {
+      // Check if this is for our session
+      if (data.session_id === session.id) {
+        const newMessage: ChatMessage = {
+          id: String(data.message.id),
+          type: data.message.type as 'user' | 'assistant',
+          content: data.message.content,
+          timestamp: new Date(data.message.created_at),
+          status: data.message.status,
+          source: data.message.source || 'cli',
+          meta: data.message.duration_ms || data.message.num_turns ? {
+            duration: data.message.duration_ms,
+            turns: data.message.num_turns
+          } : undefined
+        }
+        // Add message if not already in history (avoid duplicates)
+        setChatHistory(prev => {
+          if (prev.some(msg => msg.id === newMessage.id)) return prev
+          return [...prev, newMessage]
+        })
+      }
+    }
+    
     socket.on('task_started', handleTaskStarted)
     socket.on('task_completed', handleTaskCompleted)
     socket.on('task_cancelled', handleTaskCancelled)
+    socket.on('chat_updated', handleChatUpdated)
     
     return () => {
       socket.off('task_started', handleTaskStarted)
       socket.off('task_completed', handleTaskCompleted)
       socket.off('task_cancelled', handleTaskCancelled)
+      socket.off('chat_updated', handleChatUpdated)
     }
   }, [session.project_dir, session.id, currentTaskId])
+
+  // Scroll to bottom when chat history changes
+  useEffect(() => {
+    scrollToBottom()
+  }, [chatHistory, scrollToBottom])
 
   const statusConfig = STATUS_CONFIG[session.status]
   const controlState = session.control_state || 'cli_active'
@@ -579,7 +619,7 @@ export function SessionCard({ session }: SessionCardProps) {
           ) : (
             <>
               {/* Chat History - scrollable area */}
-              <div className="flex-1 overflow-y-auto overflow-x-hidden space-y-3 min-h-0 pb-3">
+              <div ref={chatContainerRef} className="flex-1 overflow-y-auto overflow-x-hidden space-y-3 min-h-0 pb-3">
                 {chatHistory.map((msg) => (
                   <ChatBubble key={msg.id} message={msg} />
                 ))}

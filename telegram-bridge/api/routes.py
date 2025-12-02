@@ -678,6 +678,7 @@ async def add_chat_message(
     session_id: str,
     msg_type: str,
     content: str,
+    request: Request,
     status: Optional[str] = None,
     duration_ms: Optional[int] = None,
     num_turns: Optional[int] = None,
@@ -693,6 +694,15 @@ async def add_chat_message(
         num_turns=num_turns,
         source=source
     )
+    
+    # Emit WebSocket event so Web UI updates
+    sio = getattr(request.app.state, "sio", None)
+    if sio:
+        await sio.emit("chat_updated", {
+            "session_id": session_id,
+            "message": message
+        })
+    
     return {"success": True, "message": message}
 
 
