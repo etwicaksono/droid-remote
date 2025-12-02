@@ -1,1 +1,1 @@
-{"1b165ad5-cea6-4ce4-a4b9-4617a072f93b": "then i also find and issue, when i click session card it doesn't call any api"}
+{"1b165ad5-cea6-4ce4-a4b9-4617a072f93b": "when i click @telegram-bridge\\web\\src\\components\\layout\\app-sidebar.tsx line 250 it move to selected session, if i click at line 253 it do nothing, why?"}

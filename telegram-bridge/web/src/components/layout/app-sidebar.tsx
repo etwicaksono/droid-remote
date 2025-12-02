@@ -229,17 +229,17 @@ export function AppSidebar({ currentPath }: AppSidebarProps) {
                 return (
                   <div
                     key={session.id}
-                    className={cn(
-                      'relative w-full p-3 rounded-md transition-colors mb-1 group',
-                      isSelected
-                        ? 'bg-gray-800 text-white border-l-4 border-blue-500'
-                        : 'text-gray-400 hover:bg-gray-800/50 hover:text-white'
-                    )}
+                    className="relative mb-1 group"
                   >
                     <Link
                       href={`/session/${session.id}`}
                       onClick={() => setMobileOpen(false)}
-                      className="w-full text-left block"
+                      className={cn(
+                        'w-full text-left block p-3 rounded-md transition-colors',
+                        isSelected
+                          ? 'bg-gray-800 text-white border-l-4 border-blue-500'
+                          : 'text-gray-400 hover:bg-gray-800/50 hover:text-white'
+                      )}
                     >
                       {collapsed ? (
                         // Collapsed view: just indicator bar
