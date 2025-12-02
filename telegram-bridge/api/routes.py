@@ -15,7 +15,7 @@ from lib.config import TELEGRAM_TASK_RESULT_MAX_LENGTH, WEB_UI_URL
 from core.session_registry import session_registry
 from core.message_queue import message_queue
 from core.task_executor import task_executor
-from core.repositories import get_permission_repo, get_task_repo, get_event_repo, get_chat_repo, get_settings_repo
+from core.repositories import get_permission_repo, get_task_repo, get_event_repo, get_chat_repo, get_settings_repo, get_session_repo
 from core.models import (
     Session,
     SessionStatus,
@@ -305,7 +305,7 @@ async def execute_task(data: TaskExecuteRequest, request: Request):
             # Emit sessions_update so sidebar shows the new session
             if sio:
                 all_sessions = session_registry.get_all()
-                await sio.emit("sessions_update", [s.model_dump() for s in all_sessions])
+                await sio.emit("sessions_update", [s.model_dump(mode='json') for s in all_sessions])
         except Exception as e:
             logger.error(f"Failed to create pending session: {e}")
     
@@ -371,7 +371,7 @@ async def execute_task(data: TaskExecuteRequest, request: Request):
         
         # Update sidebar with correct sessions
         all_sessions = session_registry.get_all()
-        await sio.emit("sessions_update", [s.model_dump() for s in all_sessions])
+        await sio.emit("sessions_update", [s.model_dump(mode='json') for s in all_sessions])
     
     # Send Telegram notification
     bot_manager_getter = getattr(request.app.state, "bot_manager", None)
