@@ -60,10 +60,8 @@ export default function SessionPage() {
     )
   }
 
-  const title = session.name || session.project_dir?.split('/').pop() || 'Session'
-
   return (
-    <PageLayout title={title} currentPath={`/session/${sessionId}`}>
+    <PageLayout session={session} currentPath={`/session/${sessionId}`}>
       <div className="flex-1 flex flex-col min-h-0">
         <SessionCard session={session} />
       </div>

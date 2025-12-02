@@ -1,13 +1,12 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback, type FormEvent } from 'react'
-import { Clock, Folder, Terminal, Radio, Loader2, Copy, Check, ChevronRight, ChevronDown, Pencil } from 'lucide-react'
+import { Terminal, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
+import { Card, CardContent } from '@/components/ui/card'
 import { useSessionActions } from '@/hooks/use-session-actions'
 import { getSocket } from '@/lib/socket'
-import { cn, formatRelativeTime } from '@/lib/utils'
+import { cn } from '@/lib/utils'
 import { InputBox, DEFAULT_MODEL, DEFAULT_REASONING } from '@/components/chat/input-box'
 import type { Session, ControlState, ReasoningEffort } from '@/types'
 import modelsConfig from '@/config/models.json'
@@ -74,19 +73,6 @@ interface SessionCardProps {
   session: Session
 }
 
-const STATUS_CONFIG = {
-  running: { color: 'bg-yellow-500', label: 'Running', variant: 'warning' as const },
-  waiting: { color: 'bg-green-500', label: 'Waiting', variant: 'success' as const },
-  stopped: { color: 'bg-red-500', label: 'Stopped', variant: 'destructive' as const },
-}
-
-const CONTROL_STATE_CONFIG: Record<ControlState, { label: string; color: string; description: string }> = {
-  cli_active: { label: 'CLI Active', color: 'bg-blue-500', description: 'CLI is running' },
-  cli_waiting: { label: 'CLI Waiting', color: 'bg-blue-400', description: 'CLI at stop point' },
-  remote_active: { label: 'Remote Control', color: 'bg-purple-500', description: 'Under remote control' },
-  released: { label: 'Released', color: 'bg-gray-500', description: 'Waiting for CLI' },
-}
-
 interface ChatMessage {
   id: string
   type: 'user' | 'assistant'
@@ -105,7 +91,6 @@ export function SessionCard({ session }: SessionCardProps) {
   const [selectedModel, setSelectedModel] = useState(DEFAULT_MODEL)
   const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort>(DEFAULT_REASONING)
   const [settingsLoaded, setSettingsLoaded] = useState(false)
-  const [copiedSessionId, setCopiedSessionId] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
   const [controlAction, setControlAction] = useState<'handoff' | 'release' | null>(null)
   const [hasMoreMessages, setHasMoreMessages] = useState(false)
@@ -114,10 +99,6 @@ export function SessionCard({ session }: SessionCardProps) {
   // Local state for real-time updates (pending_request, control_state)
   const [pendingRequest, setPendingRequest] = useState(session.pending_request)
   const [localControlState, setLocalControlState] = useState(session.control_state)
-  const [headerExpanded, setHeaderExpanded] = useState(false)
-  const [isEditingName, setIsEditingName] = useState(false)
-  const [editingName, setEditingName] = useState(session.name)
-  const [sessionName, setSessionName] = useState(session.name)
   const { approve, deny, handoff, release, executeTask, cancelTask, addChatMessage, loading } = useSessionActions()
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const chatContainerRef = useRef<HTMLDivElement | null>(null)
@@ -164,9 +145,7 @@ export function SessionCard({ session }: SessionCardProps) {
   useEffect(() => {
     setPendingRequest(session.pending_request)
     setLocalControlState(session.control_state)
-    setSessionName(session.name)
-    setEditingName(session.name)
-  }, [session.pending_request, session.control_state, session.name])
+  }, [session.pending_request, session.control_state])
 
   // Listen for sessions_update to get real-time pending_request updates
   useEffect(() => {
@@ -177,7 +156,6 @@ export function SessionCard({ session }: SessionCardProps) {
       if (updated) {
         setPendingRequest(updated.pending_request)
         setLocalControlState(updated.control_state)
-        setSessionName(updated.name)
       }
     }
     
@@ -420,9 +398,7 @@ export function SessionCard({ session }: SessionCardProps) {
     }
   }, [chatHistory, scrollToBottom])
 
-  const statusConfig = STATUS_CONFIG[session.status]
   const controlState = localControlState || 'cli_active'
-  const controlConfig = CONTROL_STATE_CONFIG[controlState]
   const hasPendingRequest = pendingRequest !== null
   const isRemoteControlled = controlState === 'remote_active'
   const canHandoff = controlState === 'cli_active' || controlState === 'cli_waiting' || controlState === 'released'
@@ -621,52 +597,6 @@ export function SessionCard({ session }: SessionCardProps) {
     adjustTextareaHeight()
   }, [taskPrompt, isRemoteControlled, adjustTextareaHeight])
 
-  const handleCopySessionId = async () => {
-    try {
-      await navigator.clipboard.writeText(session.id)
-      setCopiedSessionId(true)
-      setTimeout(() => setCopiedSessionId(false), 2000)
-    } catch (error) {
-      console.error('Failed to copy session ID:', error)
-    }
-  }
-
-  const handleStartEditName = (e: React.MouseEvent) => {
-    e.stopPropagation()
-    setEditingName(sessionName)
-    setIsEditingName(true)
-  }
-
-  const handleRenameSession = async () => {
-    if (!editingName.trim() || editingName === sessionName) {
-      setIsEditingName(false)
-      return
-    }
-    
-    try {
-      const response = await fetch(
-        `${API_BASE}/sessions/${session.id}/rename?name=${encodeURIComponent(editingName.trim())}`,
-        { method: 'PATCH' }
-      )
-      if (response.ok) {
-        setSessionName(editingName.trim())
-      }
-    } catch (error) {
-      console.error('Failed to rename session:', error)
-    } finally {
-      setIsEditingName(false)
-    }
-  }
-
-  const handleEditNameKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      e.preventDefault()
-      handleRenameSession()
-    } else if (e.key === 'Escape') {
-      setIsEditingName(false)
-    }
-  }
-
   return (
     <Card className="overflow-hidden flex flex-col h-full relative">
       {/* Loading Overlay for Control Actions */}
@@ -680,91 +610,8 @@ export function SessionCard({ session }: SessionCardProps) {
           </div>
         </div>
       )}
-      
-      <CardHeader className="pb-2 shrink-0">
-        {/* Collapsed header row - always visible */}
-        <div 
-          className="flex items-center justify-between cursor-pointer group/header"
-          onClick={() => !isEditingName && setHeaderExpanded(prev => !prev)}
-        >
-          <div className="flex items-center gap-2 min-w-0 flex-1">
-            {headerExpanded ? (
-              <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
-            ) : (
-              <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
-            )}
-            <span className={cn('h-2 w-2 rounded-full shrink-0', statusConfig.color)} />
-            {isEditingName ? (
-              <input
-                type="text"
-                value={editingName}
-                onChange={(e) => setEditingName(e.target.value)}
-                onKeyDown={handleEditNameKeyDown}
-                onBlur={handleRenameSession}
-                onClick={(e) => e.stopPropagation()}
-                className="bg-gray-700 text-white text-sm font-semibold px-2 py-0.5 rounded border border-gray-600 focus:outline-none focus:border-blue-500"
-                autoFocus
-              />
-            ) : (
-              <>
-                <span className="font-semibold truncate">{sessionName}</span>
-                <button
-                  onClick={handleStartEditName}
-                  className="p-1 rounded opacity-0 group-hover/header:opacity-100 transition-opacity hover:bg-gray-700 text-muted-foreground hover:text-white"
-                  title="Rename session"
-                >
-                  <Pencil className="h-3 w-3" />
-                </button>
-              </>
-            )}
-            {!headerExpanded && (
-              <span className="text-xs text-muted-foreground hidden sm:inline">
-                {formatRelativeTime(session.last_activity)}
-              </span>
-            )}
-          </div>
-          <div className="flex items-center gap-2 shrink-0">
-            <Badge variant="outline" className="text-xs">
-              <Radio className="h-3 w-3 mr-1" />
-              <span className="hidden sm:inline">{controlConfig.label}</span>
-              <span className="sm:hidden">{controlConfig.label.split(' ')[0]}</span>
-            </Badge>
-            <Badge variant={statusConfig.variant}>{statusConfig.label}</Badge>
-          </div>
-        </div>
 
-        {/* Expanded details */}
-        {headerExpanded && (
-          <div className="flex flex-col gap-1 text-xs text-muted-foreground pl-6 mt-2">
-            <div className="flex items-center gap-2">
-              <span className="font-mono text-xs select-all">
-                {session.id}
-              </span>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation()
-                  handleCopySessionId()
-                }}
-                className="p-1 hover:bg-gray-700 rounded transition-colors"
-                title="Copy session ID"
-              >
-                {copiedSessionId ? (
-                  <Check className="h-3 w-3 text-green-500" />
-                ) : (
-                  <Copy className="h-3 w-3" />
-                )}
-              </button>
-            </div>
-            <div className="flex items-center gap-2">
-              <Folder className="h-3 w-3 shrink-0" />
-              <span className="truncate" title={session.project_dir}>{session.project_dir}</span>
-            </div>
-            <LastActivityTime lastActivity={session.last_activity} />
-          </div>
-        )}
-      </CardHeader>
-
-      <CardContent className="flex-1 flex flex-col space-y-3 overflow-hidden">
+      <CardContent className="flex-1 flex flex-col space-y-3 overflow-hidden pt-4">
         {/* Pending Request */}
         {hasPendingRequest && pendingRequest && (
           <div className="rounded-md bg-muted p-3 shrink-0">
@@ -972,37 +819,6 @@ function ChatBubble({ message }: { message: ChatMessage }) {
   )
 }
 
-function LastActivityTime({ lastActivity }: { lastActivity: string }) {
-  const [showFull, setShowFull] = useState(false)
-  
-  // Ensure UTC parsing by appending Z if missing
-  const utcTime = lastActivity.endsWith('Z') ? lastActivity : lastActivity + 'Z'
-  const fullTime = new Date(utcTime).toLocaleString(undefined, {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-  })
 
-  return (
-    <span 
-      className="flex items-center gap-1 cursor-pointer group"
-      onClick={() => setShowFull(prev => !prev)}
-      title={fullTime}
-    >
-      <Clock className="h-3 w-3 shrink-0" />
-      <span className="sm:hidden">
-        {showFull ? fullTime : formatRelativeTime(lastActivity)}
-      </span>
-      <span className="hidden sm:inline group-hover:hidden">
-        {formatRelativeTime(lastActivity)}
-      </span>
-      <span className="hidden sm:group-hover:inline">
-        {fullTime}
-      </span>
-    </span>
-  )
-}
 
 
