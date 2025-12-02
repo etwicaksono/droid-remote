@@ -1,5 +1,16 @@
 {
   "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"C:/Users/Eko Teguh Wicaksono/.factory/hooks/telegram_user_prompt.py\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
     "Notification": [
       {
         "hooks": [
