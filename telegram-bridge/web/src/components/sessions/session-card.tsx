@@ -164,8 +164,12 @@ export function SessionCard({ session }: SessionCardProps) {
     
     const loadData = async () => {
       try {
-        // Load chat history (newest messages first via pagination)
-        const chatRes = await fetch(`${API_BASE}/sessions/${session.id}/chat?limit=${CHAT_PAGE_SIZE}&offset=0`)
+        // Load chat history and settings in parallel
+        const [chatRes, settingsRes] = await Promise.all([
+          fetch(`${API_BASE}/sessions/${session.id}/chat?limit=${CHAT_PAGE_SIZE}&offset=0`),
+          fetch(`${API_BASE}/sessions/${session.id}/settings`)
+        ])
+        
         if (chatRes.ok) {
           const data = await chatRes.json()
           if (data.messages?.length > 0) {
@@ -177,8 +181,6 @@ export function SessionCard({ session }: SessionCardProps) {
           }
         }
         
-        // Load settings
-        const settingsRes = await fetch(`${API_BASE}/sessions/${session.id}/settings`)
         if (settingsRes.ok) {
           const settings = await settingsRes.json()
           if (settings.model) setSelectedModel(settings.model)
@@ -187,30 +189,35 @@ export function SessionCard({ session }: SessionCardProps) {
         
         setSettingsLoaded(true)
         
-        // Check if CLI is currently thinking (non-blocking, with timeout)
-        const controller = new AbortController()
-        const timeoutId = setTimeout(() => controller.abort(), 3000)
-        try {
-          const thinkingRes = await fetch(`${API_BASE}/sessions/${session.id}/cli-thinking`, {
-            signal: controller.signal
-          })
-          clearTimeout(timeoutId)
-          if (thinkingRes.ok) {
-            const thinkingData = await thinkingRes.json()
-            if (thinkingData.thinking) {
-              setExecuting(true)
-            }
-          }
-        } catch {
-          // Ignore thinking check errors - non-critical
-        }
-        // Scroll to bottom after loading
-        setTimeout(scrollToBottom, 100)
+        // Scroll to bottom immediately after chat loads
+        setTimeout(scrollToBottom, 50)
+        
+        // Check cli-thinking in background (don't block UI)
+        checkCliThinking(session.id)
       } catch (err) {
         console.error('Failed to load session data:', err)
         setSettingsLoaded(true)
       }
     }
+    
+    // Background check for CLI thinking state
+    const checkCliThinking = async (sessionId: string) => {
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 3000)
+      try {
+        const res = await fetch(`${API_BASE}/sessions/${sessionId}/cli-thinking`, {
+          signal: controller.signal
+        })
+        clearTimeout(timeoutId)
+        if (res.ok) {
+          const data = await res.json()
+          if (data.thinking) setExecuting(true)
+        }
+      } catch {
+        // Ignore - non-critical
+      }
+    }
+    
     loadData()
   }, [session.id, scrollToBottom])
 
