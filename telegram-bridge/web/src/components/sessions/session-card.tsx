@@ -611,7 +611,7 @@ export function SessionCard({ session }: SessionCardProps) {
         </div>
       )}
 
-      <CardContent className="flex-1 flex flex-col space-y-3 overflow-hidden pt-4">
+      <CardContent className="flex-1 flex flex-col space-y-3 overflow-hidden pt-0">
         {/* Pending Request */}
         {hasPendingRequest && pendingRequest && (
           <div className="rounded-md bg-muted p-3 shrink-0">
@@ -753,7 +753,7 @@ function ChatBubble({ message }: { message: ChatMessage }) {
   })
 
   return (
-    <div className={cn('flex', isUser ? 'justify-end' : 'justify-start')}>
+    <div className={cn('flex', isUser ? 'justify-end me-2' : 'justify-start ms-2')}>
       <div
         className={cn(
           'max-w-[90%] sm:max-w-[85%] rounded-lg px-3 py-2 group relative',
