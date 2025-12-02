@@ -320,8 +320,6 @@ export function AppSidebar({ currentPath }: AppSidebarProps) {
 }
 
 function SidebarActivityTime({ lastActivity }: { lastActivity: string }) {
-  const [showFull, setShowFull] = useState(false)
-  
   // Ensure UTC parsing by appending Z if missing
   const utcTime = lastActivity.endsWith('Z') ? lastActivity : lastActivity + 'Z'
   const fullTime = new Date(utcTime).toLocaleString(undefined, {
@@ -332,18 +330,12 @@ function SidebarActivityTime({ lastActivity }: { lastActivity: string }) {
     minute: '2-digit',
   })
 
+  // No click handler - let clicks pass through to parent Link
+  // Desktop: hover shows full time, Mobile: just shows relative time
   return (
-    <span 
-      className="cursor-pointer group"
-      onClick={(e) => {
-        e.preventDefault()
-        e.stopPropagation()
-        setShowFull(prev => !prev)
-      }}
-      title={fullTime}
-    >
+    <span className="group" title={fullTime}>
       <span className="md:hidden">
-        {showFull ? fullTime : formatRelativeTime(lastActivity)}
+        {formatRelativeTime(lastActivity)}
       </span>
       <span className="hidden md:inline group-hover:hidden">
         {formatRelativeTime(lastActivity)}
