@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Terminal, Menu, Plus, ShieldCheck, History, Circle, X, Trash2 } from 'lucide-react'
+import { Terminal, Menu, Plus, ShieldCheck, Circle, X, Trash2 } from 'lucide-react'
 import { cn, formatRelativeTime } from '@/lib/utils'
 import type { Session, ControlState } from '@/types'
 
@@ -169,20 +169,6 @@ export function AppSidebar({ currentPath }: AppSidebarProps) {
             {!collapsed && <span>Permissions</span>}
           </Link>
 
-          {/* History */}
-          <Link
-            href="/history"
-            onClick={() => setMobileOpen(false)}
-            className={cn(
-              'flex items-center gap-2 p-3 rounded-md text-sm font-medium transition-colors',
-              currentPath === '/history'
-                ? 'bg-gray-800 text-white'
-                : 'text-gray-400 hover:bg-gray-800/50 hover:text-white'
-            )}
-          >
-            <History className="h-4 w-4 flex-shrink-0" />
-            {!collapsed && <span>History</span>}
-          </Link>
         </div>
 
         {/* Sessions Section */}
