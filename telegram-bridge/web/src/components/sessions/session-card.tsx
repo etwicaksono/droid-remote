@@ -188,16 +188,25 @@ export function SessionCard({ session }: SessionCardProps) {
           if (settings.reasoning_effort) setReasoningEffort(settings.reasoning_effort as ReasoningEffort)
         }
         
-        // Check if CLI is currently thinking
-        const thinkingRes = await fetch(`${API_BASE}/sessions/${session.id}/cli-thinking`)
-        if (thinkingRes.ok) {
-          const thinkingData = await thinkingRes.json()
-          if (thinkingData.thinking) {
-            setExecuting(true)
-          }
-        }
-        
         setSettingsLoaded(true)
+        
+        // Check if CLI is currently thinking (non-blocking, with timeout)
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => controller.abort(), 3000)
+        try {
+          const thinkingRes = await fetch(`${API_BASE}/sessions/${session.id}/cli-thinking`, {
+            signal: controller.signal
+          })
+          clearTimeout(timeoutId)
+          if (thinkingRes.ok) {
+            const thinkingData = await thinkingRes.json()
+            if (thinkingData.thinking) {
+              setExecuting(true)
+            }
+          }
+        } catch {
+          // Ignore thinking check errors - non-critical
+        }
         // Scroll to bottom after loading
         setTimeout(scrollToBottom, 100)
       } catch (err) {
