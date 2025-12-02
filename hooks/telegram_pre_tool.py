@@ -49,8 +49,8 @@ def main():
     # Format permission request message
     message = format_permission_request(session_name, tool_name, tool_input)
     
-    # Send approval request
-    notify(
+    # Send approval request and get request_id
+    notify_result = notify(
         session_id=session_id,
         session_name=session_name,
         message=message,
@@ -59,11 +59,13 @@ def main():
             {"text": "✅ Approve", "callback": "approve"},
             {"text": "❌ Deny", "callback": "deny"},
             {"text": "✅ Approve All", "callback": "approve_all"}
-        ]
+        ],
+        tool_name=tool_name,
+        tool_input=tool_input
     )
     
-    # Wait for response
-    request_id = str(uuid.uuid4())
+    # Get request_id from notify response
+    request_id = notify_result.get("request_id", str(uuid.uuid4()))
     response = wait_for_response(
         session_id=session_id,
         request_id=request_id,

@@ -165,6 +165,8 @@ async def notify_session(session_id: str, data: NotifyRequest, request: Request)
             id=request_id,
             type=data.type,
             message=data.message,
+            tool_name=data.tool_name,
+            tool_input=data.tool_input,
             buttons=[Button(**b.model_dump()) for b in data.buttons] if data.buttons else []
         )
         session_registry.set_pending_request(session_id, pending)

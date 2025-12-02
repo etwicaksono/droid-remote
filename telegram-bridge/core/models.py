@@ -98,6 +98,8 @@ class NotifyRequest(BaseModel):
     message: str
     type: NotificationType = NotificationType.INFO
     buttons: List[Button] = Field(default_factory=list)
+    tool_name: Optional[str] = None
+    tool_input: Optional[Dict[str, Any]] = None
 
 
 class WaitRequest(BaseModel):

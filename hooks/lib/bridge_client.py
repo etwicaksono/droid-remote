@@ -108,21 +108,29 @@ def notify(
     session_name: str,
     message: str,
     notification_type: str = "info",
-    buttons: Optional[List[Dict[str, str]]] = None
-) -> bool:
-    """Send notification to Telegram"""
+    buttons: Optional[List[Dict[str, str]]] = None,
+    tool_name: Optional[str] = None,
+    tool_input: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
+    """Send notification to Telegram. Returns dict with success and request_id."""
+    data = {
+        "session_name": session_name,
+        "message": message,
+        "type": notification_type,
+        "buttons": buttons or []
+    }
+    if tool_name:
+        data["tool_name"] = tool_name
+    if tool_input:
+        data["tool_input"] = tool_input
+    
     result = _make_request(
         "POST",
         f"/sessions/{session_id}/notify",
-        {
-            "session_name": session_name,
-            "message": message,
-            "type": notification_type,
-            "buttons": buttons or []
-        },
+        data,
         timeout=NOTIFY_TIMEOUT
     )
-    return result.get("success", False)
+    return result  # Returns {"success": bool, "request_id": str}
 
 
 def wait_for_response(

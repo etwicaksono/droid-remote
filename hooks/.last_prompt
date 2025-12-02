@@ -1,1 +1,1 @@
-{"1b165ad5-cea6-4ce4-a4b9-4617a072f93b": "the cli ask permission but the web ui doesn't show anything", "43b116eb-9e52-4392-bf23-68c1418cae5c": "Run git status"}
+{"43b116eb-9e52-4392-bf23-68c1418cae5c": "Run git status", "1b165ad5-cea6-4ce4-a4b9-4617a072f93b": "web ui doesn't ask permission and telegram only receive message like \n\u00e2\u201e\u00b9\u00ef\u00b8\udc8f *[ar-proxy]*\n\nFactory CLI needs permission to execute 1 tool(s)"}
