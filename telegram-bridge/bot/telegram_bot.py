@@ -28,17 +28,6 @@ from .commands import (
     help_command,
     sessions_command,
     status_command,
-    switch_command,
-    setproject_command,
-    setmodel_command,
-    models_command,
-    handoff_command,
-    release_command,
-    queue_command,
-    done_command,
-    stopall_command,
-    broadcast_command,
-    AVAILABLE_MODELS
 )
 from .keyboards import (
     build_inline_keyboard,
@@ -159,30 +148,14 @@ class TelegramBotManager:
         # Add user filter
         user_filter = filters.User(user_id=list(self.allowed_users)) if self.allowed_users else filters.ALL
         
-        # Command handlers
+        # Command handlers (simplified - main control via Web UI)
         app.add_handler(CommandHandler("start", start_command, filters=user_filter))
         app.add_handler(CommandHandler("help", help_command, filters=user_filter))
         app.add_handler(CommandHandler("sessions", sessions_command, filters=user_filter))
         app.add_handler(CommandHandler("status", status_command, filters=user_filter))
-        app.add_handler(CommandHandler("switch", switch_command, filters=user_filter))
-        app.add_handler(CommandHandler("setproject", setproject_command, filters=user_filter))
-        app.add_handler(CommandHandler("setmodel", setmodel_command, filters=user_filter))
-        app.add_handler(CommandHandler("models", models_command, filters=user_filter))
-        app.add_handler(CommandHandler("handoff", handoff_command, filters=user_filter))
-        app.add_handler(CommandHandler("release", release_command, filters=user_filter))
-        app.add_handler(CommandHandler("queue", queue_command, filters=user_filter))
-        app.add_handler(CommandHandler("done", done_command, filters=user_filter))
-        app.add_handler(CommandHandler("stopall", stopall_command, filters=user_filter))
-        app.add_handler(CommandHandler("broadcast", broadcast_command, filters=user_filter))
         
-        # Callback query handler (inline keyboard buttons)
+        # Callback query handler (inline keyboard buttons for permissions)
         app.add_handler(CallbackQueryHandler(self._handle_callback))
-        
-        # Text message handler (for responses)
-        app.add_handler(MessageHandler(
-            filters.TEXT & ~filters.COMMAND & user_filter,
-            self._handle_message
-        ))
         
         # Error handler
         app.add_error_handler(self._handle_error)
@@ -200,23 +173,6 @@ class TelegramBotManager:
                 return
             
             logger.info(f"Callback received: {query.data}")
-            
-            # Handle model selection callback
-            if query.data.startswith("model:"):
-                model_id = query.data[6:]  # Remove "model:" prefix
-                if model_id == "default":
-                    context.user_data.pop("model", None)
-                    await query.edit_message_text("Model set to: Default (from Factory settings)")
-                else:
-                    context.user_data["model"] = model_id
-                    # Find display name
-                    model_name = model_id
-                    for mid, mname in AVAILABLE_MODELS:
-                        if mid == model_id:
-                            model_name = mname
-                            break
-                    await query.edit_message_text(f"Model set to: {model_name}\n({model_id})")
-                return
             
             # Parse callback data: action:session_id[:request_id]
             parts = query.data.split(":")

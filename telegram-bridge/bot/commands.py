@@ -35,17 +35,7 @@ async def setup_commands(application) -> None:
         BotCommand("start", "Start the bot"),
         BotCommand("help", "Show available commands"),
         BotCommand("sessions", "List all active sessions"),
-        BotCommand("status", "Check status of all sessions"),
-        BotCommand("switch", "Switch active session"),
-        BotCommand("setproject", "Set project directory for tasks"),
-        BotCommand("setmodel", "Set model for task execution"),
-        BotCommand("models", "Show available models"),
-        BotCommand("handoff", "Take remote control of a session"),
-        BotCommand("release", "Release control back to CLI"),
-        BotCommand("queue", "Show queued messages"),
-        BotCommand("done", "Signal current session to stop"),
-        BotCommand("stopall", "Stop all sessions"),
-        BotCommand("broadcast", "Send message to all waiting sessions"),
+        BotCommand("status", "Check session status"),
     ]
     await application.bot.set_my_commands(commands)
 
@@ -55,15 +45,14 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     user = update.effective_user
     await update.message.reply_text(
         f"👋 Hello {user.first_name}!\n\n"
-        "🤖 *Droid Control Bot*\n\n"
+        "🤖 *Droid Notification Bot*\n\n"
         "I'll notify you when your Factory.ai Droid sessions need attention.\n\n"
         "*Commands:*\n"
         "/sessions - List active sessions\n"
         "/status - Check session status\n"
-        "/switch <name> - Switch active session\n"
-        "/done - End current session\n"
         "/help - Show all commands\n\n"
-        "💡 Reply to notifications to send instructions to Droid!",
+        "💡 Use inline buttons for quick actions.\n"
+        "🔗 Use Web UI for full control.",
         parse_mode="Markdown"
     )
 
@@ -71,28 +60,15 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /help command"""
     await update.message.reply_text(
-        "🤖 *Droid Control Commands*\n\n"
-        "*Session Management:*\n"
+        "🤖 *Droid Notification Bot*\n\n"
+        "*Commands:*\n"
         "/sessions - List all active sessions\n"
-        "/status [name] - Show status\n"
-        "/switch <name|number> - Set active session\n"
-        "/done - Signal session to stop\n"
-        "/stopall - Stop all sessions\n\n"
-        "*Remote Control:*\n"
-        "/handoff [name] - Take remote control\n"
-        "/release [name] - Return control to CLI\n"
-        "/queue [name] - Show queued messages\n\n"
-        "*Communication:*\n"
-        "/broadcast <msg> - Send to all waiting\n"
-        "/<number> <msg> - Send to specific session\n\n"
+        "/status - Show session status\n"
+        "/help - Show this message\n\n"
         "*Quick Actions:*\n"
-        "• Reply to notifications with text\n"
-        "• Use inline buttons for approve/deny\n"
-        "• Type 'approve' or 'deny' directly\n\n"
-        "*Examples:*\n"
-        "`/handoff` - Take control of current session\n"
-        "`/release` - Return control to CLI\n"
-        "`/switch backend-api`",
+        "• Use inline buttons to approve/deny permissions\n"
+        "• Click Web UI links for full control\n\n"
+        "💡 For sending instructions, use the Web UI.",
         parse_mode="Markdown"
     )
 

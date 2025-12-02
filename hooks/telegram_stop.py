@@ -3,24 +3,20 @@
 Stop Hook Script
 
 Receives: JSON via stdin with session/transcript info
-Action: Wait for user input from Telegram, provide it as context to Droid
-Output: 
-  - Exit code 0 with no JSON: Allow Droid to stop
-  - Exit code 0 with JSON {decision: "block", reason: "..."}: Keep Droid running with context
+Action: Save chat history to database and send notification to Telegram
+Output: Exit code 0 to allow Droid to stop
 
-NOTE: This hook can only provide CONTEXT to Droid, not inject prompts.
-For remote task execution, use the Telegram bot's droid exec feature.
+For further instructions, use the Web UI.
 """
 import os
 import sys
 import json
 import logging
-import uuid
 
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "lib"))
 
-from bridge_client import register_session, notify, update_session_status, wait_for_response, add_chat_message
+from bridge_client import register_session, notify, update_session_status, add_chat_message
 from formatters import format_session_name
 from config import WEB_UI_URL, TELEGRAM_TASK_RESULT_MAX_LENGTH
 
@@ -33,8 +29,6 @@ logging.basicConfig(
     filemode='a'
 )
 logger = logging.getLogger(__name__)
-
-WAIT_TIMEOUT = 300  # 5 minutes
 
 
 def format_telegram_notification(
@@ -72,9 +66,6 @@ def format_telegram_notification(
     if session_id and web_ui_url:
         lines.append("")
         lines.append(f"🔗 [Open in Web UI]({web_ui_url}/session/{session_id})")
-    
-    lines.append("")
-    lines.append("Reply with your next instruction or /done to end.")
     
     return "\n".join(lines)
 
@@ -299,45 +290,11 @@ def main():
     # Clear the last prompt after using it
     clear_last_prompt(session_id)
     
-    # Generate request ID and wait for response
-    request_id = str(uuid.uuid4())
-    logger.info(f"Waiting for response (session={session_id}, request={request_id})")
-    
-    response = wait_for_response(session_id, request_id, timeout=WAIT_TIMEOUT)
-    
-    if response:
-        # User sent instruction - save it to database and feed to Droid
-        logger.info(f"Received instruction: {response[:100]}...")
-        
-        # Save user message to database
-        try:
-            add_chat_message(
-                session_id=session_id,
-                msg_type='user',
-                content=response,
-                source='cli'
-            )
-            logger.info(f"Saved user message to database ({len(response)} chars)")
-        except Exception as e:
-            logger.error(f"Failed to save user message: {e}")
-        
-        # Save prompt for next notification
-        save_last_prompt(session_id, response)
-        
-        update_session_status(session_id, "running")
-        
-        # Use JSON output format to block stop and provide instruction
-        output = {
-            "decision": "block",
-            "reason": response
-        }
-        print(json.dumps(output))
-        sys.exit(0)
-    else:
-        # Timeout or /done - allow stop
-        logger.info("No response received, allowing stop")
-        update_session_status(session_id, "stopped")
-        sys.exit(0)
+    # Update session status and allow stop
+    # (User can send instructions via Web UI if needed)
+    update_session_status(session_id, "waiting")
+    logger.info("Notification sent, allowing stop (use Web UI for further instructions)")
+    sys.exit(0)
 
 
 if __name__ == "__main__":
