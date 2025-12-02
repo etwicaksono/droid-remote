@@ -1,157 +1,341 @@
 'use client'
 
-import { useState, type FormEvent } from 'react'
-import { Play, Loader2 } from 'lucide-react'
+import { useState, useRef, useCallback, type FormEvent } from 'react'
+import { Folder, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Textarea } from '@/components/ui/textarea'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Select, SelectItem, SelectContent } from '@/components/ui/select'
 import { useSessionActions } from '@/hooks/use-session-actions'
-import type { TaskResponse } from '@/types'
+import { InputBox, DEFAULT_MODEL, DEFAULT_REASONING } from '@/components/chat/input-box'
+import { DirectoryPickerModal } from '@/components/ui/directory-picker-modal'
+import { cn } from '@/lib/utils'
+import type { ReasoningEffort } from '@/types'
+import modelsConfig from '@/config/models.json'
 
-const AVAILABLE_MODELS = [
-  { id: 'default', name: 'Default (from settings)' },
-  { id: 'gpt-5.1-codex', name: 'GPT-5.1 Codex' },
-  { id: 'gpt-5.1', name: 'GPT-5.1' },
-  { id: 'claude-sonnet-4-5-20250929', name: 'Claude Sonnet 4.5' },
-  { id: 'claude-opus-4-5-20251101', name: 'Claude Opus 4.5' },
-]
+const AVAILABLE_MODELS = modelsConfig.models as { id: string; name: string; reasoning: boolean }[]
 
-interface TaskFormProps {
-  onComplete?: (result: TaskResponse) => void
+function generateUUID(): string {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID()
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0
+    const v = c === 'x' ? r : (r & 0x3) | 0x8
+    return v.toString(16)
+  })
 }
 
-export function TaskForm({ onComplete }: TaskFormProps) {
-  const [prompt, setPrompt] = useState('')
-  const [projectDir, setProjectDir] = useState('')
-  const [model, setModel] = useState('default')
-  const [result, setResult] = useState<TaskResponse | null>(null)
-  const { executeTask, loading } = useSessionActions()
+function parseResultContent(resultStr: string | undefined, error: string | undefined): string {
+  if (error) return error
+  if (!resultStr) return 'Task completed'
+  
+  let content = resultStr
+  
+  if (content.startsWith('{') || content.startsWith('[')) {
+    try {
+      const parsed = JSON.parse(content)
+      if (parsed.result !== undefined) {
+        content = String(parsed.result)
+      } else if (parsed.message) {
+        content = parsed.message
+      } else if (parsed.error) {
+        content = parsed.error
+      }
+    } catch {
+      // Not valid JSON
+    }
+  }
+  
+  content = content.replace(/^#\s*Answer\s*\n+/i, '').trim()
+  return content || 'Task completed'
+}
 
-  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
+interface ChatMessage {
+  id: string
+  type: 'user' | 'assistant'
+  content: string
+  timestamp: Date
+  status?: 'success' | 'error'
+  meta?: { duration?: number; turns?: number }
+}
+
+export function TaskForm() {
+  const [projectDir, setProjectDir] = useState('')
+  const [taskPrompt, setTaskPrompt] = useState('')
+  const [selectedModel, setSelectedModel] = useState(DEFAULT_MODEL)
+  const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort>(DEFAULT_REASONING)
+  const [chatHistory, setChatHistory] = useState<ChatMessage[]>([])
+  const [executing, setExecuting] = useState(false)
+  const [currentTaskId, setCurrentTaskId] = useState<string | null>(null)
+  const [showPicker, setShowPicker] = useState(false)
+  
+  const { executeTask, cancelTask } = useSessionActions()
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null)
+  const chatContainerRef = useRef<HTMLDivElement | null>(null)
+
+  const currentModel = AVAILABLE_MODELS.find(m => m.id === selectedModel)
+  const supportsReasoning = currentModel?.reasoning ?? false
+
+  const scrollToBottom = useCallback(() => {
+    if (chatContainerRef.current) {
+      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight
+    }
+  }, [])
+
+  const handleTaskSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
-    if (!prompt.trim() || !projectDir.trim()) return
+    if (!taskPrompt.trim() || !projectDir.trim() || executing) return
+
+    const prompt = taskPrompt.trim()
+    const taskId = generateUUID()
+    
+    const userMessage: ChatMessage = {
+      id: Date.now().toString(),
+      type: 'user',
+      content: prompt,
+      timestamp: new Date(),
+    }
+    setChatHistory(prev => [...prev, userMessage])
+    setTaskPrompt('')
+    setExecuting(true)
+    setCurrentTaskId(taskId)
+
+    setTimeout(scrollToBottom, 100)
 
     try {
-      const response = await executeTask({
-        prompt: prompt.trim(),
+      const result = await executeTask({
+        prompt,
         projectDir: projectDir.trim(),
-        model: model === 'default' ? undefined : model,
+        taskId,
+        model: selectedModel,
+        reasoningEffort: supportsReasoning ? reasoningEffort : undefined,
       })
-      setResult(response)
-      onComplete?.(response)
+      
+      const responseContent = parseResultContent(result.result, result.error)
+
+      const assistantMessage: ChatMessage = {
+        id: (Date.now() + 1).toString(),
+        type: 'assistant',
+        content: responseContent,
+        timestamp: new Date(),
+        status: result.success ? 'success' : 'error',
+        meta: {
+          duration: result.duration_ms,
+          turns: result.num_turns,
+        },
+      }
+      setChatHistory(prev => [...prev, assistantMessage])
     } catch (error) {
-      console.error('Task execution failed:', error)
-      setResult({
-        success: false,
-        result: '',
-        task_id: '',
-        duration_ms: 0,
-        num_turns: 0,
-        error: String(error),
-      })
+      const errorMessage: ChatMessage = {
+        id: (Date.now() + 1).toString(),
+        type: 'assistant',
+        content: String(error),
+        timestamp: new Date(),
+        status: 'error',
+      }
+      setChatHistory(prev => [...prev, errorMessage])
+    } finally {
+      setExecuting(false)
+      setCurrentTaskId(null)
+      setTimeout(scrollToBottom, 100)
     }
   }
 
+  const handleCancelTask = async () => {
+    if (!currentTaskId) return
+    
+    try {
+      await cancelTask(currentTaskId)
+      
+      const cancelMessage: ChatMessage = {
+        id: (Date.now() + 1).toString(),
+        type: 'assistant',
+        content: 'Task cancelled by user',
+        timestamp: new Date(),
+        status: 'error',
+      }
+      setChatHistory(prev => [...prev, cancelMessage])
+    } catch (error) {
+      console.error('Failed to cancel task:', error)
+    } finally {
+      setExecuting(false)
+      setCurrentTaskId(null)
+    }
+  }
+
+  const isDisabled = !projectDir.trim()
+
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-lg">Custom Task</CardTitle>
-        <p className="text-sm text-muted-foreground">
-          Run a task on any project directory (no active session needed)
-        </p>
-      </CardHeader>
-      <CardContent>
-        <form className="space-y-3" onSubmit={handleSubmit}>
-          <div className="space-y-2">
-            <Label htmlFor="projectDir">Project Directory</Label>
-            <Input
-              id="projectDir"
-              placeholder="/path/to/project"
-              value={projectDir}
-              onChange={(e) => setProjectDir(e.target.value)}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="model">Model</Label>
-            <Select value={model} onValueChange={setModel}>
-              <SelectContent>
-                {AVAILABLE_MODELS.map((m) => (
-                  <SelectItem key={m.id} value={m.id}>
-                    {m.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="prompt">Task / Instruction</Label>
-            <Textarea
-              id="prompt"
-              placeholder="Describe what you want Droid to do..."
-              rows={4}
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-            />
-          </div>
-
+    <div className="flex flex-col h-full">
+      {/* Project Directory Header */}
+      <div className="shrink-0 pb-4 border-b border-border">
+        <label className="text-sm font-medium mb-2 block">Project Directory</label>
+        <div className="flex gap-2">
+          <Input
+            placeholder="/path/to/project"
+            value={projectDir}
+            onChange={(e) => setProjectDir(e.target.value)}
+            className="flex-1"
+          />
           <Button
-            type="submit"
-            disabled={loading || !prompt.trim() || !projectDir.trim()}
-            className="w-full"
+            type="button"
+            variant="outline"
+            onClick={() => setShowPicker(true)}
+            title="Browse directories"
           >
-            {loading ? (
-              <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                <span className="hidden sm:inline">Executing...</span>
-                <span className="sm:hidden">Running...</span>
-              </>
-            ) : (
-              <>
-                <Play className="h-4 w-4 mr-2" />
-                <span className="hidden sm:inline">Execute Task</span>
-                <span className="sm:hidden">Execute</span>
-              </>
-            )}
+            <Folder className="h-4 w-4" />
           </Button>
-        </form>
+        </div>
+      </div>
 
-        {result && (
-          <div className={`mt-4 p-3 rounded-md space-y-2 ${
-            result.success 
-              ? 'bg-green-500/10 border border-green-500/30' 
-              : 'bg-red-500/10 border border-red-500/30'
-          }`}>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span
-                  className={`h-2 w-2 rounded-full ${result.success ? 'bg-green-500' : 'bg-red-500'}`}
-                />
-                <span className="font-medium text-sm">
-                  {result.success ? 'Task Completed' : 'Task Failed'}
-                </span>
-              </div>
-              {result.duration_ms > 0 && (
-                <span className="text-xs text-muted-foreground">
-                  {(result.duration_ms / 1000).toFixed(1)}s · {result.num_turns} turns
-                </span>
+      {/* Chat Area */}
+      <div className="flex-1 flex flex-col min-h-0 pt-4">
+        {/* Empty State - Centered Welcome */}
+        {chatHistory.length === 0 && !executing ? (
+          <div className="flex-1 flex flex-col items-center justify-center px-4">
+            <div className="text-center mb-6">
+              <span className="text-3xl sm:text-4xl">🤖</span>
+              <h2 className="text-xl sm:text-2xl font-light text-muted-foreground mt-2">
+                How can I help you?
+              </h2>
+              {!projectDir && (
+                <p className="text-sm text-muted-foreground mt-2">
+                  Select a project directory to get started
+                </p>
               )}
             </div>
-            {result.error && (
-              <p className="text-sm text-red-400">{result.error}</p>
+
+            <div className="w-full max-w-2xl">
+              <InputBox
+                executing={executing}
+                taskPrompt={taskPrompt}
+                setTaskPrompt={setTaskPrompt}
+                selectedModel={selectedModel}
+                setSelectedModel={setSelectedModel}
+                reasoningEffort={reasoningEffort}
+                setReasoningEffort={setReasoningEffort}
+                onSubmit={handleTaskSubmit}
+                onCancel={handleCancelTask}
+                disabled={isDisabled}
+                textareaRef={textareaRef}
+                placeholder={isDisabled ? "Select a project directory first..." : "What would you like me to do?"}
+              />
+            </div>
+          </div>
+        ) : (
+          <>
+            {/* Chat History */}
+            <div ref={chatContainerRef} className="flex-1 overflow-y-auto space-y-3 min-h-0 pb-3">
+              {chatHistory.map((msg) => (
+                <ChatBubble key={msg.id} message={msg} />
+              ))}
+              {executing && (
+                <div className="flex justify-start">
+                  <div className="bg-muted rounded-lg px-3 py-2 flex items-center gap-2 text-sm text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Droid is thinking...
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Bottom Input Box */}
+            <div className="shrink-0 pt-3 border-t border-border">
+              <InputBox
+                executing={executing}
+                taskPrompt={taskPrompt}
+                setTaskPrompt={setTaskPrompt}
+                selectedModel={selectedModel}
+                setSelectedModel={setSelectedModel}
+                reasoningEffort={reasoningEffort}
+                setReasoningEffort={setReasoningEffort}
+                onSubmit={handleTaskSubmit}
+                onCancel={handleCancelTask}
+                disabled={isDisabled}
+                textareaRef={textareaRef}
+                compact
+              />
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* Directory Picker Modal */}
+      <DirectoryPickerModal
+        isOpen={showPicker}
+        onClose={() => setShowPicker(false)}
+        onSelect={setProjectDir}
+        initialPath={projectDir || undefined}
+      />
+    </div>
+  )
+}
+
+function ChatBubble({ message }: { message: ChatMessage }) {
+  const [expanded, setExpanded] = useState(false)
+  const [showTimestamp, setShowTimestamp] = useState(false)
+  const isUser = message.type === 'user'
+  const isLong = message.content.length > 300
+
+  const formattedTime = message.timestamp.toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  })
+
+  return (
+    <div className={cn('flex', isUser ? 'justify-end' : 'justify-start')}>
+      <div
+        className={cn(
+          'max-w-[90%] sm:max-w-[85%] rounded-lg px-3 py-2 group relative',
+          isUser
+            ? 'bg-blue-600 text-white'
+            : message.status === 'error'
+            ? 'bg-red-500/20 border border-red-500/30'
+            : 'bg-muted'
+        )}
+        onClick={() => setShowTimestamp(prev => !prev)}
+        title={formattedTime}
+      >
+        <div className="text-sm whitespace-pre-wrap break-words">
+          {isLong && !expanded
+            ? message.content.substring(0, 300) + '...'
+            : message.content}
+        </div>
+
+        {isLong && (
+          <button
+            className="text-xs mt-1 opacity-70 hover:opacity-100"
+            onClick={(e) => {
+              e.stopPropagation()
+              setExpanded(!expanded)
+            }}
+          >
+            {expanded ? 'Show less' : 'Show more'}
+          </button>
+        )}
+
+        {!isUser && message.meta && (
+          <div className="flex items-center gap-2 mt-1 text-xs opacity-60">
+            {message.meta.duration && message.meta.duration > 0 && (
+              <span>{(message.meta.duration / 1000).toFixed(1)}s</span>
             )}
-            {result.result && (
-              <div className="text-sm whitespace-pre-wrap overflow-auto max-h-40 sm:max-h-60">
-                {result.result}
-              </div>
+            {message.meta.turns && message.meta.turns > 0 && (
+              <span>{message.meta.turns} turns</span>
             )}
           </div>
         )}
-      </CardContent>
-    </Card>
+
+        <div className={cn(
+          'text-[10px] mt-1 transition-opacity duration-200',
+          isUser ? 'text-white/60' : 'text-muted-foreground',
+          'sm:opacity-0 sm:group-hover:opacity-100',
+          showTimestamp ? 'opacity-100' : 'opacity-0 sm:opacity-0'
+        )}>
+          {formattedTime}
+        </div>
+      </div>
+    </div>
   )
 }

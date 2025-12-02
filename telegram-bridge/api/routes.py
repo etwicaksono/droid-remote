@@ -784,3 +784,73 @@ async def update_session_settings(
         reasoning_effort=reasoning_effort
     )
     return {"success": True, "settings": settings}
+
+
+# Filesystem Browser Endpoint
+@router.get("/filesystem/browse")
+async def browse_filesystem(path: Optional[str] = None):
+    """Browse filesystem directories for project selection"""
+    import os
+    import platform
+    
+    result = {
+        "current_path": "",
+        "parent": None,
+        "directories": [],
+        "drives": []
+    }
+    
+    # Get available drives on Windows
+    if platform.system() == "Windows":
+        import string
+        drives = []
+        for letter in string.ascii_uppercase:
+            drive = f"{letter}:\\"
+            if os.path.exists(drive):
+                drives.append(drive)
+        result["drives"] = drives
+    
+    # Default to home directory if no path provided
+    if not path:
+        path = os.path.expanduser("~")
+    
+    # Normalize path
+    path = os.path.normpath(path)
+    
+    # Check if path exists
+    if not os.path.exists(path):
+        raise HTTPException(status_code=404, detail=f"Path not found: {path}")
+    
+    # Check if path is a directory
+    if not os.path.isdir(path):
+        raise HTTPException(status_code=400, detail=f"Not a directory: {path}")
+    
+    result["current_path"] = path
+    
+    # Get parent directory
+    parent = os.path.dirname(path)
+    if parent != path:  # Not at root
+        result["parent"] = parent
+    
+    # List subdirectories
+    try:
+        entries = os.listdir(path)
+        directories = []
+        for entry in sorted(entries):
+            # Skip hidden files/folders
+            if entry.startswith('.'):
+                continue
+            full_path = os.path.join(path, entry)
+            try:
+                if os.path.isdir(full_path):
+                    directories.append({
+                        "name": entry,
+                        "path": full_path
+                    })
+            except PermissionError:
+                continue
+        result["directories"] = directories
+    except PermissionError:
+        raise HTTPException(status_code=403, detail=f"Permission denied: {path}")
+    
+    return result
