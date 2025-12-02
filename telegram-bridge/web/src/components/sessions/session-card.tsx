@@ -111,6 +111,9 @@ export function SessionCard({ session }: SessionCardProps) {
   const [hasMoreMessages, setHasMoreMessages] = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
   const [chatOffset, setChatOffset] = useState(0)
+  // Local state for real-time updates (pending_request, control_state)
+  const [pendingRequest, setPendingRequest] = useState(session.pending_request)
+  const [localControlState, setLocalControlState] = useState(session.control_state)
   const { approve, deny, handoff, release, executeTask, cancelTask, addChatMessage, loading } = useSessionActions()
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const chatContainerRef = useRef<HTMLDivElement | null>(null)
@@ -152,6 +155,30 @@ export function SessionCard({ session }: SessionCardProps) {
       turns: msg.num_turns
     } : undefined
   })
+
+  // Sync local state with session prop changes
+  useEffect(() => {
+    setPendingRequest(session.pending_request)
+    setLocalControlState(session.control_state)
+  }, [session.pending_request, session.control_state])
+
+  // Listen for sessions_update to get real-time pending_request updates
+  useEffect(() => {
+    const socket = getSocket()
+    
+    const handleSessionsUpdate = (sessions: Session[]) => {
+      const updated = sessions.find(s => s.id === session.id)
+      if (updated) {
+        setPendingRequest(updated.pending_request)
+        setLocalControlState(updated.control_state)
+      }
+    }
+    
+    socket.on('sessions_update', handleSessionsUpdate)
+    return () => {
+      socket.off('sessions_update', handleSessionsUpdate)
+    }
+  }, [session.id])
 
   // Load chat history and settings from API on mount
   useEffect(() => {
@@ -387,9 +414,9 @@ export function SessionCard({ session }: SessionCardProps) {
   }, [chatHistory, scrollToBottom])
 
   const statusConfig = STATUS_CONFIG[session.status]
-  const controlState = session.control_state || 'cli_active'
+  const controlState = localControlState || 'cli_active'
   const controlConfig = CONTROL_STATE_CONFIG[controlState]
-  const hasPendingRequest = session.pending_request !== null
+  const hasPendingRequest = pendingRequest !== null
   const isRemoteControlled = controlState === 'remote_active'
   const canHandoff = controlState === 'cli_active' || controlState === 'cli_waiting' || controlState === 'released'
 
@@ -529,13 +556,13 @@ export function SessionCard({ session }: SessionCardProps) {
   }
 
   const handleApprove = () => {
-    if (session.pending_request) {
+    if (pendingRequest) {
       approve({ sessionId: session.id })
     }
   }
 
   const handleDeny = () => {
-    if (session.pending_request) {
+    if (pendingRequest) {
       deny({ sessionId: session.id })
     }
   }
@@ -659,18 +686,18 @@ export function SessionCard({ session }: SessionCardProps) {
         </div>
 
         {/* Pending Request */}
-        {hasPendingRequest && session.pending_request && (
+        {hasPendingRequest && pendingRequest && (
           <div className="rounded-md bg-muted p-3 shrink-0">
-            <p className="text-sm whitespace-pre-wrap">{session.pending_request.message}</p>
+            <p className="text-sm whitespace-pre-wrap">{pendingRequest.message}</p>
 
-            {session.pending_request.tool_name && (
+            {pendingRequest.tool_name && (
               <div className="mt-2 flex items-center gap-1 text-xs text-muted-foreground">
                 <Terminal className="h-3 w-3" />
-                <code>{session.pending_request.tool_name}</code>
+                <code>{pendingRequest.tool_name}</code>
               </div>
             )}
 
-            {session.pending_request.type === 'permission' && (
+            {pendingRequest.type === 'permission' && (
               <div className="mt-3 flex gap-2">
                 <Button size="sm" onClick={handleApprove}>
                   Approve
