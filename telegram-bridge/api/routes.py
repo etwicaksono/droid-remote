@@ -667,10 +667,20 @@ async def get_failed_tasks(limit: int = 20):
 
 # Chat History Endpoints
 @router.get("/sessions/{session_id}/chat")
-async def get_chat_history(session_id: str, limit: int = 100):
-    """Get chat messages for a session"""
-    messages = get_chat_repo().get_by_session(session_id, limit=limit)
-    return {"session_id": session_id, "messages": messages}
+async def get_chat_history(session_id: str, limit: int = 30, offset: int = 0):
+    """Get chat messages for a session (newest first for pagination)"""
+    repo = get_chat_repo()
+    messages = repo.get_by_session_paginated(session_id, limit=limit, offset=offset)
+    total = repo.count_by_session(session_id)
+    has_more = offset + len(messages) < total
+    return {
+        "session_id": session_id,
+        "messages": messages,
+        "total": total,
+        "has_more": has_more,
+        "offset": offset,
+        "limit": limit
+    }
 
 
 @router.post("/sessions/{session_id}/chat")

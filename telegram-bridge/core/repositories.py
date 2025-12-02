@@ -513,7 +513,7 @@ class ChatMessageRepository:
         }
     
     def get_by_session(self, session_id: str, limit: int = 100) -> List[dict]:
-        """Get chat messages for a session"""
+        """Get chat messages for a session (oldest first)"""
         db = get_db()
         cursor = db.execute("""
             SELECT * FROM chat_messages 
@@ -522,6 +522,29 @@ class ChatMessageRepository:
             LIMIT ?
         """, (session_id, limit))
         return [row_to_dict(row) for row in cursor.fetchall()]
+    
+    def get_by_session_paginated(self, session_id: str, limit: int = 30, offset: int = 0) -> List[dict]:
+        """Get chat messages for a session with pagination (newest first, then reversed for display)"""
+        db = get_db()
+        # Get newest messages first, with offset from the end
+        cursor = db.execute("""
+            SELECT * FROM chat_messages 
+            WHERE session_id = ? 
+            ORDER BY created_at DESC
+            LIMIT ? OFFSET ?
+        """, (session_id, limit, offset))
+        messages = [row_to_dict(row) for row in cursor.fetchall()]
+        # Reverse to get chronological order (oldest first for display)
+        return list(reversed(messages))
+    
+    def count_by_session(self, session_id: str) -> int:
+        """Count total messages for a session"""
+        db = get_db()
+        cursor = db.execute(
+            "SELECT COUNT(*) FROM chat_messages WHERE session_id = ?",
+            (session_id,)
+        )
+        return cursor.fetchone()[0]
     
     def clear_session(self, session_id: str) -> int:
         """Clear all chat messages for a session"""

@@ -112,6 +112,9 @@ export function SessionCard({ session }: SessionCardProps) {
   const [copiedSessionId, setCopiedSessionId] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
   const [controlAction, setControlAction] = useState<'handoff' | 'release' | null>(null)
+  const [hasMoreMessages, setHasMoreMessages] = useState(false)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [chatOffset, setChatOffset] = useState(0)
   const { approve, deny, handoff, release, executeTask, cancelTask, addChatMessage, loading } = useSessionActions()
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const chatContainerRef = useRef<HTMLDivElement | null>(null)
@@ -137,31 +140,40 @@ export function SessionCard({ session }: SessionCardProps) {
     textarea.style.overflowY = nextHeight > MAX_MESSAGE_INPUT_HEIGHT ? 'auto' : 'hidden'
   }, [])
 
+  const CHAT_PAGE_SIZE = 30
+
+  // Parse API message to ChatMessage format
+  const parseMessage = (msg: any): ChatMessage => ({
+    id: String(msg.id),
+    type: msg.type,
+    content: msg.content,
+    timestamp: new Date(msg.created_at),
+    status: msg.status,
+    source: msg.source || 'web',
+    meta: msg.duration_ms || msg.num_turns ? {
+      duration: msg.duration_ms,
+      turns: msg.num_turns
+    } : undefined
+  })
+
   // Load chat history and settings from API on mount
   useEffect(() => {
     // Clear chat history immediately when session changes
     setChatHistory([])
     setSettingsLoaded(false)
+    setHasMoreMessages(false)
+    setChatOffset(0)
     
     const loadData = async () => {
       try {
-        // Load chat history
-        const chatRes = await fetch(`${API_BASE}/sessions/${session.id}/chat`)
+        // Load chat history (newest messages first via pagination)
+        const chatRes = await fetch(`${API_BASE}/sessions/${session.id}/chat?limit=${CHAT_PAGE_SIZE}&offset=0`)
         if (chatRes.ok) {
           const data = await chatRes.json()
           if (data.messages?.length > 0) {
-            setChatHistory(data.messages.map((msg: any) => ({
-              id: String(msg.id),
-              type: msg.type,
-              content: msg.content,
-              timestamp: new Date(msg.created_at),
-              status: msg.status,
-              source: msg.source || 'web',
-              meta: msg.duration_ms || msg.num_turns ? {
-                duration: msg.duration_ms,
-                turns: msg.num_turns
-              } : undefined
-            })))
+            setChatHistory(data.messages.map(parseMessage))
+            setHasMoreMessages(data.has_more || false)
+            setChatOffset(data.messages.length)
           } else {
             setChatHistory([])
           }
@@ -184,6 +196,41 @@ export function SessionCard({ session }: SessionCardProps) {
     }
     loadData()
   }, [session.id, scrollToBottom])
+
+  // Load older messages
+  const loadOlderMessages = async () => {
+    if (loadingMore || !hasMoreMessages) return
+    
+    setLoadingMore(true)
+    try {
+      // Remember scroll position before loading
+      const container = chatContainerRef.current
+      const scrollHeightBefore = container?.scrollHeight || 0
+      
+      const chatRes = await fetch(`${API_BASE}/sessions/${session.id}/chat?limit=${CHAT_PAGE_SIZE}&offset=${chatOffset}`)
+      if (chatRes.ok) {
+        const data = await chatRes.json()
+        if (data.messages?.length > 0) {
+          // Prepend older messages
+          setChatHistory(prev => [...data.messages.map(parseMessage), ...prev])
+          setHasMoreMessages(data.has_more || false)
+          setChatOffset(prev => prev + data.messages.length)
+          
+          // Restore scroll position after DOM updates
+          setTimeout(() => {
+            if (container) {
+              const scrollHeightAfter = container.scrollHeight
+              container.scrollTop = scrollHeightAfter - scrollHeightBefore
+            }
+          }, 0)
+        }
+      }
+    } catch (err) {
+      console.error('Failed to load older messages:', err)
+    } finally {
+      setLoadingMore(false)
+    }
+  }
 
   // Save settings to API when they change (after initial load)
   useEffect(() => {
@@ -620,6 +667,25 @@ export function SessionCard({ session }: SessionCardProps) {
             <>
               {/* Chat History - scrollable area */}
               <div ref={chatContainerRef} className="flex-1 overflow-y-auto overflow-x-hidden space-y-3 min-h-0 pb-3">
+                {/* Load older messages button */}
+                {hasMoreMessages && (
+                  <div className="flex justify-center py-2">
+                    <button
+                      onClick={loadOlderMessages}
+                      disabled={loadingMore}
+                      className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-2 px-3 py-1.5 rounded-md hover:bg-muted transition-colors disabled:opacity-50"
+                    >
+                      {loadingMore ? (
+                        <>
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                          Loading...
+                        </>
+                      ) : (
+                        '↑ Load older messages'
+                      )}
+                    </button>
+                  </div>
+                )}
                 {chatHistory.map((msg) => (
                   <ChatBubble key={msg.id} message={msg} />
                 ))}
