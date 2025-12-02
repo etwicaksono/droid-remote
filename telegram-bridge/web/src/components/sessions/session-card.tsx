@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback, type FormEvent } from 'react'
-import { Clock, Folder, Terminal, Radio, Loader2, Copy, Check } from 'lucide-react'
+import { Clock, Folder, Terminal, Radio, Loader2, Copy, Check, ChevronRight, ChevronDown } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -114,6 +114,7 @@ export function SessionCard({ session }: SessionCardProps) {
   // Local state for real-time updates (pending_request, control_state)
   const [pendingRequest, setPendingRequest] = useState(session.pending_request)
   const [localControlState, setLocalControlState] = useState(session.control_state)
+  const [headerExpanded, setHeaderExpanded] = useState(false)
   const { approve, deny, handoff, release, executeTask, cancelTask, addChatMessage, loading } = useSessionActions()
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const chatContainerRef = useRef<HTMLDivElement | null>(null)
@@ -638,19 +639,48 @@ export function SessionCard({ session }: SessionCardProps) {
         </div>
       )}
       
-      <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between space-y-2 sm:space-y-0 pb-2 shrink-0">
-        <div className="flex flex-col gap-1 min-w-0 w-full sm:w-auto">
-          <div className="flex items-center gap-2">
+      <CardHeader className="pb-2 shrink-0">
+        {/* Collapsed header row - always visible */}
+        <div 
+          className="flex items-center justify-between cursor-pointer"
+          onClick={() => setHeaderExpanded(prev => !prev)}
+        >
+          <div className="flex items-center gap-2 min-w-0 flex-1">
+            {headerExpanded ? (
+              <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+            ) : (
+              <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+            )}
             <span className={cn('h-2 w-2 rounded-full shrink-0', statusConfig.color)} />
             <span className="font-semibold truncate">{session.name}</span>
+            {!headerExpanded && (
+              <span className="text-xs text-muted-foreground hidden sm:inline">
+                {formatRelativeTime(session.last_activity)}
+              </span>
+            )}
           </div>
-          <div className="flex flex-col gap-1 text-xs text-muted-foreground pl-4">
+          <div className="flex items-center gap-2 shrink-0">
+            <Badge variant="outline" className="text-xs">
+              <Radio className="h-3 w-3 mr-1" />
+              <span className="hidden sm:inline">{controlConfig.label}</span>
+              <span className="sm:hidden">{controlConfig.label.split(' ')[0]}</span>
+            </Badge>
+            <Badge variant={statusConfig.variant}>{statusConfig.label}</Badge>
+          </div>
+        </div>
+
+        {/* Expanded details */}
+        {headerExpanded && (
+          <div className="flex flex-col gap-1 text-xs text-muted-foreground pl-6 mt-2">
             <div className="flex items-center gap-2">
               <span className="font-mono text-xs select-all">
                 {session.id}
               </span>
               <button
-                onClick={handleCopySessionId}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  handleCopySessionId()
+                }}
                 className="p-1 hover:bg-gray-700 rounded transition-colors"
                 title="Copy session ID"
               >
@@ -664,18 +694,10 @@ export function SessionCard({ session }: SessionCardProps) {
             <div className="flex items-center gap-2">
               <Folder className="h-3 w-3 shrink-0" />
               <span className="truncate" title={session.project_dir}>{session.project_dir}</span>
-              <LastActivityTime lastActivity={session.last_activity} />
             </div>
+            <LastActivityTime lastActivity={session.last_activity} />
           </div>
-        </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <Badge variant="outline" className="text-xs">
-            <Radio className="h-3 w-3 mr-1" />
-            <span className="hidden sm:inline">{controlConfig.label}</span>
-            <span className="sm:hidden">{controlConfig.label.split(' ')[0]}</span>
-          </Badge>
-          <Badge variant={statusConfig.variant}>{statusConfig.label}</Badge>
-        </div>
+        )}
       </CardHeader>
 
       <CardContent className="flex-1 flex flex-col space-y-3 overflow-hidden">
