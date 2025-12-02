@@ -811,7 +811,9 @@ function ChatBubble({ message }: { message: ChatMessage }) {
 function LastActivityTime({ lastActivity }: { lastActivity: string }) {
   const [showFull, setShowFull] = useState(false)
   
-  const fullTime = new Date(lastActivity).toLocaleString(undefined, {
+  // Ensure UTC parsing by appending Z if missing
+  const utcTime = lastActivity.endsWith('Z') ? lastActivity : lastActivity + 'Z'
+  const fullTime = new Date(utcTime).toLocaleString(undefined, {
     month: 'short',
     day: 'numeric',
     year: 'numeric',
