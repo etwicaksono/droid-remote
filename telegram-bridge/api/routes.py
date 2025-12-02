@@ -39,6 +39,9 @@ router = APIRouter()
 # Secret for hook authentication
 BRIDGE_SECRET = os.getenv("BRIDGE_SECRET", "")
 
+# Track CLI thinking state per session (in-memory, ephemeral)
+cli_thinking_state: dict[str, bool] = {}
+
 
 def verify_secret(x_bridge_secret: Optional[str] = Header(None)):
     """Verify the bridge secret header"""
@@ -705,6 +708,10 @@ async def add_chat_message(
         source=source
     )
     
+    # Clear thinking state when assistant message is added from CLI
+    if msg_type == 'assistant' and source == 'cli':
+        cli_thinking_state[session_id] = False
+    
     # Emit WebSocket event so Web UI updates
     sio = getattr(request.app.state, "sio", None)
     if sio:
@@ -729,6 +736,9 @@ async def cli_thinking(session_id: str, request: Request):
     body = await request.json()
     prompt = body.get("prompt", "")
     
+    # Store thinking state so new connections can check it
+    cli_thinking_state[session_id] = True
+    
     # Emit WebSocket event so Web UI shows thinking indicator
     sio = getattr(request.app.state, "sio", None)
     if sio:
@@ -738,6 +748,12 @@ async def cli_thinking(session_id: str, request: Request):
         })
     
     return {"success": True}
+
+
+@router.get("/sessions/{session_id}/cli-thinking")
+async def get_cli_thinking(session_id: str):
+    """Check if CLI is currently thinking for this session"""
+    return {"thinking": cli_thinking_state.get(session_id, False)}
 
 
 # Session Settings Endpoints

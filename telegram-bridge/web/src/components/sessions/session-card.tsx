@@ -163,6 +163,7 @@ export function SessionCard({ session }: SessionCardProps) {
     setSettingsLoaded(false)
     setHasMoreMessages(false)
     setChatOffset(0)
+    setExecuting(false)
     
     const loadData = async () => {
       try {
@@ -186,6 +187,16 @@ export function SessionCard({ session }: SessionCardProps) {
           if (settings.model) setSelectedModel(settings.model)
           if (settings.reasoning_effort) setReasoningEffort(settings.reasoning_effort as ReasoningEffort)
         }
+        
+        // Check if CLI is currently thinking
+        const thinkingRes = await fetch(`${API_BASE}/sessions/${session.id}/cli-thinking`)
+        if (thinkingRes.ok) {
+          const thinkingData = await thinkingRes.json()
+          if (thinkingData.thinking) {
+            setExecuting(true)
+          }
+        }
+        
         setSettingsLoaded(true)
         // Scroll to bottom after loading
         setTimeout(scrollToBottom, 100)
