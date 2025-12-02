@@ -10,7 +10,10 @@ Control Factory.ai Droid CLI remotely via Telegram and Web UI.
 - **Multi-Session**: Manage multiple Droid instances simultaneously
 - **Permission Requests**: Approve/deny tool executions remotely
 - **Mobile Responsive**: Access from phone on local network
-- **URL Sharing**: Direct links to specific sessions (e.g., `/?session=<id>`)
+- **URL Routing**: Clean URLs (`/session/{id}`, `/history`, `/permissions`)
+- **Cross-Device Sync**: "Droid is thinking" state syncs across all devices
+- **Configurable Models**: Edit JSON file to add/remove AI models
+- **Task Notifications**: Receive task results in Telegram with Web UI link
 
 ## Architecture
 
@@ -160,17 +163,25 @@ droid-remote/
 Access at `http://localhost:3000` or `http://<your-ip>:3000` for mobile.
 
 ### Session View
+- **Claude-Style Input**: Clean input box with toolbar (like Claude/ChatGPT)
+- **Welcome Screen**: Centered input when no chat history
 - **Chat Interface**: Send instructions to Droid in chat-style UI
-- **Model Selection**: Choose AI model (Claude, GPT, Gemini, etc.)
+- **Model Selection**: Choose AI model from toolbar
 - **Thinking Mode**: Adjust reasoning effort for supported models
 - **Take Control**: Switch from CLI to remote control
 - **Release to CLI**: Return control back to CLI
+- **Cross-Device Sync**: "Droid is thinking" shows on all connected devices
 
-### Session URL
-Each session has a direct URL: `/?session=<session-id>`
-- Shareable via Telegram notifications
-- Bookmarkable for quick access
-- Auto-selects session on page load
+### URL Routes
+
+| Route | Description |
+|-------|-------------|
+| `/` | Home - Custom task creation |
+| `/session/{id}` | Individual session view |
+| `/history` | Task execution history |
+| `/permissions` | Permission request history |
+
+Session URLs are shareable via Telegram notifications and bookmarkable.
 
 ### Sidebar Navigation
 - **Sessions**: List of active sessions with status indicators
@@ -192,17 +203,29 @@ Each session has a direct URL: `/?session=<session-id>`
 
 ## Telegram Notifications
 
-Session start notifications include clickable Web UI link:
-
+### Session Start
 ```
-▶️ [project-name] Session Started
-
-📁 Project: D:\Project\...
+▶️ *Task Completed*
+📁 Project: `project-name`
 🕐 Time: 2025-12-02 04:00:00
 🔄 Trigger: cli
 
 🔗 Open in Web UI  ← Click to open session
 ```
+
+### Task Completion (from Web UI)
+```
+✅ *Task Completed*
+📁 Project: `project-name`
+💬 Prompt: _fix the bug in..._
+
+📝 *Result:*
+I've fixed the bug by updating...
+
+🔗 Open in Web UI
+```
+
+Task result length is configurable via `TELEGRAM_TASK_RESULT_MAX_LENGTH` in `hooks/lib/config.py`.
 
 ## Mobile Access
 
@@ -216,9 +239,34 @@ To access from phone on same network:
 
 | File | Purpose |
 |------|---------|
-| `hooks/lib/config.py` | Hook settings (URLs, timeouts) |
+| `hooks/lib/config.py` | Hook settings (URLs, timeouts, notification limits) |
 | `telegram-bridge/.env` | Server settings (tokens, secrets) |
 | `telegram-bridge/web/.env.local` | Web UI API URL |
+| `telegram-bridge/web/src/config/models.json` | Available AI models |
+
+### Models Configuration
+
+Edit `telegram-bridge/web/src/config/models.json` to add/remove AI models:
+
+```json
+{
+  "models": [
+    { "id": "claude-sonnet-4-5-20250929", "name": "Claude Sonnet 4.5", "reasoning": true },
+    { "id": "gpt-5.1-codex", "name": "GPT-5.1 Codex", "reasoning": false }
+  ],
+  "defaultModel": "claude-sonnet-4-5-20250929",
+  "reasoningLevels": [
+    { "id": "off", "name": "Off" },
+    { "id": "low", "name": "Low" },
+    { "id": "medium", "name": "Medium" },
+    { "id": "high", "name": "High" }
+  ],
+  "defaultReasoningLevel": "medium"
+}
+```
+
+- `reasoning: true` - Shows thinking mode selector for this model
+- Rebuild Web UI after changes: `npm run build`
 
 ## License
 
