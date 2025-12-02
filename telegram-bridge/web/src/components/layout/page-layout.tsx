@@ -129,11 +129,12 @@ export function PageLayout({ children, title, session, currentPath }: PageLayout
         <header className="border-b border-gray-800 shrink-0">
           {session && statusConfig ? (
             // Session Header
-            <div className="p-4 pl-16 md:pl-4">
-              <div 
-                className="flex items-center justify-between cursor-pointer group/header"
-                onClick={() => !isEditingName && setHeaderExpanded(prev => !prev)}
-              >
+            <div 
+              className="p-4 pl-16 md:pl-4 cursor-pointer group/header"
+              onClick={() => !isEditingName && setHeaderExpanded(prev => !prev)}
+            >
+              {/* Main row */}
+              <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 min-w-0 flex-1">
                   {headerExpanded ? (
                     <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
@@ -164,8 +165,9 @@ export function PageLayout({ children, title, session, currentPath }: PageLayout
                       </button>
                     </>
                   )}
+                  {/* Desktop: inline timestamp */}
                   {!headerExpanded && (
-                    <span className="text-xs text-muted-foreground">
+                    <span className="text-xs text-muted-foreground hidden sm:inline">
                       {formatRelativeTime(session.last_activity)}
                     </span>
                   )}
@@ -177,10 +179,16 @@ export function PageLayout({ children, title, session, currentPath }: PageLayout
                     {controlConfig.label}
                   </Badge>
                   <Badge variant={statusConfig.variant} className="hidden sm:flex">{statusConfig.label}</Badge>
-                  {/* Mobile: just connection dot */}
                   <ConnectionStatus />
                 </div>
               </div>
+
+              {/* Mobile: timestamp below title when collapsed */}
+              {!headerExpanded && (
+                <div className="text-xs text-muted-foreground pl-6 mt-1 sm:hidden">
+                  {formatRelativeTime(session.last_activity)}
+                </div>
+              )}
 
               {/* Expanded details */}
               {headerExpanded && (
