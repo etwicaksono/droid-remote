@@ -1,1 +1,1 @@
-{"1b165ad5-cea6-4ce4-a4b9-4617a072f93b": "when i click \"Approve\" in web ui, the CLI continue the process but the web ui doesn't remove the approval request, and the history status still pending"}
+{"1b165ad5-cea6-4ce4-a4b9-4617a072f93b": "session.id [copy button]\n     <Folder> project_dir     <LastActivityTime>"}

@@ -661,9 +661,11 @@ export function SessionCard({ session }: SessionCardProps) {
                 )}
               </button>
             </div>
-            <span className="truncate" title={session.project_dir}>
-              📁 {session.project_dir}
-            </span>
+            <div className="flex items-center gap-2">
+              <Folder className="h-3 w-3 shrink-0" />
+              <span className="truncate" title={session.project_dir}>{session.project_dir}</span>
+              <LastActivityTime lastActivity={session.last_activity} />
+            </div>
           </div>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
@@ -677,14 +679,6 @@ export function SessionCard({ session }: SessionCardProps) {
       </CardHeader>
 
       <CardContent className="flex-1 flex flex-col space-y-3 overflow-hidden">
-        <div className="flex flex-col sm:flex-row sm:flex-wrap gap-1 sm:gap-x-4 sm:gap-y-1 text-xs text-muted-foreground shrink-0">
-          <span className="flex items-center gap-1 truncate">
-            <Folder className="h-3 w-3 shrink-0" />
-            <span className="truncate">{session.project_dir}</span>
-          </span>
-          <LastActivityTime lastActivity={session.last_activity} />
-        </div>
-
         {/* Pending Request */}
         {hasPendingRequest && pendingRequest && (
           <div className="rounded-md bg-muted p-3 shrink-0">
