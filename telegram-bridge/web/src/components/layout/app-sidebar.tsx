@@ -239,7 +239,7 @@ export function AppSidebar({ currentPath }: AppSidebarProps) {
                             <span className={cn('h-2 w-2 rounded-full', statusInfo.color)} />
                             <span>{statusInfo.label}</span>
                             <span>•</span>
-                            <span>{formatRelativeTime(session.last_activity)}</span>
+                            <SidebarActivityTime lastActivity={session.last_activity} />
                           </div>
                         </div>
                       )}
@@ -301,5 +301,41 @@ export function AppSidebar({ currentPath }: AppSidebarProps) {
         <Menu className="h-5 w-5" />
       </button>
     </>
+  )
+}
+
+function SidebarActivityTime({ lastActivity }: { lastActivity: string }) {
+  const [showFull, setShowFull] = useState(false)
+  
+  // Ensure UTC parsing by appending Z if missing
+  const utcTime = lastActivity.endsWith('Z') ? lastActivity : lastActivity + 'Z'
+  const fullTime = new Date(utcTime).toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  })
+
+  return (
+    <span 
+      className="cursor-pointer group"
+      onClick={(e) => {
+        e.preventDefault()
+        e.stopPropagation()
+        setShowFull(prev => !prev)
+      }}
+      title={fullTime}
+    >
+      <span className="md:hidden">
+        {showFull ? fullTime : formatRelativeTime(lastActivity)}
+      </span>
+      <span className="hidden md:inline group-hover:hidden">
+        {formatRelativeTime(lastActivity)}
+      </span>
+      <span className="hidden md:group-hover:inline">
+        {fullTime}
+      </span>
+    </span>
   )
 }

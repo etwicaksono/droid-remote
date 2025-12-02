@@ -1,1 +1,1 @@
-{"2a595196-40e7-450f-a753-2867410870ca": "what is 1 + 3"}
+{"2a595196-40e7-450f-a753-2867410870ca": "what is 1 + 3", "1b165ad5-cea6-4ce4-a4b9-4617a072f93b": "update @telegram-bridge\\web\\src\\components\\layout\\app-sidebar.tsx line 242 to have behaviour like @telegram-bridge\\web\\src\\components\\sessions\\session-card.tsx 614"}
