@@ -11,7 +11,7 @@ export function ConnectionStatus() {
       <span
         className={cn('h-2 w-2 rounded-full', connected ? 'bg-green-500' : 'bg-red-500')}
       />
-      <span className="text-muted-foreground hidden sm:inline">
+      <span className="text-muted-foreground">
         {connected ? 'Connected' : 'Disconnected'}
       </span>
     </div>
