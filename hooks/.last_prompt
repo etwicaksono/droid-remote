@@ -1,1 +1,1 @@
-{"1b165ad5-cea6-4ce4-a4b9-4617a072f93b": "i want you implement option 1, but i found an issue, web ui still displays \"Droid is thinking\" event though CLI has give response and Telegram has receive message"}
+{"1b165ad5-cea6-4ce4-a4b9-4617a072f93b": "yes, and there is an issue in web ui, it doesn't show chat from user and assistant realtime, user should refresh the page to see latest chat"}
