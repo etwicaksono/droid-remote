@@ -793,6 +793,11 @@ async def add_chat_message(
             "session_id": session_id,
             "message": message
         })
+        # Also emit explicit cli_thinking_done to ensure thinking state is cleared
+        if msg_type == 'assistant' and source == 'cli':
+            await sio.emit("cli_thinking_done", {
+                "session_id": session_id
+            })
     
     return {"success": True, "message": message}
 

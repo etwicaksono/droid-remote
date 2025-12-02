@@ -23,6 +23,16 @@ class BridgeClientError(Exception):
     pass
 
 
+def is_bridge_available(timeout: float = 0.3) -> bool:
+    """Quick check if bridge is reachable (300ms timeout by default)"""
+    try:
+        req = urllib.request.Request(f"{BRIDGE_URL}/health", method="GET")
+        with urllib.request.urlopen(req, timeout=timeout) as response:
+            return response.status == 200
+    except Exception:
+        return False
+
+
 def _make_request(
     method: str,
     endpoint: str,

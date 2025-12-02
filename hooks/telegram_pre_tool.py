@@ -18,7 +18,7 @@ import logging
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "lib"))
 
-from bridge_client import register_session, notify, wait_for_response, update_session_status
+from bridge_client import register_session, notify, wait_for_response, update_session_status, is_bridge_available
 from formatters import format_session_name, format_permission_request
 from config import PERMISSION_TIMEOUT
 
@@ -36,6 +36,13 @@ def main():
             f.write(f"{msg}\n")
     
     debug_log(f"\n=== PreToolUse Hook Started ===")
+    
+    # Quick check if bridge is available (300ms timeout)
+    if not is_bridge_available():
+        debug_log("Bridge not available, allowing tool (fail open)")
+        print(json.dumps({"permissionDecision": "allow"}))
+        sys.exit(0)
+    
     debug_log(f"Environment variables:")
     for key, value in os.environ.items():
         if 'FACTORY' in key or 'SESSION' in key or 'DROID' in key:

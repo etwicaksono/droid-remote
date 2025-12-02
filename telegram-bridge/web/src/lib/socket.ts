@@ -13,6 +13,7 @@ interface ServerToClientEvents {
   task_cancelled: (data: { task_id: string }) => void
   chat_updated: (data: { session_id: string; message: any }) => void
   cli_thinking: (data: { session_id: string; prompt: string }) => void
+  cli_thinking_done: (data: { session_id: string }) => void
 }
 
 interface ClientToServerEvents {

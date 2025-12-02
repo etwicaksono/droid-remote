@@ -14,7 +14,7 @@ import logging
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "lib"))
 
-from bridge_client import register_session, notify
+from bridge_client import register_session, notify, is_bridge_available
 from formatters import format_session_name
 
 logging.basicConfig(level=logging.INFO)
@@ -22,6 +22,11 @@ logger = logging.getLogger(__name__)
 
 
 def main():
+    # Quick check if bridge is available (300ms timeout)
+    if not is_bridge_available():
+        logger.warning("Bridge not available, skipping subagent stop notification")
+        sys.exit(0)
+    
     try:
         input_data = json.load(sys.stdin)
     except json.JSONDecodeError as e:

@@ -15,7 +15,7 @@ from datetime import datetime
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "lib"))
 
-from bridge_client import register_session, notify
+from bridge_client import register_session, notify, is_bridge_available
 from formatters import format_session_name
 from config import WEB_UI_URL
 
@@ -27,6 +27,11 @@ def main():
     # Skip notification if running via droid exec (task executor)
     if os.environ.get("DROID_EXEC_MODE") == "1":
         logger.info("Running in exec mode, skipping session start notification")
+        sys.exit(0)
+    
+    # Quick check if bridge is available (300ms timeout)
+    if not is_bridge_available():
+        logger.warning("Bridge not available, skipping session start")
         sys.exit(0)
     
     try:

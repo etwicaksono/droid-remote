@@ -16,7 +16,7 @@ import logging
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "lib"))
 
-from bridge_client import register_session, notify, update_session_status, add_chat_message
+from bridge_client import register_session, notify, update_session_status, add_chat_message, is_bridge_available
 from formatters import format_session_name
 from config import WEB_UI_URL, TELEGRAM_TASK_RESULT_MAX_LENGTH
 
@@ -115,6 +115,11 @@ def main():
     # Skip if running via droid exec (task executor handles responses)
     if os.environ.get("DROID_EXEC_MODE") == "1":
         logger.info("Running in exec mode, skipping stop hook")
+        sys.exit(0)
+    
+    # Quick check if bridge is available (300ms timeout)
+    if not is_bridge_available():
+        logger.warning("Bridge not available, skipping stop hook")
         sys.exit(0)
     
     try:

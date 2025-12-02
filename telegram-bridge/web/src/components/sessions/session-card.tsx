@@ -376,11 +376,20 @@ export function SessionCard({ session }: SessionCardProps) {
       }
     }
     
+    const handleCliThinkingDone = (data: { session_id: string }) => {
+      // Check if this is for our session
+      if (data.session_id === session.id) {
+        setExecuting(false)
+        setCurrentTaskId(null)
+      }
+    }
+    
     socket.on('task_started', handleTaskStarted)
     socket.on('task_completed', handleTaskCompleted)
     socket.on('task_cancelled', handleTaskCancelled)
     socket.on('chat_updated', handleChatUpdated)
     socket.on('cli_thinking', handleCliThinking)
+    socket.on('cli_thinking_done', handleCliThinkingDone)
     
     return () => {
       socket.off('task_started', handleTaskStarted)
@@ -388,6 +397,7 @@ export function SessionCard({ session }: SessionCardProps) {
       socket.off('task_cancelled', handleTaskCancelled)
       socket.off('chat_updated', handleChatUpdated)
       socket.off('cli_thinking', handleCliThinking)
+      socket.off('cli_thinking_done', handleCliThinkingDone)
     }
   }, [session.project_dir, session.id, currentTaskId])
 
