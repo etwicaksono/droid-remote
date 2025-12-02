@@ -154,11 +154,90 @@ def main():
     register_session(session_id, project_dir, session_name)
     update_session_status(session_id, "waiting")
     
-    # Get summary if available (Droid's response)
-    summary = input_data.get("summary")
+    # Read transcript to get last assistant message
+    transcript_path = input_data.get("transcriptPath") or input_data.get("transcript_path")
+    summary = None
+    if transcript_path:
+        try:
+            import os
+            if os.path.exists(transcript_path):
+                with open(transcript_path, 'r', encoding='utf-8') as f:
+                    lines = f.readlines()
+                # Read from end to find last assistant message
+                for line in reversed(lines):
+                    try:
+                        entry = json.loads(line.strip())
+                        if entry.get("type") == "assistant":
+                            # Get the message content
+                            message = entry.get("message", {})
+                            if isinstance(message, dict):
+                                content = message.get("content", [])
+                                if isinstance(content, list):
+                                    # Extract text from content blocks
+                                    texts = []
+                                    for block in content:
+                                        if isinstance(block, dict) and block.get("type") == "text":
+                                            texts.append(block.get("text", ""))
+                                    summary = "\n".join(texts)
+                                elif isinstance(content, str):
+                                    summary = content
+                            elif isinstance(message, str):
+                                summary = message
+                            if summary:
+                                logger.info(f"Found assistant message in transcript ({len(summary)} chars)")
+                                break
+                    except json.JSONDecodeError:
+                        continue
+        except Exception as e:
+            logger.error(f"Failed to read transcript: {e}")
     
-    # Get the prompt that triggered this task (from previous hook call)
+    # Get the prompt that triggered this task (from previous hook call or transcript)
     last_prompt = get_last_prompt(session_id)
+    
+    # If no prompt saved, try to get from transcript
+    if not last_prompt and transcript_path:
+        try:
+            if os.path.exists(transcript_path):
+                with open(transcript_path, 'r', encoding='utf-8') as f:
+                    lines = f.readlines()
+                # Find last user message before the assistant message
+                for line in reversed(lines):
+                    try:
+                        entry = json.loads(line.strip())
+                        if entry.get("type") == "human":
+                            message = entry.get("message", {})
+                            if isinstance(message, dict):
+                                content = message.get("content", "")
+                                if isinstance(content, str):
+                                    last_prompt = content
+                                elif isinstance(content, list):
+                                    texts = []
+                                    for block in content:
+                                        if isinstance(block, dict) and block.get("type") == "text":
+                                            texts.append(block.get("text", ""))
+                                    last_prompt = "\n".join(texts)
+                            elif isinstance(message, str):
+                                last_prompt = message
+                            if last_prompt:
+                                logger.info(f"Found user message in transcript ({len(last_prompt)} chars)")
+                                break
+                    except json.JSONDecodeError:
+                        continue
+        except Exception as e:
+            logger.error(f"Failed to read user prompt from transcript: {e}")
+    
+    # Save user prompt to database (if found from transcript and not already saved)
+    if last_prompt:
+        try:
+            add_chat_message(
+                session_id=session_id,
+                msg_type='user',
+                content=last_prompt,
+                source='cli'
+            )
+            logger.info(f"Saved user message to database ({len(last_prompt)} chars)")
+        except Exception as e:
+            logger.error(f"Failed to save user message: {e}")
     
     # Save summary (assistant response) to database
     if summary:
