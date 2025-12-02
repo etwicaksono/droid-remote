@@ -399,12 +399,13 @@ export function SessionCard({ session }: SessionCardProps) {
     }
   }, [session.project_dir, session.id, currentTaskId])
 
-  // Scroll to bottom when chat history changes (but not when loading older messages)
+  // Scroll to bottom when chat history changes or executing state changes (but not when loading older messages)
   useEffect(() => {
     if (!isLoadingOlderRef.current) {
-      scrollToBottom()
+      // Small delay to ensure DOM has updated
+      setTimeout(scrollToBottom, 50)
     }
-  }, [chatHistory, scrollToBottom])
+  }, [chatHistory, executing, scrollToBottom])
 
   const controlState = localControlState || 'cli_active'
   const hasPendingRequest = pendingRequest !== null
