@@ -34,18 +34,24 @@ export function getSocket(): TypedSocket {
     const wsUrl = process.env.NEXT_PUBLIC_WS_URL ?? 'http://localhost:8765'
 
     socket = io(wsUrl, {
-      autoConnect: true,  // Auto-connect when socket is created
+      autoConnect: true,
       reconnection: true,
-      reconnectionAttempts: Infinity,  // Keep trying to reconnect
+      reconnectionAttempts: Infinity,
       reconnectionDelay: 1000,
       reconnectionDelayMax: 5000,
-      transports: ['websocket', 'polling'],  // Prefer websocket
+      transports: ['websocket', 'polling'],
     })
-  }
-
-  // Ensure socket is connected
-  if (!socket.connected) {
-    socket.connect()
+    
+    // Log connection events for debugging
+    socket.on('connect', () => {
+      console.log('[Socket] Connected:', socket?.id)
+    })
+    socket.on('disconnect', (reason) => {
+      console.log('[Socket] Disconnected:', reason)
+    })
+    socket.on('connect_error', (error) => {
+      console.log('[Socket] Connection error:', error.message)
+    })
   }
 
   return socket
@@ -55,26 +61,33 @@ export function connectSocket(): Promise<void> {
   return new Promise((resolve, reject) => {
     const sock = getSocket()
 
+    // Already connected or connecting
     if (sock.connected) {
       resolve()
       return
     }
 
+    // Socket auto-connects, just wait for it
+    const timeout = setTimeout(() => {
+      reject(new Error('Connection timeout'))
+    }, 10000)
+
     const onConnect = () => {
+      clearTimeout(timeout)
       sock.off('connect', onConnect)
       sock.off('connect_error', onError)
       resolve()
     }
 
     const onError = (error: Error) => {
+      clearTimeout(timeout)
       sock.off('connect', onConnect)
       sock.off('connect_error', onError)
       reject(error)
     }
 
-    sock.on('connect', onConnect)
-    sock.on('connect_error', onError)
-    sock.connect()
+    sock.once('connect', onConnect)
+    sock.once('connect_error', onError)
   })
 }
 
