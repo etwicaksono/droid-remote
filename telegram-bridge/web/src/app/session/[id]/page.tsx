@@ -15,6 +15,10 @@ export default function SessionPage() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    // Reset state when session changes
+    setLoading(true)
+    setSession(null)
+    
     const fetchSession = async () => {
       try {
         // Fetch single session directly
@@ -32,7 +36,6 @@ export default function SessionPage() {
       }
     }
 
-    // Fetch once on mount - SessionCard handles real-time updates via WebSocket
     fetchSession()
   }, [sessionId])
 

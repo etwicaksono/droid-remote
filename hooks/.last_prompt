@@ -1,1 +1,1 @@
-{"1b165ad5-cea6-4ce4-a4b9-4617a072f93b": "why you fetch /sessions each 5s? is it for make order by latest data? if yes so you should do it when an user or assistant pull the trigger"}
+{"1b165ad5-cea6-4ce4-a4b9-4617a072f93b": "then i also find and issue, when i click session card it doesn't call any api"}
