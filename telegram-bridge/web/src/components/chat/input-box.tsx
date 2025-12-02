@@ -108,8 +108,8 @@ export function InputBox({
           "flex items-center justify-between px-3 pb-3",
           disabled && "opacity-50"
         )}>
-          {/* Left side - Action buttons */}
-          <div className="flex items-center gap-1">
+          {/* Left side - Action buttons (hidden on mobile to save space) */}
+          <div className="hidden sm:flex items-center gap-1">
             <button
               type="button"
               disabled={disabled}
@@ -129,15 +129,15 @@ export function InputBox({
           </div>
 
           {/* Right side - Model selector, Thinking, Send */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 sm:gap-2">
             {/* Model Selector */}
             <select
               value={selectedModel}
               onChange={(e) => setSelectedModel(e.target.value)}
               disabled={disabled || executing}
               className={cn(
-                "h-8 px-2 text-xs rounded-lg bg-transparent border-0 hover:bg-muted transition-colors cursor-pointer",
-                "focus:outline-none focus:ring-0",
+                "h-8 px-1 sm:px-2 text-xs rounded-lg bg-transparent border-0 hover:bg-muted transition-colors cursor-pointer",
+                "focus:outline-none focus:ring-0 max-w-[100px] sm:max-w-none",
                 disabled && "cursor-not-allowed"
               )}
             >
@@ -155,8 +155,8 @@ export function InputBox({
                 onChange={(e) => setReasoningEffort(e.target.value as ReasoningEffort)}
                 disabled={disabled || executing}
                 className={cn(
-                  "h-8 px-2 text-xs rounded-lg bg-transparent border-0 hover:bg-muted transition-colors cursor-pointer",
-                  "focus:outline-none focus:ring-0",
+                  "h-8 px-1 sm:px-2 text-xs rounded-lg bg-transparent border-0 hover:bg-muted transition-colors cursor-pointer",
+                  "focus:outline-none focus:ring-0 max-w-[60px] sm:max-w-none",
                   disabled && "cursor-not-allowed"
                 )}
                 title="Thinking mode"
