@@ -162,6 +162,15 @@ def main():
             if os.path.exists(transcript_path):
                 with open(transcript_path, 'r', encoding='utf-8') as f:
                     lines = f.readlines()
+                # Debug: log last few entries to understand structure
+                logger.info(f"Transcript has {len(lines)} lines")
+                for i, line in enumerate(lines[-5:]):
+                    try:
+                        entry = json.loads(line.strip())
+                        logger.info(f"Entry {i}: type={entry.get('type')}, keys={list(entry.keys())}")
+                    except:
+                        pass
+                
                 # Read from end to find last assistant message
                 for line in reversed(lines):
                     try:
@@ -192,6 +201,7 @@ def main():
     
     # Get the prompt that triggered this task (from previous hook call or transcript)
     last_prompt = get_last_prompt(session_id)
+    prompt_already_saved = last_prompt is not None  # If from get_last_prompt, UserPromptSubmit already saved it
     
     # If no prompt saved, try to get from transcript
     if not last_prompt and transcript_path:
@@ -225,8 +235,8 @@ def main():
         except Exception as e:
             logger.error(f"Failed to read user prompt from transcript: {e}")
     
-    # Save user prompt to database (if found from transcript and not already saved)
-    if last_prompt:
+    # Save user prompt to database (only if from transcript, not already saved by UserPromptSubmit)
+    if last_prompt and not prompt_already_saved:
         try:
             add_chat_message(
                 session_id=session_id,
@@ -237,6 +247,8 @@ def main():
             logger.info(f"Saved user message to database ({len(last_prompt)} chars)")
         except Exception as e:
             logger.error(f"Failed to save user message: {e}")
+    elif prompt_already_saved:
+        logger.info("User message already saved by UserPromptSubmit hook")
     
     # Save summary (assistant response) to database
     if summary:
