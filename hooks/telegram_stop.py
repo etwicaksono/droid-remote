@@ -167,7 +167,9 @@ def main():
                 for i, line in enumerate(lines[-5:]):
                     try:
                         entry = json.loads(line.strip())
-                        logger.info(f"Entry {i}: type={entry.get('type')}, keys={list(entry.keys())}")
+                        msg = entry.get('message', {})
+                        msg_role = msg.get('role') if isinstance(msg, dict) else None
+                        logger.info(f"Entry {i}: type={entry.get('type')}, role={msg_role}, msg_keys={list(msg.keys()) if isinstance(msg, dict) else 'not dict'}")
                     except:
                         pass
                 
@@ -175,9 +177,16 @@ def main():
                 for line in reversed(lines):
                     try:
                         entry = json.loads(line.strip())
-                        if entry.get("type") == "assistant":
+                        message = entry.get("message", {})
+                        
+                        # Check for assistant role (Factory uses role field inside message)
+                        is_assistant = (
+                            entry.get("type") == "assistant" or
+                            (isinstance(message, dict) and message.get("role") == "assistant")
+                        )
+                        
+                        if is_assistant:
                             # Get the message content
-                            message = entry.get("message", {})
                             if isinstance(message, dict):
                                 content = message.get("content", [])
                                 if isinstance(content, list):
@@ -213,8 +222,15 @@ def main():
                 for line in reversed(lines):
                     try:
                         entry = json.loads(line.strip())
-                        if entry.get("type") == "human":
-                            message = entry.get("message", {})
+                        message = entry.get("message", {})
+                        
+                        # Check for user/human role
+                        is_user = (
+                            entry.get("type") == "human" or
+                            (isinstance(message, dict) and message.get("role") in ("user", "human"))
+                        )
+                        
+                        if is_user:
                             if isinstance(message, dict):
                                 content = message.get("content", "")
                                 if isinstance(content, str):
