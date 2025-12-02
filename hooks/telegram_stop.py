@@ -20,9 +20,9 @@ import uuid
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "lib"))
 
-from bridge_client import register_session, notify, update_session_status, wait_for_response
-from formatters import format_session_name, format_stop_message
-from config import WEB_UI_URL
+from bridge_client import register_session, notify, update_session_status, wait_for_response, add_chat_message
+from formatters import format_session_name
+from config import WEB_UI_URL, TELEGRAM_TASK_RESULT_MAX_LENGTH
 
 # Log to a file to avoid corrupting JSON output
 log_file = os.path.join(os.path.dirname(__file__), "stop_hook.log")
@@ -35,6 +35,89 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 WAIT_TIMEOUT = 300  # 5 minutes
+
+
+def format_telegram_notification(
+    session_name: str,
+    summary: str = None,
+    prompt: str = None,
+    session_id: str = None,
+    web_ui_url: str = None
+) -> str:
+    """Format notification message (same style as Web UI)"""
+    lines = [
+        "✅ *Task Completed*",
+        f"📁 Project: `{session_name}`",
+    ]
+    
+    # Add prompt if available
+    if prompt:
+        truncated_prompt = prompt[:100] + '...' if len(prompt) > 100 else prompt
+        # Escape markdown
+        truncated_prompt = truncated_prompt.replace("_", "\\_").replace("*", "\\*").replace("`", "\\`")
+        lines.append(f"💬 Prompt: _{truncated_prompt}_")
+    
+    # Add result/summary if available
+    if summary:
+        result_text = summary
+        if TELEGRAM_TASK_RESULT_MAX_LENGTH > 0 and len(result_text) > TELEGRAM_TASK_RESULT_MAX_LENGTH:
+            result_text = result_text[:TELEGRAM_TASK_RESULT_MAX_LENGTH] + "..."
+        # Escape markdown
+        result_text = result_text.replace("_", "\\_").replace("*", "\\*").replace("`", "\\`")
+        lines.append("")
+        lines.append("📝 *Result:*")
+        lines.append(result_text)
+    
+    # Add Web UI link
+    if session_id and web_ui_url:
+        lines.append("")
+        lines.append(f"🔗 [Open in Web UI]({web_ui_url}/session/{session_id})")
+    
+    lines.append("")
+    lines.append("Reply with your next instruction or /done to end.")
+    
+    return "\n".join(lines)
+
+
+# Track last prompt (stored in file for persistence across hook calls)
+PROMPT_FILE = os.path.join(os.path.dirname(__file__), ".last_prompt")
+
+def save_last_prompt(session_id: str, prompt: str):
+    """Save the last prompt for a session"""
+    try:
+        data = {}
+        if os.path.exists(PROMPT_FILE):
+            with open(PROMPT_FILE, 'r') as f:
+                data = json.load(f)
+        data[session_id] = prompt
+        with open(PROMPT_FILE, 'w') as f:
+            json.dump(data, f)
+    except Exception as e:
+        logger.error(f"Failed to save prompt: {e}")
+
+def get_last_prompt(session_id: str) -> str:
+    """Get the last prompt for a session"""
+    try:
+        if os.path.exists(PROMPT_FILE):
+            with open(PROMPT_FILE, 'r') as f:
+                data = json.load(f)
+                return data.get(session_id)
+    except Exception as e:
+        logger.error(f"Failed to get prompt: {e}")
+    return None
+
+def clear_last_prompt(session_id: str):
+    """Clear the last prompt for a session"""
+    try:
+        if os.path.exists(PROMPT_FILE):
+            with open(PROMPT_FILE, 'r') as f:
+                data = json.load(f)
+            if session_id in data:
+                del data[session_id]
+                with open(PROMPT_FILE, 'w') as f:
+                    json.dump(data, f)
+    except Exception as e:
+        logger.error(f"Failed to clear prompt: {e}")
 
 
 def main():
@@ -71,13 +154,31 @@ def main():
     register_session(session_id, project_dir, session_name)
     update_session_status(session_id, "waiting")
     
-    # Get summary if available
+    # Get summary if available (Droid's response)
     summary = input_data.get("summary")
     
-    # Send stop notification asking for input
-    message = format_stop_message(
+    # Get the prompt that triggered this task (from previous hook call)
+    last_prompt = get_last_prompt(session_id)
+    
+    # Save summary (assistant response) to database
+    if summary:
+        try:
+            add_chat_message(
+                session_id=session_id,
+                msg_type='assistant',
+                content=summary,
+                status='success',
+                source='cli'
+            )
+            logger.info(f"Saved assistant message to database ({len(summary)} chars)")
+        except Exception as e:
+            logger.error(f"Failed to save assistant message: {e}")
+    
+    # Send notification (same format as Web UI)
+    message = format_telegram_notification(
         session_name=session_name,
         summary=summary,
+        prompt=last_prompt,
         session_id=session_id,
         web_ui_url=WEB_UI_URL
     )
@@ -85,9 +186,12 @@ def main():
         session_id=session_id,
         session_name=session_name,
         message=message,
-        notification_type="info",  # Use valid NotificationType enum value
+        notification_type="info",
         buttons=[]
     )
+    
+    # Clear the last prompt after using it
+    clear_last_prompt(session_id)
     
     # Generate request ID and wait for response
     request_id = str(uuid.uuid4())
@@ -96,8 +200,24 @@ def main():
     response = wait_for_response(session_id, request_id, timeout=WAIT_TIMEOUT)
     
     if response:
-        # User sent instruction - feed it to Droid
+        # User sent instruction - save it to database and feed to Droid
         logger.info(f"Received instruction: {response[:100]}...")
+        
+        # Save user message to database
+        try:
+            add_chat_message(
+                session_id=session_id,
+                msg_type='user',
+                content=response,
+                source='cli'
+            )
+            logger.info(f"Saved user message to database ({len(response)} chars)")
+        except Exception as e:
+            logger.error(f"Failed to save user message: {e}")
+        
+        # Save prompt for next notification
+        save_last_prompt(session_id, response)
+        
         update_session_status(session_id, "running")
         
         # Use JSON output format to block stop and provide instruction

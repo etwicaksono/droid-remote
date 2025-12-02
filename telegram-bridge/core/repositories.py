@@ -489,14 +489,15 @@ class ChatMessageRepository:
         content: str,
         status: Optional[str] = None,
         duration_ms: Optional[int] = None,
-        num_turns: Optional[int] = None
+        num_turns: Optional[int] = None,
+        source: str = 'web'  # 'web' or 'cli'
     ) -> dict:
         """Create a new chat message"""
         db = get_db()
         cursor = db.execute("""
-            INSERT INTO chat_messages (session_id, type, content, status, duration_ms, num_turns)
-            VALUES (?, ?, ?, ?, ?, ?)
-        """, (session_id, msg_type, content, status, duration_ms, num_turns))
+            INSERT INTO chat_messages (session_id, type, content, status, duration_ms, num_turns, source)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (session_id, msg_type, content, status, duration_ms, num_turns, source))
         db.commit()
         
         return {
@@ -507,6 +508,7 @@ class ChatMessageRepository:
             "status": status,
             "duration_ms": duration_ms,
             "num_turns": num_turns,
+            "source": source,
             "created_at": datetime.utcnow().isoformat()
         }
     

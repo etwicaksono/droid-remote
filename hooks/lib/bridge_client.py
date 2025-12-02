@@ -5,6 +5,7 @@ import os
 import json
 import urllib.request
 import urllib.error
+import urllib.parse
 import logging
 from typing import Optional, Dict, Any, List
 
@@ -168,3 +169,36 @@ def check_bridge_health() -> bool:
     """Check if bridge server is healthy"""
     result = _make_request("GET", "/health", timeout=5)
     return result.get("status") == "healthy"
+
+
+def add_chat_message(
+    session_id: str,
+    msg_type: str,  # 'user' or 'assistant'
+    content: str,
+    status: Optional[str] = None,
+    duration_ms: Optional[int] = None,
+    num_turns: Optional[int] = None,
+    source: str = 'cli'
+) -> bool:
+    """Add a chat message to the database"""
+    params = {
+        "msg_type": msg_type,
+        "content": content,
+        "source": source
+    }
+    if status:
+        params["status"] = status
+    if duration_ms:
+        params["duration_ms"] = str(duration_ms)
+    if num_turns:
+        params["num_turns"] = str(num_turns)
+    
+    # Build query string
+    query = "&".join(f"{k}={urllib.parse.quote(str(v))}" for k, v in params.items())
+    
+    result = _make_request(
+        "POST",
+        f"/sessions/{session_id}/chat?{query}",
+        timeout=10
+    )
+    return result.get("success", False)

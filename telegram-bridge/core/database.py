@@ -90,6 +90,7 @@ CREATE TABLE IF NOT EXISTS chat_messages (
     status TEXT,  -- 'success' or 'error' for assistant messages
     duration_ms INTEGER,
     num_turns INTEGER,
+    source TEXT DEFAULT 'web',  -- 'web' or 'cli'
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
 );
@@ -297,6 +298,34 @@ def migrate_tasks_cascade_delete():
         logger.error(f"Migration failed: {e}")
         conn.rollback()
         raise
+
+
+def migrate_chat_messages_source():
+    """
+    Migration: Add source column to chat_messages table
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    db = Database.get_instance()
+    conn = db._get_connection()
+    
+    try:
+        # Check if column exists
+        cursor = conn.execute("PRAGMA table_info(chat_messages)")
+        columns = [row[1] for row in cursor.fetchall()]
+        
+        if 'source' not in columns:
+            logger.info("Adding 'source' column to chat_messages table...")
+            conn.execute("ALTER TABLE chat_messages ADD COLUMN source TEXT DEFAULT 'web'")
+            conn.commit()
+            logger.info("Migration completed: Added source column")
+        else:
+            logger.info("chat_messages.source column already exists, skipping migration")
+            
+    except Exception as e:
+        logger.error(f"Migration failed: {e}")
+        conn.rollback()
 
 
 # Global database instance getter

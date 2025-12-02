@@ -680,7 +680,8 @@ async def add_chat_message(
     content: str,
     status: Optional[str] = None,
     duration_ms: Optional[int] = None,
-    num_turns: Optional[int] = None
+    num_turns: Optional[int] = None,
+    source: str = 'web'
 ):
     """Add a chat message"""
     message = get_chat_repo().create(
@@ -689,7 +690,8 @@ async def add_chat_message(
         content=content,
         status=status,
         duration_ms=duration_ms,
-        num_turns=num_turns
+        num_turns=num_turns,
+        source=source
     )
     return {"success": True, "message": message}
 

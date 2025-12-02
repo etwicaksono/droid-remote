@@ -98,6 +98,7 @@ interface ChatMessage {
   timestamp: Date
   status?: 'success' | 'error'
   meta?: { duration?: number; turns?: number }
+  source?: 'web' | 'cli'
 }
 
 export function SessionCard({ session }: SessionCardProps) {
@@ -147,6 +148,7 @@ export function SessionCard({ session }: SessionCardProps) {
               content: msg.content,
               timestamp: new Date(msg.created_at),
               status: msg.status,
+              source: msg.source || 'web',
               meta: msg.duration_ms || msg.num_turns ? {
                 duration: msg.duration_ms,
                 turns: msg.num_turns
@@ -215,12 +217,14 @@ export function SessionCard({ session }: SessionCardProps) {
         try {
           const chatRes = await fetch(`${API_BASE}/sessions/${session.id}/chat`)
           if (chatRes.ok) {
-            const messages = await chatRes.json()
-            setChatHistory(messages.map((msg: { id: string; type: string; content: string; created_at: string }) => ({
-              id: msg.id,
+            const data = await chatRes.json()
+            const msgs = data.messages || data
+            setChatHistory(msgs.map((msg: any) => ({
+              id: String(msg.id),
               type: msg.type as 'user' | 'assistant',
               content: msg.content,
               timestamp: new Date(msg.created_at),
+              source: msg.source || 'web',
             })))
           }
         } catch {
@@ -655,14 +659,24 @@ function ChatBubble({ message }: { message: ChatMessage }) {
         )}
 
         {/* Meta info for assistant messages */}
-        {!isUser && message.meta && (message.meta.duration || message.meta.turns) && (
+        {!isUser && (message.meta || message.source) && (
           <div className="flex items-center gap-2 mt-1 text-xs opacity-60">
-            {message.meta.duration && message.meta.duration > 0 && (
+            {message.source === 'cli' && (
+              <span className="px-1 py-0.5 bg-blue-500/20 text-blue-400 rounded text-[10px]">CLI</span>
+            )}
+            {message.meta?.duration && message.meta.duration > 0 && (
               <span>{(message.meta.duration / 1000).toFixed(1)}s</span>
             )}
-            {message.meta.turns && message.meta.turns > 0 && (
+            {message.meta?.turns && message.meta.turns > 0 && (
               <span>{message.meta.turns} turns</span>
             )}
+          </div>
+        )}
+        
+        {/* Source indicator for user messages */}
+        {isUser && message.source === 'cli' && (
+          <div className="flex justify-end mt-1">
+            <span className="px-1 py-0.5 bg-white/20 rounded text-[10px]">CLI</span>
           </div>
         )}
       </div>
