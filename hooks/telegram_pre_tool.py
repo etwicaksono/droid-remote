@@ -27,20 +27,46 @@ logger = logging.getLogger(__name__)
 
 
 def main():
+    # Log to file for debugging
+    import tempfile
+    log_file = os.path.join(tempfile.gettempdir(), "pretool_debug.log")
+    
+    def debug_log(msg):
+        with open(log_file, "a") as f:
+            f.write(f"{msg}\n")
+    
+    debug_log(f"\n=== PreToolUse Hook Started ===")
+    debug_log(f"Environment variables:")
+    for key, value in os.environ.items():
+        if 'FACTORY' in key or 'SESSION' in key or 'DROID' in key:
+            debug_log(f"  {key}={value}")
+    
     try:
         input_data = json.load(sys.stdin)
+        debug_log(f"Input data: {json.dumps(input_data, indent=2)}")
     except json.JSONDecodeError as e:
+        debug_log(f"Failed to parse input JSON: {e}")
         logger.error(f"Failed to parse input JSON: {e}")
         # Fail open - allow tool to proceed
         print(json.dumps({"hookSpecificOutput": {"permissionDecision": "allow"}}))
         sys.exit(0)
     
-    # Extract session info
-    session_id = input_data.get("session_id", "unknown")
+    # Extract session info - try multiple possible field names
+    session_id = (
+        input_data.get("session_id") or 
+        input_data.get("sessionId") or 
+        os.environ.get("FACTORY_SESSION_ID") or
+        os.environ.get("SESSION_ID") or
+        "unknown"
+    )
     project_dir = os.environ.get("FACTORY_PROJECT_DIR", os.getcwd())
     session_name = format_session_name(project_dir, session_id)
-    tool_name = input_data.get("tool_name", "Unknown")
-    tool_input = input_data.get("tool_input", {})
+    tool_name = input_data.get("tool_name") or input_data.get("toolName", "Unknown")
+    tool_input = input_data.get("tool_input") or input_data.get("toolInput", {})
+    
+    debug_log(f"Session ID: {session_id}")
+    debug_log(f"Tool: {tool_name}")
+    debug_log(f"Tool input keys: {list(tool_input.keys()) if isinstance(tool_input, dict) else 'not a dict'}")
     
     # Register/update session
     register_session(session_id, project_dir, session_name)
@@ -50,6 +76,7 @@ def main():
     message = format_permission_request(session_name, tool_name, tool_input)
     
     # Send approval request and get request_id
+    debug_log(f"Calling notify...")
     notify_result = notify(
         session_id=session_id,
         session_name=session_name,
@@ -63,9 +90,12 @@ def main():
         tool_name=tool_name,
         tool_input=tool_input
     )
+    debug_log(f"Notify result: {notify_result}")
     
     # Get request_id from notify response
     request_id = notify_result.get("request_id", str(uuid.uuid4()))
+    debug_log(f"Request ID: {request_id}")
+    debug_log(f"Waiting for response...")
     response = wait_for_response(
         session_id=session_id,
         request_id=request_id,

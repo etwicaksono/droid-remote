@@ -121,11 +121,17 @@ class SessionRegistry:
             return session
     
     def get(self, session_id: str) -> Optional[Session]:
-        """Get a session by ID"""
+        """Get a session by ID or prefix"""
         repo = get_session_repo()
+        # Try exact match first
         data = repo.get_by_id(session_id)
         if data:
             return self._dict_to_session(data)
+        # Try prefix match (for truncated Telegram callback IDs)
+        if len(session_id) >= 8:
+            data = repo.get_by_id_prefix(session_id)
+            if data:
+                return self._dict_to_session(data)
         return None
     
     def get_by_name(self, name: str) -> Optional[Session]:

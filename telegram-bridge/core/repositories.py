@@ -45,6 +45,16 @@ class SessionRepository:
         row = cursor.fetchone()
         return row_to_dict(row) if row else None
     
+    def get_by_id_prefix(self, prefix: str) -> Optional[dict]:
+        """Get session by ID prefix (for truncated Telegram callback IDs)"""
+        db = get_db()
+        cursor = db.execute(
+            "SELECT * FROM sessions WHERE id LIKE ? ORDER BY updated_at DESC LIMIT 1",
+            (f"{prefix}%",)
+        )
+        row = cursor.fetchone()
+        return row_to_dict(row) if row else None
+    
     def get_by_project_dir(self, project_dir: str) -> Optional[dict]:
         """Get session by project directory"""
         db = get_db()
@@ -350,18 +360,22 @@ class PermissionRequestRepository:
         return cursor.rowcount > 0
     
     def get_history(self, session_id: Optional[str] = None, limit: int = 50) -> List[dict]:
-        """Get permission request history"""
+        """Get permission request history (latest first, with session name)"""
         db = get_db()
         if session_id:
             cursor = db.execute("""
-                SELECT * FROM permission_requests 
-                WHERE session_id = ?
-                ORDER BY created_at DESC LIMIT ?
+                SELECT p.*, s.name as session_name 
+                FROM permission_requests p
+                LEFT JOIN sessions s ON p.session_id = s.id
+                WHERE p.session_id = ?
+                ORDER BY p.created_at DESC LIMIT ?
             """, (session_id, limit))
         else:
             cursor = db.execute("""
-                SELECT * FROM permission_requests 
-                ORDER BY created_at DESC LIMIT ?
+                SELECT p.*, s.name as session_name 
+                FROM permission_requests p
+                LEFT JOIN sessions s ON p.session_id = s.id
+                ORDER BY p.created_at DESC LIMIT ?
             """, (limit,))
         
         results = []

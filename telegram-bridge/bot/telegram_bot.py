@@ -22,6 +22,7 @@ from core.message_queue import message_queue
 from core.task_executor import task_executor
 from core.models import Session, Notification, NotificationType, PendingRequest, SessionStatus
 from core.repositories import get_permission_repo, get_task_repo
+from lib.config import WEB_UI_URL
 from .commands import (
     setup_commands,
     start_command,
@@ -31,7 +32,6 @@ from .commands import (
 )
 from .keyboards import (
     build_inline_keyboard,
-    build_permission_keyboard,
     build_stop_keyboard
 )
 
@@ -370,16 +370,19 @@ class TelegramBotManager:
             return None
         
         try:
-            # Build keyboard if buttons provided
+            message_text = notification.message
             keyboard = None
-            if notification.buttons:
-                # Get session for request_id
+            
+            # For permission requests, append Web UI link instead of keyboard
+            if notification.type == NotificationType.PERMISSION:
+                session_url = f"{WEB_UI_URL}/session/{notification.session_id}"
+                message_text = f"{notification.message}\n\n🔗 Approve/Deny: {session_url}"
+            elif notification.buttons:
+                # Build keyboard for non-permission notifications
                 session = self.registry.get(notification.session_id)
                 request_id = session.pending_request.id if session and session.pending_request else None
                 
-                if notification.type == NotificationType.PERMISSION:
-                    keyboard = build_permission_keyboard(notification.session_id, request_id or "")
-                elif notification.type == NotificationType.STOP:
+                if notification.type == NotificationType.STOP:
                     keyboard = build_stop_keyboard(notification.session_id, request_id or "")
                 else:
                     keyboard = build_inline_keyboard(
@@ -390,7 +393,7 @@ class TelegramBotManager:
             
             message = await self.application.bot.send_message(
                 chat_id=self.chat_id,
-                text=notification.message,
+                text=message_text,
                 reply_markup=keyboard
             )
             
