@@ -87,12 +87,16 @@ export function AppSidebar({ currentPath }: AppSidebarProps) {
     socket.on('task_completed', handleTaskCompleted)
     socket.on('chat_updated', handleChatUpdated)
     socket.on('connect', handleConnect)
+    
+    // Also fetch on reconnect (socket.io fires 'connect' on reconnect too, but be explicit)
+    socket.io.on('reconnect', handleConnect)
 
     return () => {
       socket.off('sessions_update', handleSessionsUpdate)
       socket.off('task_completed', handleTaskCompleted)
       socket.off('chat_updated', handleChatUpdated)
       socket.off('connect', handleConnect)
+      socket.io.off('reconnect', handleConnect)
     }
   }, [sortSessions])
 
