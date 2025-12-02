@@ -36,13 +36,18 @@ def main():
         sys.exit(0)
     
     # Debug: log what Factory sends
-    logger.info(f"Received input keys: {list(input_data.keys())}")
+    logger.info(f"SessionStart received: {json.dumps(input_data, default=str)}")
+    logger.info(f"Environment FACTORY_SESSION_ID: {os.environ.get('FACTORY_SESSION_ID', 'not set')}")
     
     # Extract session info - try multiple possible key names
+    # Factory may nest session info or use various key names
     session_id = (
+        os.environ.get("FACTORY_SESSION_ID") or  # Try env var first
         input_data.get("session_id") or 
         input_data.get("sessionId") or 
-        input_data.get("id") or 
+        input_data.get("id") or
+        input_data.get("session", {}).get("id") or
+        input_data.get("session", {}).get("session_id") or
         "unknown"
     )
     project_dir = os.environ.get("FACTORY_PROJECT_DIR", os.getcwd())
