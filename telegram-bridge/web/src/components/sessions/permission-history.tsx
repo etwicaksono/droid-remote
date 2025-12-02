@@ -60,8 +60,8 @@ export function PermissionHistory({ limit = 50 }: PermissionHistoryProps) {
 
   // Sort sessions by their latest permission timestamp
   const sortedSessionIds = Object.keys(groupedPermissions).sort((a, b) => {
-    const aLatest = groupedPermissions[a].permissions[0]?.created_at || ''
-    const bLatest = groupedPermissions[b].permissions[0]?.created_at || ''
+    const aLatest = groupedPermissions[a]?.permissions[0]?.created_at || ''
+    const bLatest = groupedPermissions[b]?.permissions[0]?.created_at || ''
     return new Date(bLatest).getTime() - new Date(aLatest).getTime()
   })
 
