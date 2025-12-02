@@ -10,24 +10,13 @@ import { useSessionActions } from '@/hooks/use-session-actions'
 import { getSocket } from '@/lib/socket'
 import { cn, formatRelativeTime } from '@/lib/utils'
 import type { Session, ControlState, ReasoningEffort } from '@/types'
+import modelsConfig from '@/config/models.json'
 
-const AVAILABLE_MODELS = [
-  { id: 'claude-sonnet-4-5-20250929', name: 'Claude Sonnet 4.5', reasoning: true },
-  { id: 'gpt-5.1-codex', name: 'GPT-5.1 Codex', reasoning: false },
-  { id: 'gpt-5.1', name: 'GPT-5.1', reasoning: true },
-  { id: 'claude-opus-4-5-20251101', name: 'Claude Opus 4.5', reasoning: true },
-  { id: 'claude-opus-4-1-20250805', name: 'Claude Opus 4.1', reasoning: true },
-  { id: 'claude-haiku-4-5-20251001', name: 'Claude Haiku 4.5', reasoning: true },
-  { id: 'gemini-3-pro-preview', name: 'Gemini 3 Pro', reasoning: false },
-  { id: 'glm-4.6', name: 'Droid Core', reasoning: false },
-]
-
-const REASONING_LEVELS: { id: ReasoningEffort; name: string }[] = [
-  { id: 'off', name: 'Off' },
-  { id: 'low', name: 'Low' },
-  { id: 'medium', name: 'Medium' },
-  { id: 'high', name: 'High' },
-]
+// Load models from JSON config file (edit src/config/models.json to update)
+const AVAILABLE_MODELS = modelsConfig.models as { id: string; name: string; reasoning: boolean }[]
+const REASONING_LEVELS = modelsConfig.reasoningLevels as { id: ReasoningEffort; name: string }[]
+const DEFAULT_MODEL = modelsConfig.defaultModel
+const DEFAULT_REASONING = modelsConfig.defaultReasoningLevel as ReasoningEffort
 
 const MAX_MESSAGE_INPUT_HEIGHT = 240
 
@@ -116,8 +105,8 @@ export function SessionCard({ session }: SessionCardProps) {
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([])
   const [executing, setExecuting] = useState(false)
   const [currentTaskId, setCurrentTaskId] = useState<string | null>(null)
-  const [selectedModel, setSelectedModel] = useState('claude-sonnet-4-5-20250929')
-  const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort>('medium')
+  const [selectedModel, setSelectedModel] = useState(DEFAULT_MODEL)
+  const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort>(DEFAULT_REASONING)
   const [settingsLoaded, setSettingsLoaded] = useState(false)
   const [copiedSessionId, setCopiedSessionId] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
