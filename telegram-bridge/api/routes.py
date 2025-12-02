@@ -723,6 +723,23 @@ async def clear_chat_history(session_id: str):
     return {"success": True, "deleted": count}
 
 
+@router.post("/sessions/{session_id}/cli-thinking")
+async def cli_thinking(session_id: str, request: Request):
+    """Notify Web UI that CLI is processing a prompt (show thinking indicator)"""
+    body = await request.json()
+    prompt = body.get("prompt", "")
+    
+    # Emit WebSocket event so Web UI shows thinking indicator
+    sio = getattr(request.app.state, "sio", None)
+    if sio:
+        await sio.emit("cli_thinking", {
+            "session_id": session_id,
+            "prompt": prompt
+        })
+    
+    return {"success": True}
+
+
 # Session Settings Endpoints
 @router.get("/sessions/{session_id}/settings")
 async def get_session_settings(session_id: str):

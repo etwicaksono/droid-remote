@@ -317,6 +317,19 @@ export function SessionCard({ session }: SessionCardProps) {
           if (prev.some(msg => msg.id === newMessage.id)) return prev
           return [...prev, newMessage]
         })
+        
+        // If assistant message from CLI, clear thinking state
+        if (newMessage.type === 'assistant' && newMessage.source === 'cli') {
+          setExecuting(false)
+          setCurrentTaskId(null)
+        }
+      }
+    }
+    
+    const handleCliThinking = (data: { session_id: string; prompt: string }) => {
+      // Check if this is for our session
+      if (data.session_id === session.id) {
+        setExecuting(true)
       }
     }
     
@@ -324,12 +337,14 @@ export function SessionCard({ session }: SessionCardProps) {
     socket.on('task_completed', handleTaskCompleted)
     socket.on('task_cancelled', handleTaskCancelled)
     socket.on('chat_updated', handleChatUpdated)
+    socket.on('cli_thinking', handleCliThinking)
     
     return () => {
       socket.off('task_started', handleTaskStarted)
       socket.off('task_completed', handleTaskCompleted)
       socket.off('task_cancelled', handleTaskCancelled)
       socket.off('chat_updated', handleChatUpdated)
+      socket.off('cli_thinking', handleCliThinking)
     }
   }, [session.project_dir, session.id, currentTaskId])
 

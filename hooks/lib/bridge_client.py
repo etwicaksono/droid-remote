@@ -202,3 +202,14 @@ def add_chat_message(
         timeout=10
     )
     return result.get("success", False)
+
+
+def emit_cli_thinking(session_id: str, prompt: str) -> bool:
+    """Notify Web UI that CLI is processing a prompt (show thinking indicator)"""
+    result = _make_request(
+        "POST",
+        f"/sessions/{session_id}/cli-thinking",
+        {"prompt": prompt},
+        timeout=5
+    )
+    return result.get("success", False)

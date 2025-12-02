@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 # Import bridge client
 sys.path.insert(0, os.path.dirname(__file__))
-from lib.bridge_client import add_chat_message
+from lib.bridge_client import add_chat_message, emit_cli_thinking
 
 # Import stop hook functions for prompt tracking
 from telegram_stop import save_last_prompt
@@ -64,6 +64,13 @@ def main():
         logger.info(f"Saved user prompt to database ({len(prompt)} chars)")
     except Exception as e:
         logger.error(f"Failed to save user prompt: {e}")
+    
+    # Emit "thinking" event to Web UI
+    try:
+        emit_cli_thinking(session_id, prompt)
+        logger.info("Emitted CLI thinking event to Web UI")
+    except Exception as e:
+        logger.error(f"Failed to emit CLI thinking event: {e}")
     
     # Save prompt for Stop hook notification (to show what prompt triggered the response)
     try:
