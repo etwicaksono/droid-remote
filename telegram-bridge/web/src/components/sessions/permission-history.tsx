@@ -43,6 +43,7 @@ export function PermissionHistory({ limit = 50 }: PermissionHistoryProps) {
 
   useEffect(() => {
     fetchPermissions()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [limit])
 
   // Group permissions by session, sorted by latest first

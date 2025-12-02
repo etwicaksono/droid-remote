@@ -42,6 +42,7 @@ export function SessionTimeline({ sessionId, limit = 30 }: SessionTimelineProps)
 
   useEffect(() => {
     fetchTimeline()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId, limit])
 
   const getIcon = (type: string) => {
