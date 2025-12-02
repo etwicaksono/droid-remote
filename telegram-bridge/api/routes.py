@@ -368,6 +368,19 @@ async def execute_task(data: TaskExecuteRequest, request: Request):
             else:
                 logger.info(f"Session {data.session_id} is {session.status}, will use _session_map instead")
     
+    # Create progress callback to emit WebSocket events
+    async def emit_progress(activity: dict):
+        if sio:
+            await sio.emit("task_activity", {
+                "task_id": task_id,
+                "session_id": pending_session_id,
+                "activity": activity
+            })
+    
+    # Sync wrapper for async emit
+    def on_progress(activity: dict):
+        asyncio.create_task(emit_progress(activity))
+    
     result = await task_executor.execute_task(
         task_id=task_id,
         prompt=data.prompt,
@@ -376,7 +389,8 @@ async def execute_task(data: TaskExecuteRequest, request: Request):
         autonomy_level=data.autonomy_level,
         model=data.model,
         reasoning_effort=data.reasoning_effort,
-        source="api"
+        source="api",
+        on_progress=on_progress
     )
     
     # If we created a pending session with task_id, but droid returned a different session_id,

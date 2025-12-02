@@ -225,12 +225,57 @@ class TaskExecutor:
                 pass
             return task.result
     
+    def _parse_activity_line(self, line: str) -> Optional[Dict[str, Any]]:
+        """Parse a stderr line to extract tool activity information."""
+        import re
+        
+        # Common patterns from droid CLI output
+        # [READ] (file, offset: X, limit: Y)
+        # [EDIT] (file) - Succeeded
+        # [EXECUTE] command
+        # [Grep] pattern
+        # [Glob] patterns
+        # [Create] file
+        
+        patterns = [
+            # Tool invocations with details
+            (r'\[(\w+)\]\s*\(([^)]+)\)', 'tool_start'),
+            (r'\[(\w+)\]\s*(.+)', 'tool_info'),
+            # Status updates
+            (r'Read (\d+) lines?\.?', 'read_complete'),
+            (r'Succeeded\. File edited\. \(([^)]+)\)', 'edit_complete'),
+            (r'✓\s*(.+)', 'success'),
+            (r'Error:\s*(.+)', 'error'),
+            # Execution status
+            (r'Executing\.\.\.', 'executing'),
+            (r'Completed', 'completed'),
+        ]
+        
+        for pattern, activity_type in patterns:
+            match = re.search(pattern, line, re.IGNORECASE)
+            if match:
+                return {
+                    'type': activity_type,
+                    'tool': match.group(1) if activity_type in ['tool_start', 'tool_info'] else None,
+                    'details': match.group(2) if len(match.groups()) > 1 else match.group(1),
+                    'raw': line
+                }
+        
+        # Return raw line if it looks like activity (not empty, not just whitespace)
+        if line.strip() and not line.startswith('{'):
+            return {
+                'type': 'raw',
+                'raw': line
+            }
+        
+        return None
+    
     async def _run_droid_exec(
         self,
         task: Task,
         on_progress: Optional[Callable[[str], None]] = None
     ) -> TaskResult:
-        """Run droid exec and parse output."""
+        """Run droid exec and parse output with real-time streaming."""
         
         # Build command
         cmd = ["droid", "exec"]
@@ -275,15 +320,38 @@ class TaskExecutor:
         )
         task.process = process
         
-        stdout, stderr = await process.communicate()
+        # Stream stderr for real-time activity (droid outputs activity to stderr)
+        stderr_lines = []
+        stdout_lines = []
         
-        stdout_str = stdout.decode("utf-8", errors="replace").strip()
-        stderr_str = stderr.decode("utf-8", errors="replace").strip()
+        async def read_stderr():
+            async for line in process.stderr:
+                line_str = line.decode("utf-8", errors="replace").rstrip()
+                if line_str:
+                    stderr_lines.append(line_str)
+                    # Send progress update for activity lines
+                    if on_progress:
+                        activity = self._parse_activity_line(line_str)
+                        if activity:
+                            on_progress(activity)
+        
+        async def read_stdout():
+            async for line in process.stdout:
+                line_str = line.decode("utf-8", errors="replace").rstrip()
+                if line_str:
+                    stdout_lines.append(line_str)
+        
+        # Read both streams concurrently
+        await asyncio.gather(read_stderr(), read_stdout())
+        await process.wait()
+        
+        stdout_str = '\n'.join(stdout_lines).strip()
+        stderr_str = '\n'.join(stderr_lines).strip()
         
         logger.info(f"droid exec exit code: {process.returncode}")
         
         if stderr_str:
-            logger.warning(f"droid exec stderr: {stderr_str}")
+            logger.warning(f"droid exec stderr: {stderr_str[:500]}")
         
         # Parse JSON output
         if stdout_str:

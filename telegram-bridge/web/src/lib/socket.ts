@@ -14,6 +14,7 @@ interface ServerToClientEvents {
   chat_updated: (data: { session_id: string; message: any }) => void
   cli_thinking: (data: { session_id: string; prompt: string }) => void
   cli_thinking_done: (data: { session_id: string }) => void
+  task_activity: (data: { task_id: string; session_id: string; activity: { type: string; tool?: string; details?: string; raw: string } }) => void
 }
 
 interface ClientToServerEvents {
