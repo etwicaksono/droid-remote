@@ -792,8 +792,7 @@ function InputBox({
             >
               {AVAILABLE_MODELS.map((model) => (
                 <option key={model.id} value={model.id}>
-                  <span className="hidden sm:inline">{model.name}</span>
-                  <span className="sm:hidden">{model.name.split(' ')[0]}</span>
+                  {model.name}
                 </option>
               ))}
             </select>
