@@ -124,6 +124,7 @@ export function PermissionHistory({ limit = 50 }: PermissionHistoryProps) {
           <div className="space-y-2">
             {sortedSessionIds.map((sessionId) => {
               const group = groupedPermissions[sessionId]
+              if (!group) return null
               const isExpanded = expandedSessions.has(sessionId)
               const latestPerm = group.permissions[0]
 
@@ -148,7 +149,7 @@ export function PermissionHistory({ limit = 50 }: PermissionHistoryProps) {
                     </div>
                     <div className="flex items-center gap-2 text-xs text-muted-foreground">
                       {getDecisionIcon(latestPerm?.decision)}
-                      <span>{formatRelativeTime(latestPerm?.created_at)}</span>
+                      <span>{latestPerm?.created_at ? formatRelativeTime(latestPerm.created_at) : ''}</span>
                     </div>
                   </button>
 
