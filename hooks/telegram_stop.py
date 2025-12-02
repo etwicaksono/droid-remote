@@ -272,29 +272,37 @@ def main():
             logger.error(f"Failed to save assistant message: {e}")
     
     # Send notification (same format as Web UI)
-    message = format_telegram_notification(
-        session_name=session_name,
-        summary=summary,
-        prompt=last_prompt,
-        session_id=session_id,
-        web_ui_url=WEB_UI_URL
-    )
-    notify(
-        session_id=session_id,
-        session_name=session_name,
-        message=message,
-        notification_type="info",
-        buttons=[]
-    )
-    
-    # Clear the last prompt after using it
-    clear_last_prompt(session_id)
-    
-    # Update session status and allow stop
-    # (User can send instructions via Web UI if needed)
-    update_session_status(session_id, "waiting")
-    logger.info("Notification sent, allowing stop (use Web UI for further instructions)")
-    sys.exit(0)
+    try:
+        message = format_telegram_notification(
+            session_name=session_name,
+            summary=summary,
+            prompt=last_prompt,
+            session_id=session_id,
+            web_ui_url=WEB_UI_URL
+        )
+        logger.info("Sending notification...")
+        notify(
+            session_id=session_id,
+            session_name=session_name,
+            message=message,
+            notification_type="info",
+            buttons=[]
+        )
+        logger.info("Notification sent")
+        
+        # Clear the last prompt after using it
+        clear_last_prompt(session_id)
+        
+        # Update session status
+        logger.info("Updating session status...")
+        update_session_status(session_id, "waiting")
+        logger.info("Session status updated")
+    except Exception as e:
+        logger.error(f"Error in notification/status update: {e}")
+    finally:
+        # Always exit - don't block CLI (use os._exit for immediate termination)
+        logger.info("Exiting hook")
+        os._exit(0)
 
 
 if __name__ == "__main__":
