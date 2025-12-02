@@ -732,20 +732,31 @@ export function SessionCard({ session }: SessionCardProps) {
 
 function ChatBubble({ message }: { message: ChatMessage }) {
   const [expanded, setExpanded] = useState(false)
+  const [showTimestamp, setShowTimestamp] = useState(false)
   const isUser = message.type === 'user'
   const isLong = message.content.length > 300
+
+  const formattedTime = message.timestamp.toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  })
 
   return (
     <div className={cn('flex', isUser ? 'justify-end' : 'justify-start')}>
       <div
         className={cn(
-          'max-w-[90%] sm:max-w-[85%] rounded-lg px-3 py-2',
+          'max-w-[90%] sm:max-w-[85%] rounded-lg px-3 py-2 group relative',
           isUser
             ? 'bg-blue-600 text-white'
             : message.status === 'error'
             ? 'bg-red-500/20 border border-red-500/30'
             : 'bg-muted'
         )}
+        onClick={() => setShowTimestamp(prev => !prev)}
+        title={formattedTime}
       >
         {/* Message Content */}
         <div className="text-sm whitespace-pre-wrap break-words">
@@ -785,6 +796,16 @@ function ChatBubble({ message }: { message: ChatMessage }) {
             <span className="px-1 py-0.5 bg-white/20 rounded text-[10px]">CLI</span>
           </div>
         )}
+
+        {/* Timestamp - visible on hover (desktop) or click (mobile) */}
+        <div className={cn(
+          'text-[10px] mt-1 transition-opacity duration-200',
+          isUser ? 'text-white/60' : 'text-muted-foreground',
+          'sm:opacity-0 sm:group-hover:opacity-100',
+          showTimestamp ? 'opacity-100' : 'opacity-0 sm:opacity-0'
+        )}>
+          {formattedTime}
+        </div>
       </div>
     </div>
   )
