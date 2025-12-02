@@ -708,15 +708,13 @@ export function SessionCard({ session }: SessionCardProps) {
             ) : (
               <>
                 <span className="font-semibold truncate">{sessionName}</span>
-                {headerExpanded && (
-                  <button
-                    onClick={handleStartEditName}
-                    className="p-1 rounded opacity-0 group-hover/header:opacity-100 transition-opacity hover:bg-gray-700 text-muted-foreground hover:text-white"
-                    title="Rename session"
-                  >
-                    <Pencil className="h-3 w-3" />
-                  </button>
-                )}
+                <button
+                  onClick={handleStartEditName}
+                  className="p-1 rounded opacity-0 group-hover/header:opacity-100 transition-opacity hover:bg-gray-700 text-muted-foreground hover:text-white"
+                  title="Rename session"
+                >
+                  <Pencil className="h-3 w-3" />
+                </button>
               </>
             )}
             {!headerExpanded && (
