@@ -88,37 +88,71 @@ class SessionRegistry:
         name: Optional[str] = None,
         transcript_path: Optional[str] = None
     ) -> Session:
-        """Register or update a session (deduplicated by project_dir)"""
+        """Register or update a session (multiple sessions per project_dir allowed)"""
         repo = get_session_repo()
         
         with self._lock:
-            if not name:
-                name = os.path.basename(project_dir) or "unknown"
+            # Check if this session_id already exists (re-registration)
+            existing = repo.get_by_id(session_id)
+            if existing:
+                # Update existing session
+                data = repo.upsert(
+                    session_id=session_id,
+                    name=existing['name'],  # Keep existing name
+                    project_dir=project_dir,
+                    status='running',
+                    transcript_path=transcript_path
+                )
+                session = self._dict_to_session(data)
+                logger.info(f"Updated session: {session_id} ({session.name})")
+                return session
             
-            # Check for existing session with same project_dir
-            existing_by_project = repo.get_by_project_dir(project_dir)
-            if existing_by_project and existing_by_project['id'] != session_id:
-                # Remove old session for same project
-                old_id = existing_by_project['id']
-                repo.delete(old_id)
-                self._pending_requests.pop(old_id, None)
-                logger.info(f"Removed old session {old_id} for project {project_dir}")
+            # New session - generate name with numbering if needed
+            base_name = name or os.path.basename(project_dir) or "unknown"
+            final_name = self._generate_unique_name(repo, base_name, project_dir)
             
-            # Upsert session
+            # Create new session
             data = repo.upsert(
                 session_id=session_id,
-                name=name,
+                name=final_name,
                 project_dir=project_dir,
                 status='running',
                 transcript_path=transcript_path
             )
             
-            # Clear any cached pending request on re-register
+            # Clear any cached pending request
             self._pending_requests.pop(session_id, None)
             
             session = self._dict_to_session(data)
-            logger.info(f"Registered session: {session_id} ({name})")
+            logger.info(f"Registered session: {session_id} ({final_name})")
             return session
+    
+    def _generate_unique_name(self, repo, base_name: str, project_dir: str) -> str:
+        """Generate unique session name with numbering for same project_dir"""
+        # Get all sessions for this project directory
+        all_sessions = repo.get_all()
+        existing_names = [s['name'] for s in all_sessions if s['project_dir'] == project_dir]
+        
+        if not existing_names:
+            return base_name
+        
+        # Check if base_name is already taken
+        if base_name not in existing_names:
+            return base_name
+        
+        # Find the next available number
+        max_num = 1
+        for name in existing_names:
+            if name == base_name:
+                max_num = max(max_num, 1)
+            elif name.startswith(f"{base_name} #"):
+                try:
+                    num = int(name.split("#")[-1].strip())
+                    max_num = max(max_num, num)
+                except ValueError:
+                    pass
+        
+        return f"{base_name} #{max_num + 1}"
     
     def get(self, session_id: str) -> Optional[Session]:
         """Get a session by ID or prefix"""

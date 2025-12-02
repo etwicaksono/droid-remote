@@ -113,6 +113,33 @@ async def update_session(session_id: str, data: UpdateSessionRequest, request: R
     return {"success": True, "session": session.model_dump(mode='json')}
 
 
+@router.patch("/sessions/{session_id}/rename")
+async def rename_session(session_id: str, name: str, request: Request):
+    """Rename a session"""
+    session = session_registry.get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    if not name or not name.strip():
+        raise HTTPException(status_code=400, detail="Name cannot be empty")
+    
+    # Rename in database
+    result = get_session_repo().rename(session_id, name.strip())
+    if not result:
+        raise HTTPException(status_code=500, detail="Failed to rename session")
+    
+    # Get updated session
+    session = session_registry.get(session_id)
+    
+    # Emit sessions_update
+    sio = getattr(request.app.state, "sio", None)
+    if sio:
+        sessions = session_registry.get_all()
+        await sio.emit("sessions_update", [s.model_dump(mode='json') for s in sessions])
+    
+    return {"success": True, "session": session.model_dump(mode='json')}
+
+
 @router.delete("/sessions/{session_id}", dependencies=[Depends(verify_secret)])
 async def delete_session(session_id: str, request: Request):
     """Delete a session"""

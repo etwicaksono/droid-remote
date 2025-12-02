@@ -106,6 +106,18 @@ class SessionRepository:
             SessionEventRepository().create(session_id, "control_state_changed", {"control_state": control_state})
         return result
     
+    def rename(self, session_id: str, new_name: str) -> Optional[dict]:
+        """Rename a session"""
+        old = self.get_by_id(session_id)
+        old_name = old['name'] if old else None
+        result = self.update(session_id, name=new_name)
+        if result:
+            SessionEventRepository().create(session_id, "session_renamed", {
+                "old_name": old_name,
+                "new_name": new_name
+            })
+        return result
+    
     def delete(self, session_id: str) -> bool:
         """Delete a session"""
         db = get_db()

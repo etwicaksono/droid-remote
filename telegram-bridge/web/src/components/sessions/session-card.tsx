@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback, type FormEvent } from 'react'
-import { Clock, Folder, Terminal, Radio, Loader2, Copy, Check, ChevronRight, ChevronDown } from 'lucide-react'
+import { Clock, Folder, Terminal, Radio, Loader2, Copy, Check, ChevronRight, ChevronDown, Pencil } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -115,6 +115,9 @@ export function SessionCard({ session }: SessionCardProps) {
   const [pendingRequest, setPendingRequest] = useState(session.pending_request)
   const [localControlState, setLocalControlState] = useState(session.control_state)
   const [headerExpanded, setHeaderExpanded] = useState(false)
+  const [isEditingName, setIsEditingName] = useState(false)
+  const [editingName, setEditingName] = useState(session.name)
+  const [sessionName, setSessionName] = useState(session.name)
   const { approve, deny, handoff, release, executeTask, cancelTask, addChatMessage, loading } = useSessionActions()
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const chatContainerRef = useRef<HTMLDivElement | null>(null)
@@ -161,7 +164,9 @@ export function SessionCard({ session }: SessionCardProps) {
   useEffect(() => {
     setPendingRequest(session.pending_request)
     setLocalControlState(session.control_state)
-  }, [session.pending_request, session.control_state])
+    setSessionName(session.name)
+    setEditingName(session.name)
+  }, [session.pending_request, session.control_state, session.name])
 
   // Listen for sessions_update to get real-time pending_request updates
   useEffect(() => {
@@ -172,6 +177,7 @@ export function SessionCard({ session }: SessionCardProps) {
       if (updated) {
         setPendingRequest(updated.pending_request)
         setLocalControlState(updated.control_state)
+        setSessionName(updated.name)
       }
     }
     
@@ -625,6 +631,42 @@ export function SessionCard({ session }: SessionCardProps) {
     }
   }
 
+  const handleStartEditName = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    setEditingName(sessionName)
+    setIsEditingName(true)
+  }
+
+  const handleRenameSession = async () => {
+    if (!editingName.trim() || editingName === sessionName) {
+      setIsEditingName(false)
+      return
+    }
+    
+    try {
+      const response = await fetch(
+        `${API_BASE}/sessions/${session.id}/rename?name=${encodeURIComponent(editingName.trim())}`,
+        { method: 'PATCH' }
+      )
+      if (response.ok) {
+        setSessionName(editingName.trim())
+      }
+    } catch (error) {
+      console.error('Failed to rename session:', error)
+    } finally {
+      setIsEditingName(false)
+    }
+  }
+
+  const handleEditNameKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      handleRenameSession()
+    } else if (e.key === 'Escape') {
+      setIsEditingName(false)
+    }
+  }
+
   return (
     <Card className="overflow-hidden flex flex-col h-full relative">
       {/* Loading Overlay for Control Actions */}
@@ -642,8 +684,8 @@ export function SessionCard({ session }: SessionCardProps) {
       <CardHeader className="pb-2 shrink-0">
         {/* Collapsed header row - always visible */}
         <div 
-          className="flex items-center justify-between cursor-pointer"
-          onClick={() => setHeaderExpanded(prev => !prev)}
+          className="flex items-center justify-between cursor-pointer group/header"
+          onClick={() => !isEditingName && setHeaderExpanded(prev => !prev)}
         >
           <div className="flex items-center gap-2 min-w-0 flex-1">
             {headerExpanded ? (
@@ -652,7 +694,31 @@ export function SessionCard({ session }: SessionCardProps) {
               <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
             )}
             <span className={cn('h-2 w-2 rounded-full shrink-0', statusConfig.color)} />
-            <span className="font-semibold truncate">{session.name}</span>
+            {isEditingName ? (
+              <input
+                type="text"
+                value={editingName}
+                onChange={(e) => setEditingName(e.target.value)}
+                onKeyDown={handleEditNameKeyDown}
+                onBlur={handleRenameSession}
+                onClick={(e) => e.stopPropagation()}
+                className="bg-gray-700 text-white text-sm font-semibold px-2 py-0.5 rounded border border-gray-600 focus:outline-none focus:border-blue-500"
+                autoFocus
+              />
+            ) : (
+              <>
+                <span className="font-semibold truncate">{sessionName}</span>
+                {headerExpanded && (
+                  <button
+                    onClick={handleStartEditName}
+                    className="p-1 rounded opacity-0 group-hover/header:opacity-100 transition-opacity hover:bg-gray-700 text-muted-foreground hover:text-white"
+                    title="Rename session"
+                  >
+                    <Pencil className="h-3 w-3" />
+                  </button>
+                )}
+              </>
+            )}
             {!headerExpanded && (
               <span className="text-xs text-muted-foreground hidden sm:inline">
                 {formatRelativeTime(session.last_activity)}

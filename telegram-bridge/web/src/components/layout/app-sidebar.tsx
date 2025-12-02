@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Terminal, Menu, Plus, ShieldCheck, Circle, X, Trash2 } from 'lucide-react'
+import { Terminal, Menu, Plus, ShieldCheck, Circle, X, Trash2, Pencil } from 'lucide-react'
 import { cn, formatRelativeTime } from '@/lib/utils'
 import { getSocket } from '@/lib/socket'
 import type { Session, ControlState } from '@/types'
@@ -27,6 +27,8 @@ export function AppSidebar({ currentPath }: AppSidebarProps) {
   const [mobileOpen, setMobileOpen] = useState(false)
   const [sessions, setSessions] = useState<Session[]>([])
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
+  const [editingSessionId, setEditingSessionId] = useState<string | null>(null)
+  const [editingName, setEditingName] = useState('')
   
   // Extract selected session ID from path
   const selectedSessionId = currentPath.startsWith('/session/') 
@@ -118,6 +120,44 @@ export function AppSidebar({ currentPath }: AppSidebarProps) {
       console.error('Failed to delete session:', error)
     } finally {
       setDeleteConfirmId(null)
+    }
+  }
+
+  const handleStartEdit = (session: Session, e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setEditingSessionId(session.id)
+    setEditingName(session.name)
+    setDeleteConfirmId(null)
+  }
+
+  const handleRenameSession = async (sessionId: string) => {
+    if (!editingName.trim()) {
+      setEditingSessionId(null)
+      return
+    }
+    
+    try {
+      const response = await fetch(
+        `${API_BASE}/sessions/${sessionId}/rename?name=${encodeURIComponent(editingName.trim())}`,
+        { method: 'PATCH' }
+      )
+      if (response.ok) {
+        // WebSocket will update the sessions list
+      }
+    } catch (error) {
+      console.error('Failed to rename session:', error)
+    } finally {
+      setEditingSessionId(null)
+    }
+  }
+
+  const handleEditKeyDown = (e: React.KeyboardEvent, sessionId: string) => {
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      handleRenameSession(sessionId)
+    } else if (e.key === 'Escape') {
+      setEditingSessionId(null)
     }
   }
 
@@ -226,6 +266,8 @@ export function AppSidebar({ currentPath }: AppSidebarProps) {
                   label: 'Unknown',
                 }
 
+                const isEditing = editingSessionId === session.id
+
                 return (
                   <div
                     key={session.id}
@@ -233,7 +275,10 @@ export function AppSidebar({ currentPath }: AppSidebarProps) {
                   >
                     <Link
                       href={`/session/${session.id}`}
-                      onClick={() => setMobileOpen(false)}
+                      onClick={(e) => {
+                        if (isEditing) e.preventDefault()
+                        else setMobileOpen(false)
+                      }}
                       className={cn(
                         'w-full text-left block p-3 rounded-md transition-colors',
                         isSelected
@@ -247,9 +292,22 @@ export function AppSidebar({ currentPath }: AppSidebarProps) {
                       ) : (
                         // Full view
                         <div>
-                          <div className="font-medium text-sm truncate mb-1 pr-8">
-                            {session.name || session.project_dir?.split('/').pop() || 'Unnamed'}
-                          </div>
+                          {isEditing ? (
+                            <input
+                              type="text"
+                              value={editingName}
+                              onChange={(e) => setEditingName(e.target.value)}
+                              onKeyDown={(e) => handleEditKeyDown(e, session.id)}
+                              onBlur={() => handleRenameSession(session.id)}
+                              onClick={(e) => e.preventDefault()}
+                              className="w-full bg-gray-700 text-white text-sm px-2 py-1 rounded border border-gray-600 focus:outline-none focus:border-blue-500 mb-1"
+                              autoFocus
+                            />
+                          ) : (
+                            <div className="font-medium text-sm truncate mb-1 pr-14">
+                              {session.name || session.project_dir?.split('/').pop() || 'Unnamed'}
+                            </div>
+                          )}
                           <div className="flex items-center gap-1 text-xs text-gray-500">
                             <span className={cn('h-2 w-2 rounded-full', statusInfo.color)} />
                             <span>{statusInfo.label}</span>
@@ -260,18 +318,28 @@ export function AppSidebar({ currentPath }: AppSidebarProps) {
                       )}
                     </Link>
                     
-                    {/* Delete button (visible on hover) */}
-                    {!collapsed && deleteConfirmId !== session.id && (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          setDeleteConfirmId(session.id)
-                        }}
-                        className="absolute top-2 right-2 p-1.5 rounded opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-500/20 text-gray-500 hover:text-red-400"
+                    {/* Edit & Delete buttons (visible on hover) */}
+                    {!collapsed && !isEditing && deleteConfirmId !== session.id && (
+                      <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button
+                          onClick={(e) => handleStartEdit(session, e)}
+                          className="p-1.5 rounded hover:bg-gray-700 text-gray-500 hover:text-white"
+                          title="Rename session"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            e.preventDefault()
+                            setDeleteConfirmId(session.id)
+                          }}
+                          className="p-1.5 rounded hover:bg-red-500/20 text-gray-500 hover:text-red-400"
                         title="Delete session"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                       </button>
+                      </div>
                     )}
                     
                     {/* Delete confirmation */}
