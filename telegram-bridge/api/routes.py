@@ -276,15 +276,46 @@ async def execute_task(data: TaskExecuteRequest, request: Request):
     Returns the result and session_id for continuation.
     """
     task_id = data.task_id or str(uuid.uuid4())
+    sio = getattr(request.app.state, "sio", None)
+    
+    # Create/update session immediately so it appears in sidebar
+    pending_session_id = data.session_id
+    if not pending_session_id:
+        # Check if we have a stored session for this project in task_executor
+        pending_session_id = task_executor._session_map.get(data.project_dir)
+    
+    # If still no session, create a pending one with task_id
+    created_pending = False
+    if not pending_session_id:
+        pending_session_id = task_id  # Use task_id as temporary session_id
+        from pathlib import Path
+        session_name = Path(data.project_dir).name or "custom-task"
+        try:
+            session_repo = get_session_repo()
+            session_repo.create(
+                session_id=pending_session_id,
+                name=session_name,
+                project_dir=data.project_dir,
+                status="running",
+                control_state="remote_active"
+            )
+            created_pending = True
+            logger.info(f"Created pending session {pending_session_id} for {data.project_dir}")
+            
+            # Emit sessions_update so sidebar shows the new session
+            if sio:
+                all_sessions = session_registry.get_all()
+                await sio.emit("sessions_update", [s.model_dump() for s in all_sessions])
+        except Exception as e:
+            logger.error(f"Failed to create pending session: {e}")
     
     # Notify that task is starting
-    sio = getattr(request.app.state, "sio", None)
     if sio:
         await sio.emit("task_started", {
             "task_id": task_id,
             "project_dir": data.project_dir,
             "prompt": data.prompt,
-            "session_id": data.session_id
+            "session_id": pending_session_id
         })
     
     # Execute the task
@@ -319,6 +350,16 @@ async def execute_task(data: TaskExecuteRequest, request: Request):
         source="api"
     )
     
+    # If we created a pending session with task_id, but droid returned a different session_id,
+    # delete the pending one (the real one was created by task_executor)
+    if created_pending and result.session_id and result.session_id != pending_session_id:
+        try:
+            session_repo = get_session_repo()
+            session_repo.delete(pending_session_id)
+            logger.info(f"Deleted pending session {pending_session_id}, using real session {result.session_id}")
+        except Exception as e:
+            logger.error(f"Failed to delete pending session: {e}")
+    
     # Notify completion via WebSocket
     if sio:
         await sio.emit("task_completed", {
@@ -327,6 +368,10 @@ async def execute_task(data: TaskExecuteRequest, request: Request):
             "result": result.result[:500] if result.result else "",  # Truncate for event
             "session_id": result.session_id
         })
+        
+        # Update sidebar with correct sessions
+        all_sessions = session_registry.get_all()
+        await sio.emit("sessions_update", [s.model_dump() for s in all_sessions])
     
     # Send Telegram notification
     bot_manager_getter = getattr(request.app.state, "bot_manager", None)
