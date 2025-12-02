@@ -1,10 +1,11 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Terminal, Menu, Plus, ShieldCheck, Circle, X, Trash2 } from 'lucide-react'
 import { cn, formatRelativeTime } from '@/lib/utils'
+import { getSocket } from '@/lib/socket'
 import type { Session, ControlState } from '@/types'
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8765'
@@ -32,31 +33,59 @@ export function AppSidebar({ currentPath }: AppSidebarProps) {
     ? currentPath.replace('/session/', '') 
     : null
 
-  // Fetch sessions
+  // Sort sessions by last_activity (most recent first)
+  const sortSessions = useCallback((sessionList: Session[]) => {
+    return [...sessionList].sort((a, b) => {
+      const dateA = new Date(a.last_activity).getTime()
+      const dateB = new Date(b.last_activity).getTime()
+      return dateB - dateA
+    })
+  }, [])
+
+  // Fetch sessions once on mount, then update via WebSocket
   useEffect(() => {
     const fetchSessions = async () => {
       try {
         const response = await fetch(`${API_BASE}/sessions`)
         if (response.ok) {
           const fetchedSessions: Session[] = await response.json()
-          // Sort by last_activity (most recent first)
-          const sortedSessions = fetchedSessions.sort((a, b) => {
-            const dateA = new Date(a.last_activity).getTime()
-            const dateB = new Date(b.last_activity).getTime()
-            return dateB - dateA // Descending order (newest first)
-          })
-          setSessions(sortedSessions)
+          setSessions(sortSessions(fetchedSessions))
         }
       } catch (error) {
         console.error('Failed to fetch sessions:', error)
       }
     }
 
+    // Initial fetch
     fetchSessions()
-    const interval = setInterval(fetchSessions, 5000) // Refresh every 5s
 
-    return () => clearInterval(interval)
-  }, [])
+    // Listen for WebSocket events to update sessions
+    const socket = getSocket()
+    
+    const handleSessionsUpdate = (updatedSessions: Session[]) => {
+      setSessions(sortSessions(updatedSessions))
+    }
+    
+    const handleTaskCompleted = () => {
+      // Refetch sessions when a task completes (updates last_activity)
+      fetchSessions()
+    }
+    
+    const handleChatUpdated = () => {
+      // Refetch sessions when chat updates (updates last_activity)
+      fetchSessions()
+    }
+    
+    socket.on('sessions_update', handleSessionsUpdate)
+    socket.on('task_completed', handleTaskCompleted)
+    socket.on('chat_updated', handleChatUpdated)
+
+    return () => {
+      socket.off('sessions_update', handleSessionsUpdate)
+      socket.off('task_completed', handleTaskCompleted)
+      socket.off('chat_updated', handleChatUpdated)
+    }
+  }, [sortSessions])
 
   const handleNavigate = (path: string) => {
     router.push(path)

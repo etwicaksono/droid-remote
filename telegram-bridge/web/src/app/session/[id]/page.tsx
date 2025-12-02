@@ -17,7 +17,7 @@ export default function SessionPage() {
   useEffect(() => {
     const fetchSession = async () => {
       try {
-        // Fetch single session directly instead of all sessions
+        // Fetch single session directly
         const response = await fetch(`${API_BASE}/sessions/${sessionId}`)
         if (response.ok) {
           const sessionData: Session = await response.json()
@@ -32,10 +32,8 @@ export default function SessionPage() {
       }
     }
 
+    // Fetch once on mount - SessionCard handles real-time updates via WebSocket
     fetchSession()
-    // Poll less frequently - sidebar already handles session list updates
-    const interval = setInterval(fetchSession, 10000)
-    return () => clearInterval(interval)
   }, [sessionId])
 
   if (loading) {
