@@ -35,10 +35,11 @@ export interface QueuedMessage {
 export interface PermissionRequest {
   id: string
   session_id: string
+  session_name?: string
   tool_name?: string
   tool_input?: Record<string, unknown>
   message: string
-  decision?: 'approved' | 'denied' | 'pending'
+  decision?: 'approved' | 'denied' | 'pending' | 'timeout'
   decided_by?: 'telegram' | 'web' | 'auto'
   created_at: string
   decided_at?: string
