@@ -78,14 +78,21 @@ export function AppSidebar({ currentPath }: AppSidebarProps) {
       fetchSessions()
     }
     
+    const handleConnect = () => {
+      // Re-fetch sessions on socket connect/reconnect to catch any missed updates
+      fetchSessions()
+    }
+    
     socket.on('sessions_update', handleSessionsUpdate)
     socket.on('task_completed', handleTaskCompleted)
     socket.on('chat_updated', handleChatUpdated)
+    socket.on('connect', handleConnect)
 
     return () => {
       socket.off('sessions_update', handleSessionsUpdate)
       socket.off('task_completed', handleTaskCompleted)
       socket.off('chat_updated', handleChatUpdated)
+      socket.off('connect', handleConnect)
     }
   }, [sortSessions])
 
