@@ -118,6 +118,7 @@ export function SessionCard({ session }: SessionCardProps) {
   const { approve, deny, handoff, release, executeTask, cancelTask, addChatMessage, loading } = useSessionActions()
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const chatContainerRef = useRef<HTMLDivElement | null>(null)
+  const isLoadingOlderRef = useRef(false)
 
   const currentModel = AVAILABLE_MODELS.find(m => m.id === selectedModel)
   const supportsReasoning = currentModel?.reasoning ?? false
@@ -221,6 +222,7 @@ export function SessionCard({ session }: SessionCardProps) {
   const loadOlderMessages = async () => {
     if (loadingMore || !hasMoreMessages) return
     
+    isLoadingOlderRef.current = true
     setLoadingMore(true)
     try {
       // Remember scroll position before loading
@@ -242,11 +244,17 @@ export function SessionCard({ session }: SessionCardProps) {
               const scrollHeightAfter = container.scrollHeight
               container.scrollTop = scrollHeightAfter - scrollHeightBefore
             }
+            isLoadingOlderRef.current = false
           }, 0)
+        } else {
+          isLoadingOlderRef.current = false
         }
+      } else {
+        isLoadingOlderRef.current = false
       }
     } catch (err) {
       console.error('Failed to load older messages:', err)
+      isLoadingOlderRef.current = false
     } finally {
       setLoadingMore(false)
     }
@@ -368,9 +376,11 @@ export function SessionCard({ session }: SessionCardProps) {
     }
   }, [session.project_dir, session.id, currentTaskId])
 
-  // Scroll to bottom when chat history changes
+  // Scroll to bottom when chat history changes (but not when loading older messages)
   useEffect(() => {
-    scrollToBottom()
+    if (!isLoadingOlderRef.current) {
+      scrollToBottom()
+    }
   }, [chatHistory, scrollToBottom])
 
   const statusConfig = STATUS_CONFIG[session.status]
