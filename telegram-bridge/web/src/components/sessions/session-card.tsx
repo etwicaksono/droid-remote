@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback, type FormEvent } from 'react'
-import { Terminal, Loader2, ChevronDown, ChevronRight } from 'lucide-react'
+import { Terminal, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { useSessionActions } from '@/hooks/use-session-actions'
@@ -96,9 +96,6 @@ export function SessionCard({ session }: SessionCardProps) {
   const [hasMoreMessages, setHasMoreMessages] = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
   const [chatOffset, setChatOffset] = useState(0)
-  // Activity logs for real-time tool execution display
-  const [activityLogs, setActivityLogs] = useState<Array<{ type: string; tool?: string; details?: string; raw: string }>>([])
-  const [activityExpanded, setActivityExpanded] = useState(true)
   // Local state for real-time updates (pending_request, control_state)
   const [pendingRequest, setPendingRequest] = useState(session.pending_request)
   const [localControlState, setLocalControlState] = useState(session.control_state)
@@ -385,19 +382,12 @@ export function SessionCard({ session }: SessionCardProps) {
       }
     }
     
-    const handleTaskActivity = (data: { task_id: string; session_id: string; activity: { type: string; tool?: string; details?: string; raw: string } }) => {
-      if (data.session_id === session.id || data.task_id === currentTaskId) {
-        setActivityLogs(prev => [...prev, data.activity])
-      }
-    }
-    
     socket.on('task_started', handleTaskStarted)
     socket.on('task_completed', handleTaskCompleted)
     socket.on('task_cancelled', handleTaskCancelled)
     socket.on('chat_updated', handleChatUpdated)
     socket.on('cli_thinking', handleCliThinking)
     socket.on('cli_thinking_done', handleCliThinkingDone)
-    socket.on('task_activity', handleTaskActivity)
     
     return () => {
       socket.off('task_started', handleTaskStarted)
@@ -406,7 +396,6 @@ export function SessionCard({ session }: SessionCardProps) {
       socket.off('chat_updated', handleChatUpdated)
       socket.off('cli_thinking', handleCliThinking)
       socket.off('cli_thinking_done', handleCliThinkingDone)
-      socket.off('task_activity', handleTaskActivity)
     }
   }, [session.project_dir, session.id, currentTaskId])
 
@@ -435,8 +424,6 @@ export function SessionCard({ session }: SessionCardProps) {
     setTaskPrompt('')
     setExecuting(true)
     setCurrentTaskId(taskId) // Set immediately before execution
-    setActivityLogs([]) // Clear previous activity
-    setActivityExpanded(true) // Expand activity panel
 
     // Save user message to API and add to local state immediately
     try {
@@ -774,38 +761,9 @@ export function SessionCard({ session }: SessionCardProps) {
                 ))}
                 {executing && (
                   <div className="flex justify-start ms-2">
-                    <div className="bg-muted rounded-lg px-3 py-2 text-sm w-full max-w-[90%] sm:max-w-[85%]">
-                      {/* Activity header */}
-                      <div 
-                        className="flex items-center gap-2 cursor-pointer text-muted-foreground"
-                        onClick={() => setActivityExpanded(!activityExpanded)}
-                      >
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        <span>Droid is thinking...</span>
-                        {activityLogs.length > 0 && (
-                          <>
-                            <span className="text-xs opacity-60">({activityLogs.length} actions)</span>
-                            {activityExpanded ? (
-                              <ChevronDown className="h-3 w-3 ml-auto" />
-                            ) : (
-                              <ChevronRight className="h-3 w-3 ml-auto" />
-                            )}
-                          </>
-                        )}
-                      </div>
-                      {/* Activity logs */}
-                      {activityExpanded && activityLogs.length > 0 && (
-                        <div className="mt-2 space-y-1 max-h-48 overflow-y-auto border-t border-border/50 pt-2">
-                          {activityLogs.map((log, i) => (
-                            <div key={i} className="text-xs font-mono text-muted-foreground/80 truncate">
-                              {log.tool && (
-                                <span className="text-blue-500">[{log.tool}]</span>
-                              )}{' '}
-                              {log.details || log.raw}
-                            </div>
-                          ))}
-                        </div>
-                      )}
+                    <div className="bg-muted rounded-lg px-3 py-2 flex items-center gap-2 text-sm text-muted-foreground">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Droid is thinking...
                     </div>
                   </div>
                 )}
