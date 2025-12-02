@@ -62,12 +62,19 @@ class SessionRegistry:
                     created_at=pending_perm.get('created_at', datetime.utcnow())
                 )
         
+        # Handle invalid control_state values gracefully
+        try:
+            control_state = ControlState(data.get('control_state', 'cli_active'))
+        except ValueError:
+            # Fallback to remote_active for invalid states (e.g., old 'exec_mode')
+            control_state = ControlState.REMOTE_ACTIVE
+        
         return Session(
             id=session_id,
             name=data['name'],
             project_dir=data['project_dir'],
             status=SessionStatus(data.get('status', 'running')),
-            control_state=ControlState(data.get('control_state', 'cli_active')),
+            control_state=control_state,
             started_at=started_at or datetime.utcnow(),
             last_activity=last_activity or datetime.utcnow(),
             pending_request=pending_request,

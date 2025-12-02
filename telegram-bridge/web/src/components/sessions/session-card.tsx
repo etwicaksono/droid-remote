@@ -395,25 +395,29 @@ export function SessionCard({ session }: SessionCardProps) {
     // Generate task_id immediately for cancellation tracking
     const taskId = generateUUID()
     
-    const userMessage: ChatMessage = {
-      id: Date.now().toString(),
-      type: 'user',
-      content: prompt,
-      timestamp: new Date(),
-    }
-    setChatHistory(prev => [...prev, userMessage])
     setTaskPrompt('')
     setExecuting(true)
     setCurrentTaskId(taskId) // Set immediately before execution
 
-    // Save user message to API
+    // Save user message to API and wait for DB ID
     try {
-      await addChatMessage({
+      const response = await addChatMessage({
         sessionId: session.id,
         type: 'user',
         content: prompt,
       })
-    } catch {}
+      // Add user message with DB-assigned ID (will be handled by chat_updated WebSocket)
+      // No need to manually add to state here - let WebSocket event handle it
+    } catch (error) {
+      // If API fails, add message to local state only as fallback
+      const userMessage: ChatMessage = {
+        id: Date.now().toString(),
+        type: 'user',
+        content: prompt,
+        timestamp: new Date(),
+      }
+      setChatHistory(prev => [...prev, userMessage])
+    }
 
     try {
       const result = await executeTask({
@@ -428,20 +432,7 @@ export function SessionCard({ session }: SessionCardProps) {
       // Parse the result to get human-readable content
       const responseContent = parseResultContent(result.result, result.error)
 
-      const assistantMessage: ChatMessage = {
-        id: (Date.now() + 1).toString(),
-        type: 'assistant',
-        content: responseContent,
-        timestamp: new Date(),
-        status: result.success ? 'success' : 'error',
-        meta: {
-          duration: result.duration_ms,
-          turns: result.num_turns,
-        },
-      }
-      setChatHistory(prev => [...prev, assistantMessage])
-
-      // Save assistant message to API
+      // Save assistant message to API (will be handled by chat_updated WebSocket)
       try {
         await addChatMessage({
           sessionId: session.id,
@@ -451,18 +442,25 @@ export function SessionCard({ session }: SessionCardProps) {
           durationMs: result.duration_ms,
           numTurns: result.num_turns,
         })
-      } catch {}
+        // Let WebSocket event add the message with DB-assigned ID
+      } catch (error) {
+        // If API fails, add message to local state only as fallback
+        const assistantMessage: ChatMessage = {
+          id: (Date.now() + 1).toString(),
+          type: 'assistant',
+          content: responseContent,
+          timestamp: new Date(),
+          status: result.success ? 'success' : 'error',
+          meta: {
+            duration: result.duration_ms,
+            turns: result.num_turns,
+          },
+        }
+        setChatHistory(prev => [...prev, assistantMessage])
+      }
     } catch (error) {
       const errorContent = String(error)
-      const errorMessage: ChatMessage = {
-        id: (Date.now() + 1).toString(),
-        type: 'assistant',
-        content: errorContent,
-        timestamp: new Date(),
-        status: 'error',
-      }
-      setChatHistory(prev => [...prev, errorMessage])
-
+      
       // Save error message to API
       try {
         await addChatMessage({
@@ -471,7 +469,18 @@ export function SessionCard({ session }: SessionCardProps) {
           content: errorContent,
           status: 'error',
         })
-      } catch {}
+        // Let WebSocket event add the message with DB-assigned ID
+      } catch {
+        // If API also fails, add message to local state as fallback
+        const errorMessage: ChatMessage = {
+          id: (Date.now() + 1).toString(),
+          type: 'assistant',
+          content: errorContent,
+          timestamp: new Date(),
+          status: 'error',
+        }
+        setChatHistory(prev => [...prev, errorMessage])
+      }
     } finally {
       setExecuting(false)
       setCurrentTaskId(null)
@@ -484,15 +493,6 @@ export function SessionCard({ session }: SessionCardProps) {
     try {
       await cancelTask(currentTaskId)
       
-      const cancelMessage: ChatMessage = {
-        id: (Date.now() + 1).toString(),
-        type: 'assistant',
-        content: 'Task cancelled by user',
-        timestamp: new Date(),
-        status: 'error',
-      }
-      setChatHistory(prev => [...prev, cancelMessage])
-      
       // Save cancel message to API
       try {
         await addChatMessage({
@@ -501,7 +501,18 @@ export function SessionCard({ session }: SessionCardProps) {
           content: 'Task cancelled by user',
           status: 'error',
         })
-      } catch {}
+        // Let WebSocket event add the message with DB-assigned ID
+      } catch {
+        // If API fails, add message to local state as fallback
+        const cancelMessage: ChatMessage = {
+          id: (Date.now() + 1).toString(),
+          type: 'assistant',
+          content: 'Task cancelled by user',
+          timestamp: new Date(),
+          status: 'error',
+        }
+        setChatHistory(prev => [...prev, cancelMessage])
+      }
     } catch (error) {
       console.error('Failed to cancel task:', error)
     } finally {

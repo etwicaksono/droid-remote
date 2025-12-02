@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 
-from .repositories import get_task_repo
+from .repositories import get_task_repo, get_session_repo, get_chat_repo
 
 logger = logging.getLogger(__name__)
 
@@ -133,6 +133,48 @@ class TaskExecutor:
             if result.session_id:
                 self._session_map[project_dir] = result.session_id
                 logger.info(f"Stored session {result.session_id} for {project_dir}")
+                
+                # Ensure session exists in database (for custom tasks)
+                try:
+                    session_repo = get_session_repo()
+                    existing_session = session_repo.get_by_id(result.session_id)
+                    if not existing_session:
+                        # Create session record for custom task
+                        from pathlib import Path
+                        session_name = Path(project_dir).name or "custom-task"
+                        logger.info(f"Creating session record for custom task: {result.session_id}")
+                        session_repo.create(
+                            session_id=result.session_id,
+                            name=session_name,
+                            project_dir=project_dir,
+                            status="running",
+                            control_state="remote_active"
+                        )
+                        
+                        # Add chat messages for the task
+                        try:
+                            chat_repo = get_chat_repo()
+                            # Add user message
+                            chat_repo.create(
+                                session_id=result.session_id,
+                                msg_type="user",
+                                content=prompt,
+                                source="web"
+                            )
+                            # Add assistant response
+                            chat_repo.create(
+                                session_id=result.session_id,
+                                msg_type="assistant",
+                                content=result.result or "",
+                                status="success" if result.success else "error",
+                                duration_ms=result.duration_ms,
+                                num_turns=result.num_turns,
+                                source="web"
+                            )
+                        except Exception as e:
+                            logger.error(f"Failed to add chat messages: {e}")
+                except Exception as e:
+                    logger.error(f"Failed to create session record: {e}")
             
             # Log task completion to database
             try:
