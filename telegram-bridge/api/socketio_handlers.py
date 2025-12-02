@@ -8,6 +8,7 @@ import socketio
 from core.session_registry import session_registry
 from core.message_queue import message_queue
 from core.models import SessionStatus
+from core.repositories import get_permission_repo
 
 logger = logging.getLogger(__name__)
 
@@ -86,7 +87,17 @@ def create_socketio_server() -> socketio.AsyncServer:
         if not session_id:
             return {"error": "Missing sessionId"}
         
+        # Get request_id from session if not provided
+        session = session_registry.get(session_id)
+        if not request_id and session and session.pending_request:
+            request_id = session.pending_request.id
+        
         message_queue.deliver_response(session_id, request_id, "approve")
+        
+        # Update permission in database
+        if request_id:
+            get_permission_repo().resolve(request_id, "approved", "web")
+        
         session_registry.update_status(session_id, SessionStatus.RUNNING)
         session_registry.set_pending_request(session_id, None)
         
@@ -94,7 +105,7 @@ def create_socketio_server() -> socketio.AsyncServer:
         sessions = session_registry.get_all()
         await sio.emit("sessions_update", [s.model_dump(mode='json') for s in sessions])
         
-        logger.info(f"Approved via WebSocket: session={session_id}")
+        logger.info(f"Approved via WebSocket: session={session_id}, request={request_id}")
         return {"success": True}
     
     @sio.event
@@ -106,7 +117,17 @@ def create_socketio_server() -> socketio.AsyncServer:
         if not session_id:
             return {"error": "Missing sessionId"}
         
+        # Get request_id from session if not provided
+        session = session_registry.get(session_id)
+        if not request_id and session and session.pending_request:
+            request_id = session.pending_request.id
+        
         message_queue.deliver_response(session_id, request_id, "deny")
+        
+        # Update permission in database
+        if request_id:
+            get_permission_repo().resolve(request_id, "denied", "web")
+        
         session_registry.update_status(session_id, SessionStatus.RUNNING)
         session_registry.set_pending_request(session_id, None)
         
@@ -114,7 +135,7 @@ def create_socketio_server() -> socketio.AsyncServer:
         sessions = session_registry.get_all()
         await sio.emit("sessions_update", [s.model_dump(mode='json') for s in sessions])
         
-        logger.info(f"Denied via WebSocket: session={session_id}")
+        logger.info(f"Denied via WebSocket: session={session_id}, request={request_id}")
         return {"success": True}
     
     @sio.event
