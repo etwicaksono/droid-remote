@@ -35,12 +35,18 @@ export function getSocket(): TypedSocket {
     const wsUrl = process.env.NEXT_PUBLIC_WS_URL ?? 'http://localhost:8765'
 
     socket = io(wsUrl, {
-      autoConnect: false,
+      autoConnect: true,  // Auto-connect when socket is created
       reconnection: true,
-      reconnectionAttempts: 10,
+      reconnectionAttempts: Infinity,  // Keep trying to reconnect
       reconnectionDelay: 1000,
       reconnectionDelayMax: 5000,
+      transports: ['websocket', 'polling'],  // Prefer websocket
     })
+  }
+
+  // Ensure socket is connected
+  if (!socket.connected) {
+    socket.connect()
   }
 
   return socket

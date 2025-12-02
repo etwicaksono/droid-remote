@@ -22,8 +22,10 @@ export function Providers({ children }: ProvidersProps) {
   )
 
   useEffect(() => {
+    // Connect socket once on app load - don't disconnect on unmount
+    // as we want to keep the connection alive for the lifetime of the app
     connectSocket().catch(console.error)
-    return () => disconnectSocket()
+    // No cleanup - socket should stay connected
   }, [])
 
   return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
