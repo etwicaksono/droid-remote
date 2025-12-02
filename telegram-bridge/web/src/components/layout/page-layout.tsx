@@ -165,25 +165,34 @@ export function PageLayout({ children, title, session, currentPath }: PageLayout
                     </>
                   )}
                   {!headerExpanded && (
-                    <span className="text-xs text-muted-foreground hidden sm:inline">
+                    <span className="text-xs text-muted-foreground">
                       {formatRelativeTime(session.last_activity)}
                     </span>
                   )}
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
-                  <Badge variant="outline" className="text-xs">
+                  {/* Desktop: show badges */}
+                  <Badge variant="outline" className="text-xs hidden sm:flex">
                     <Radio className="h-3 w-3 mr-1" />
-                    <span className="hidden sm:inline">{controlConfig.label}</span>
-                    <span className="sm:hidden">{controlConfig.label.split(' ')[0]}</span>
+                    {controlConfig.label}
                   </Badge>
-                  <Badge variant={statusConfig.variant}>{statusConfig.label}</Badge>
+                  <Badge variant={statusConfig.variant} className="hidden sm:flex">{statusConfig.label}</Badge>
+                  {/* Mobile: just connection dot */}
                   <ConnectionStatus />
                 </div>
               </div>
 
               {/* Expanded details */}
               {headerExpanded && (
-                <div className="flex flex-col gap-1 text-xs text-muted-foreground pl-6 mt-2">
+                <div className="flex flex-col gap-2 text-xs text-muted-foreground pl-6 mt-2">
+                  {/* Mobile: show badges in expanded */}
+                  <div className="flex items-center gap-2 sm:hidden">
+                    <Badge variant="outline" className="text-xs">
+                      <Radio className="h-3 w-3 mr-1" />
+                      {controlConfig.label}
+                    </Badge>
+                    <Badge variant={statusConfig.variant}>{statusConfig.label}</Badge>
+                  </div>
                   <div className="flex items-center gap-2">
                     <span className="font-mono text-xs select-all">{session.id}</span>
                     <button
