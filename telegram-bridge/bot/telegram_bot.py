@@ -2,10 +2,14 @@
 Telegram Bot Manager - Main bot class
 """
 import os
+import sys
 import re
 import logging
 import asyncio
 from typing import Optional, Set
+
+# Add hooks lib to path for config
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'hooks'))
 
 from telegram import Update
 from telegram.ext import (
