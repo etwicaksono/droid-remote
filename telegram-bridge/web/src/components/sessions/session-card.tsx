@@ -596,10 +596,7 @@ export function SessionCard({ session }: SessionCardProps) {
             <Folder className="h-3 w-3 shrink-0" />
             <span className="truncate">{session.project_dir}</span>
           </span>
-          <span className="flex items-center gap-1">
-            <Clock className="h-3 w-3 shrink-0" />
-            {formatRelativeTime(session.last_activity)}
-          </span>
+          <LastActivityTime lastActivity={session.last_activity} />
         </div>
 
         {/* Pending Request */}
@@ -808,6 +805,37 @@ function ChatBubble({ message }: { message: ChatMessage }) {
         </div>
       </div>
     </div>
+  )
+}
+
+function LastActivityTime({ lastActivity }: { lastActivity: string }) {
+  const [showFull, setShowFull] = useState(false)
+  
+  const fullTime = new Date(lastActivity).toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  })
+
+  return (
+    <span 
+      className="flex items-center gap-1 cursor-pointer group"
+      onClick={() => setShowFull(prev => !prev)}
+      title={fullTime}
+    >
+      <Clock className="h-3 w-3 shrink-0" />
+      <span className="sm:hidden">
+        {showFull ? fullTime : formatRelativeTime(lastActivity)}
+      </span>
+      <span className="hidden sm:inline group-hover:hidden">
+        {formatRelativeTime(lastActivity)}
+      </span>
+      <span className="hidden sm:group-hover:inline">
+        {fullTime}
+      </span>
+    </span>
   )
 }
 
