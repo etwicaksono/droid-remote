@@ -237,7 +237,7 @@ export function PageLayout({ children, title, session, currentPath }: PageLayout
 
         {/* Content Area */}
         <div className="flex-1 flex flex-col overflow-hidden">
-          <div className="flex-1 flex flex-col p-4 min-h-0">
+          <div className="flex-1 flex flex-col px-4 pb-4 min-h-0">
             {children}
           </div>
         </div>
