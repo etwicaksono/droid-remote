@@ -81,6 +81,7 @@ def create_socketio_server() -> socketio.AsyncServer:
     @sio.event
     async def approve(sid, data):
         """Handle approve action from Web UI"""
+        logger.info(f"[APPROVE] Received from sid={sid}, data={data}")
         session_id = data.get("sessionId")
         request_id = data.get("requestId")
         
@@ -89,10 +90,13 @@ def create_socketio_server() -> socketio.AsyncServer:
         
         # Get request_id from session if not provided
         session = session_registry.get(session_id)
+        logger.info(f"[APPROVE] session={session}, pending_request={session.pending_request if session else None}")
         if not request_id and session and session.pending_request:
             request_id = session.pending_request.id
         
-        message_queue.deliver_response(session_id, request_id, "approve")
+        logger.info(f"[APPROVE] Delivering response: session_id={session_id}, request_id={request_id}")
+        result = message_queue.deliver_response(session_id, request_id, "approve")
+        logger.info(f"[APPROVE] deliver_response result: {result}")
         
         # Update permission in database
         if request_id:

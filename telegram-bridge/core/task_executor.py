@@ -339,6 +339,7 @@ class TaskExecutor:
                 line_str = line.decode("utf-8", errors="replace").rstrip()
                 if line_str:
                     stdout_lines.append(line_str)
+                    logger.debug(f"stdout line: {line_str[:100]}")
                     
                     # Check if we're entering the final answer section
                     if '# Answer' in line_str or line_str.startswith('Answer:'):
@@ -350,6 +351,7 @@ class TaskExecutor:
                         # Send progress update for activity lines
                         activity = self._parse_activity_line(line_str)
                         if activity:
+                            logger.info(f"Sending activity: {activity.get('type')} - {activity.get('raw', '')[:50]}")
                             on_progress(activity)
         
         # Read both streams concurrently
