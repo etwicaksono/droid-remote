@@ -241,10 +241,21 @@ class SessionRegistry:
         return None
     
     def update_status(self, session_id: str, status: SessionStatus) -> Optional[Session]:
-        """Update session status"""
+        """Update session status and sync control_state"""
         repo = get_session_repo()
         status_str = status.value if isinstance(status, SessionStatus) else status
         data = repo.update_status(session_id, status_str)
+        if data:
+            # Sync control_state with status
+            if status_str == 'waiting':
+                self.update_control_state(session_id, ControlState.CLI_WAITING)
+            elif status_str == 'running':
+                # Only set to cli_active if not already remote_active
+                current = self.get(session_id)
+                if current and current.control_state != ControlState.REMOTE_ACTIVE:
+                    self.update_control_state(session_id, ControlState.CLI_ACTIVE)
+            # Re-fetch after control_state update
+            data = repo.get_by_id(session_id)
         if data:
             return self._dict_to_session(data)
         return None
