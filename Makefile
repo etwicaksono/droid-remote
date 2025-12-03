@@ -1,18 +1,20 @@
-.PHONY: help install bridge web test clean logs
+.PHONY: help install bridge web test clean logs docker-test docker-test-build
 
 help:
 	@echo "Droid Remote Control - Available Commands"
 	@echo "=========================================="
-	@echo "make install    - Install all dependencies"
-	@echo "make bridge     - Start bridge server"
-	@echo "make web        - Start web UI dev server"
-	@echo "make test       - Run all tests"
-	@echo "make test-m1    - Run Milestone 1 tests (Telegram)"
-	@echo "make test-m2    - Run Milestone 2 tests (Bridge)"
-	@echo "make test-m3    - Run Milestone 3 tests (Hooks)"
-	@echo "make logs       - Show bridge server logs"
-	@echo "make clean      - Clean generated files"
-	@echo "make hooks      - Copy hooks to ~/.factory/hooks/"
+	@echo "make install         - Install all dependencies"
+	@echo "make bridge          - Start bridge server"
+	@echo "make web             - Start web UI dev server"
+	@echo "make test            - Run all tests"
+	@echo "make test-m1         - Run Milestone 1 tests (Telegram)"
+	@echo "make test-m2         - Run Milestone 2 tests (Bridge)"
+	@echo "make test-m3         - Run Milestone 3 tests (Hooks)"
+	@echo "make logs            - Show bridge server logs"
+	@echo "make clean           - Clean generated files"
+	@echo "make hooks           - Copy hooks to ~/.factory/hooks/"
+	@echo "make docker-test     - Build and run in temp containers (ports 8766/3001)"
+	@echo "make docker-test-build - Build only, verify no errors"
 
 install:
 	cd telegram-bridge && pip install -r requirements.txt
@@ -48,3 +50,15 @@ hooks:
 	@echo Copying hooks to ~/.factory/hooks/
 	xcopy /E /I /Y hooks "%USERPROFILE%\.factory\hooks"
 	@echo Done! Restart Droid to load new hooks.
+
+docker-test:
+	@echo Building test images...
+	docker compose -p droid-test build
+	@echo Starting test containers (bridge:8766, web:3001)...
+	@echo Press Ctrl+C to stop and cleanup...
+	set BRIDGE_PORT=8766 && set WEB_PORT=3001 && docker compose -p droid-test up --abort-on-container-exit; docker compose -p droid-test down -v --remove-orphans
+
+docker-test-build:
+	@echo Building test images only (no run)...
+	docker compose -p droid-test build
+	@echo Build successful!
