@@ -79,6 +79,14 @@ cp config/settings.docker.json ~/.factory/settings.json
 droid
 ```
 
+**Docker Limitations:**
+- ✅ View CLI sessions in Web UI
+- ✅ Respond to permission requests
+- ✅ Receive Telegram notifications
+- ❌ **Create new tasks via Web UI** - The `droid` CLI runs on the host, not in Docker. Web UI "Custom Task" requires the bridge to execute `droid exec`, which isn't available inside the container.
+
+For full Web UI task creation, use Native installation or run the bridge directly on the host.
+
 ### Option B: Native (Development)
 
 Requires Python 3.11+ and Node.js 20+.
