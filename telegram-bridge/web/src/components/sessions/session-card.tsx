@@ -255,6 +255,7 @@ export function SessionCard({ session }: SessionCardProps) {
       // Remember scroll position before loading
       const container = chatContainerRef.current
       const scrollHeightBefore = container?.scrollHeight || 0
+      const scrollTopBefore = container?.scrollTop || 0
       
       const chatRes = await fetch(`${API_BASE}/sessions/${session.id}/chat?limit=${CHAT_PAGE_SIZE}&offset=${chatOffset}`, { headers: getAuthHeaders() })
       if (chatRes.ok) {
@@ -265,14 +266,17 @@ export function SessionCard({ session }: SessionCardProps) {
           setHasMoreMessages(data.has_more || false)
           setChatOffset(prev => prev + data.messages.length)
           
-          // Restore scroll position after DOM updates
-          setTimeout(() => {
-            if (container) {
-              const scrollHeightAfter = container.scrollHeight
-              container.scrollTop = scrollHeightAfter - scrollHeightBefore
-            }
-            isLoadingOlderRef.current = false
-          }, 0)
+          // Restore scroll position after DOM updates using requestAnimationFrame
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              if (container) {
+                const scrollHeightAfter = container.scrollHeight
+                const heightDiff = scrollHeightAfter - scrollHeightBefore
+                container.scrollTop = scrollTopBefore + heightDiff
+              }
+              isLoadingOlderRef.current = false
+            })
+          })
         } else {
           isLoadingOlderRef.current = false
         }
