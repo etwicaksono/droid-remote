@@ -92,15 +92,12 @@ export function SessionCard({ session }: SessionCardProps) {
   const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort>(DEFAULT_REASONING)
   const [autonomyLevel, setAutonomyLevel] = useState(DEFAULT_AUTONOMY)
   const [settingsLoaded, setSettingsLoaded] = useState(false)
-  const [actionError, setActionError] = useState<string | null>(null)
-  const [controlAction, setControlAction] = useState<'handoff' | 'release' | null>(null)
   const [hasMoreMessages, setHasMoreMessages] = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
   const [chatOffset, setChatOffset] = useState(0)
-  // Local state for real-time updates (pending_request, control_state)
+  // Local state for real-time updates (pending_request)
   const [pendingRequest, setPendingRequest] = useState(session.pending_request)
-  const [localControlState, setLocalControlState] = useState(session.control_state)
-  const { approve, deny, handoff, release, executeTask, cancelTask, addChatMessage, loading } = useSessionActions()
+  const { approve, deny, executeTask, cancelTask, addChatMessage } = useSessionActions()
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const chatContainerRef = useRef<HTMLDivElement | null>(null)
   const isLoadingOlderRef = useRef(false)
@@ -145,8 +142,7 @@ export function SessionCard({ session }: SessionCardProps) {
   // Sync local state with session prop changes
   useEffect(() => {
     setPendingRequest(session.pending_request)
-    setLocalControlState(session.control_state)
-  }, [session.pending_request, session.control_state])
+  }, [session.pending_request])
 
   // Listen for sessions_update to get real-time pending_request updates
   useEffect(() => {
@@ -156,7 +152,6 @@ export function SessionCard({ session }: SessionCardProps) {
       const updated = sessions.find(s => s.id === session.id)
       if (updated) {
         setPendingRequest(updated.pending_request)
-        setLocalControlState(updated.control_state)
       }
     }
     
@@ -410,10 +405,7 @@ export function SessionCard({ session }: SessionCardProps) {
     }
   }, [chatHistory, executing, scrollToBottom])
 
-  const controlState = localControlState || 'cli_active'
   const hasPendingRequest = pendingRequest !== null
-  const isRemoteControlled = controlState === 'remote_active'
-  const canHandoff = controlState === 'cli_active' || controlState === 'cli_waiting' || controlState === 'released'
 
   const handleTaskSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
@@ -615,67 +607,12 @@ export function SessionCard({ session }: SessionCardProps) {
     }
   }
 
-  const handleHandoff = async () => {
-    setActionError(null)
-    setControlAction('handoff')
-    try {
-      const result = await handoff({ sessionId: session.id })
-      if (!result.success) {
-        setActionError(result.error || 'Failed to take control')
-        setControlAction(null) // Clear on error only
-      }
-      // Don't clear controlAction on success - wait for state change
-    } catch (error) {
-      console.error('Handoff failed:', error)
-      setActionError(error instanceof Error ? error.message : 'Failed to take control')
-      setControlAction(null) // Clear on error only
-    }
-  }
-
-  const handleRelease = async () => {
-    setControlAction('release')
-    try {
-      await release({ sessionId: session.id })
-      // Don't clear controlAction on success - wait for state change
-    } catch (error) {
-      console.error('Release failed:', error)
-      setControlAction(null) // Clear on error only
-    }
-  }
-
-  // Clear loading overlay when control state actually changes
   useEffect(() => {
-    if (controlAction) {
-      // If we were taking control and now we're remote_active, clear
-      if (controlAction === 'handoff' && controlState === 'remote_active') {
-        setControlAction(null)
-      }
-      // If we were releasing and now we're not remote_active, clear
-      if (controlAction === 'release' && controlState !== 'remote_active') {
-        setControlAction(null)
-      }
-    }
-  }, [controlState, controlAction])
-
-  useEffect(() => {
-    if (!isRemoteControlled) return
     adjustTextareaHeight()
-  }, [taskPrompt, isRemoteControlled, adjustTextareaHeight])
+  }, [taskPrompt, adjustTextareaHeight])
 
   return (
     <Card className="overflow-hidden flex flex-col h-full relative">
-      {/* Loading Overlay for Control Actions */}
-      {controlAction && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="flex flex-col items-center gap-3 text-white">
-            <Loader2 className="h-10 w-10 animate-spin" />
-            <span className="text-lg font-medium">
-              {controlAction === 'handoff' ? 'Taking control...' : 'Releasing to CLI...'}
-            </span>
-          </div>
-        </div>
-      )}
-
       <CardContent className="flex-1 flex flex-col space-y-3 overflow-hidden pt-0">
         {/* Pending Request */}
         {hasPendingRequest && pendingRequest && (
@@ -711,7 +648,7 @@ export function SessionCard({ session }: SessionCardProps) {
               <div className="text-center mb-6">
                 <span className="text-3xl sm:text-4xl">🤖</span>
                 <h2 className="text-xl sm:text-2xl font-light text-muted-foreground mt-2">
-                  {isRemoteControlled ? 'How can I help you?' : 'Ready to assist'}
+                  How can I help you?
                 </h2>
               </div>
 
@@ -729,12 +666,6 @@ export function SessionCard({ session }: SessionCardProps) {
                   setAutonomyLevel={setAutonomyLevel}
                   onSubmit={handleTaskSubmit}
                   onCancel={handleCancelTask}
-                  isRemoteControlled={isRemoteControlled}
-                  canHandoff={canHandoff}
-                  loading={loading}
-                  onHandoff={handleHandoff}
-                  onRelease={handleRelease}
-                  actionError={actionError}
                   textareaRef={textareaRef}
                 />
               </div>
@@ -789,12 +720,6 @@ export function SessionCard({ session }: SessionCardProps) {
                   setAutonomyLevel={setAutonomyLevel}
                   onSubmit={handleTaskSubmit}
                   onCancel={handleCancelTask}
-                  isRemoteControlled={isRemoteControlled}
-                  canHandoff={canHandoff}
-                  loading={loading}
-                  onHandoff={handleHandoff}
-                  onRelease={handleRelease}
-                  actionError={actionError}
                   textareaRef={textareaRef}
                   compact
                 />
