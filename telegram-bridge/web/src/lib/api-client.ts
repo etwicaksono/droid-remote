@@ -60,6 +60,11 @@ export interface UploadImageResponse {
   size?: number
 }
 
+function getAuthHeaders(): Record<string, string> {
+  const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null
+  return token ? { 'Authorization': `Bearer ${token}` } : {}
+}
+
 export async function uploadImage(file: File, sessionId: string = 'unknown'): Promise<UploadImageResponse> {
   const formData = new FormData()
   formData.append('image', file)
@@ -67,6 +72,7 @@ export async function uploadImage(file: File, sessionId: string = 'unknown'): Pr
 
   const response = await fetch(`${API_BASE}/upload-image`, {
     method: 'POST',
+    headers: getAuthHeaders(),
     body: formData,
   })
 
@@ -81,7 +87,7 @@ export async function uploadImage(file: File, sessionId: string = 'unknown'): Pr
 export async function deleteImage(publicId: string): Promise<{ success: boolean }> {
   const response = await fetch(`${API_BASE}/delete-image`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
     body: JSON.stringify({ public_id: publicId }),
   })
 
