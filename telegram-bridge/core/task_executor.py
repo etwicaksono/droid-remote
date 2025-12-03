@@ -6,7 +6,7 @@ import re
 import json
 import asyncio
 import logging
-from typing import Optional, Dict, Any, Callable, AsyncIterator
+from typing import Optional, Dict, Any, Callable, AsyncIterator, List
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
@@ -71,6 +71,7 @@ class TaskExecutor:
         autonomy_level: str = "high",
         model: Optional[str] = None,
         reasoning_effort: Optional[str] = None,
+        images: Optional[List[str]] = None,
         source: str = "api",
         on_progress: Optional[Callable[[str], None]] = None
     ) -> TaskResult:
@@ -85,12 +86,19 @@ class TaskExecutor:
             autonomy_level: low, medium, or high
             model: Optional model ID (e.g., claude-sonnet-4-20250514)
             reasoning_effort: Optional reasoning effort (off, low, medium, high)
+            images: Optional list of image URLs (referenced as @1, @2, etc. in prompt)
             source: Source of the task (telegram, web, api)
             on_progress: Optional callback for progress updates
         
         Returns:
             TaskResult with success status and output
         """
+        # Replace @N references with actual image URLs
+        if images:
+            for i, url in enumerate(images, 1):
+                prompt = prompt.replace(f"@{i}", f"[image: {url}]")
+            logger.info(f"Replaced {len(images)} image reference(s) in prompt")
+        
         # Use stored session_id if available for this project
         if not session_id and project_dir in self._session_map:
             session_id = self._session_map[project_dir]
@@ -429,12 +437,18 @@ class TaskExecutor:
         session_id: Optional[str] = None,
         autonomy_level: str = "high",
         model: Optional[str] = None,
-        reasoning_effort: Optional[str] = None
+        reasoning_effort: Optional[str] = None,
+        images: Optional[List[str]] = None
     ) -> AsyncIterator[Dict[str, Any]]:
         """
         Execute task with streaming output (stream-json format).
         Yields events as they occur.
         """
+        # Replace @N references with actual image URLs
+        if images:
+            for i, url in enumerate(images, 1):
+                prompt = prompt.replace(f"@{i}", f"[image: {url}]")
+        
         if not session_id and project_dir in self._session_map:
             session_id = self._session_map[project_dir]
         

@@ -46,3 +46,48 @@ export function createApiClient(config: ApiClientConfig) {
 export const apiClient = createApiClient({
   baseUrl: process.env.NEXT_PUBLIC_API_URL ?? '/api/bridge',
 })
+
+// Image upload (multipart form data)
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8765'
+
+export interface UploadImageResponse {
+  success: boolean
+  url: string
+  public_id: string
+  width?: number
+  height?: number
+  format?: string
+  size?: number
+}
+
+export async function uploadImage(file: File, sessionId: string = 'unknown'): Promise<UploadImageResponse> {
+  const formData = new FormData()
+  formData.append('image', file)
+  formData.append('session_id', sessionId)
+
+  const response = await fetch(`${API_BASE}/upload-image`, {
+    method: 'POST',
+    body: formData,
+  })
+
+  if (!response.ok) {
+    const error = await response.text()
+    throw new ApiError(response.status, error)
+  }
+
+  return response.json()
+}
+
+export async function deleteImage(publicId: string): Promise<{ success: boolean }> {
+  const response = await fetch(`${API_BASE}/delete-image`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ public_id: publicId }),
+  })
+
+  if (!response.ok) {
+    throw new ApiError(response.status, await response.text())
+  }
+
+  return response.json()
+}

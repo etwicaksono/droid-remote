@@ -7,7 +7,7 @@ import uuid
 import asyncio
 import logging
 from typing import List, Optional
-from fastapi import APIRouter, HTTPException, Request, Depends, Header
+from fastapi import APIRouter, HTTPException, Request, Depends, Header, UploadFile, File, Form
 
 # Get config from environment
 TELEGRAM_TASK_RESULT_MAX_LENGTH = int(os.getenv("TELEGRAM_TASK_RESULT_MAX_LENGTH", "0"))
@@ -461,7 +461,8 @@ async def execute_task(data: TaskExecuteRequest, request: Request):
                 session_id=droid_session_id,
                 autonomy_level=data.autonomy_level,
                 model=data.model,
-                reasoning_effort=data.reasoning_effort
+                reasoning_effort=data.reasoning_effort,
+                images=data.images
             ):
                 event_type = event.get("type")
                 
@@ -1073,6 +1074,56 @@ async def update_session_settings(
         autonomy_level=autonomy_level
     )
     return {"success": True, "settings": settings}
+
+
+# Image Upload Endpoints
+@router.post("/upload-image")
+async def upload_image(
+    image: UploadFile = File(...),
+    session_id: str = Form("unknown")
+):
+    """Upload image to Cloudinary and return public URL"""
+    from .cloudinary_handler import upload_to_cloudinary
+    
+    try:
+        content = await image.read()
+        result = upload_to_cloudinary(content, image.filename or "image.png", session_id)
+        
+        return {
+            'success': True,
+            'url': result['url'],
+            'public_id': result['public_id'],
+            'width': result.get('width'),
+            'height': result.get('height'),
+            'format': result.get('format'),
+            'size': result.get('size')
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Upload error: {e}")
+        raise HTTPException(status_code=500, detail="Upload failed")
+
+
+@router.post("/delete-image")
+async def delete_image(request: Request):
+    """Delete image from Cloudinary"""
+    from .cloudinary_handler import delete_from_cloudinary
+    
+    try:
+        data = await request.json()
+        public_id = data.get('public_id')
+        
+        if not public_id:
+            raise HTTPException(status_code=400, detail='public_id required')
+        
+        success = delete_from_cloudinary(public_id)
+        return {'success': success}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Delete error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # Filesystem Browser Endpoint

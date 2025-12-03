@@ -1,13 +1,13 @@
 {
   "models": [
-    { "id": "claude-sonnet-4-5-20250929", "name": "Claude Sonnet 4.5", "reasoning": true },
-    { "id": "gpt-5.1-codex", "name": "GPT-5.1 Codex", "reasoning": false },
-    { "id": "gpt-5.1", "name": "GPT-5.1", "reasoning": true },
-    { "id": "claude-opus-4-5-20251101", "name": "Claude Opus 4.5", "reasoning": true },
-    { "id": "claude-opus-4-1-20250805", "name": "Claude Opus 4.1", "reasoning": true },
-    { "id": "claude-haiku-4-5-20251001", "name": "Claude Haiku 4.5", "reasoning": true },
-    { "id": "gemini-3-pro-preview", "name": "Gemini 3 Pro", "reasoning": false },
-    { "id": "glm-4.6", "name": "Droid Core", "reasoning": false }
+    { "id": "claude-sonnet-4-5-20250929", "name": "Claude Sonnet 4.5", "reasoning": true, "vision": true },
+    { "id": "gpt-5.1-codex", "name": "GPT-5.1 Codex", "reasoning": false, "vision": false },
+    { "id": "gpt-5.1", "name": "GPT-5.1", "reasoning": true, "vision": true },
+    { "id": "claude-opus-4-5-20251101", "name": "Claude Opus 4.5", "reasoning": true, "vision": true },
+    { "id": "claude-opus-4-1-20250805", "name": "Claude Opus 4.1", "reasoning": true, "vision": true },
+    { "id": "claude-haiku-4-5-20251001", "name": "Claude Haiku 4.5", "reasoning": true, "vision": true },
+    { "id": "gemini-3-pro-preview", "name": "Gemini 3 Pro", "reasoning": false, "vision": true },
+    { "id": "glm-4.6", "name": "Droid Core", "reasoning": false, "vision": true }
   ],
   "defaultModel": "claude-sonnet-4-5-20250929",
   "reasoningLevels": [

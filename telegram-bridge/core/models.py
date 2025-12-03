@@ -135,6 +135,7 @@ class TaskExecuteRequest(BaseModel):
     autonomy_level: str = "high"  # low, medium, high
     model: Optional[str] = None  # Model ID (e.g., claude-sonnet-4-20250514)
     reasoning_effort: Optional[str] = None  # off, low, medium, high (for models with thinking)
+    images: Optional[List[str]] = None  # Image URLs referenced as @1, @2 in prompt
     streaming: bool = False  # Use stream-json format
 
 
