@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { formatRelativeTime } from '@/lib/utils'
+import { getAuthHeaders } from '@/lib/api'
 import type { PermissionRequest } from '@/types'
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8765'
@@ -29,7 +30,7 @@ export function PermissionHistory({ limit = 50 }: PermissionHistoryProps) {
   const fetchPermissions = async () => {
     setLoading(true)
     try {
-      const res = await fetch(`${API_BASE}/permissions?limit=${limit}`)
+      const res = await fetch(`${API_BASE}/permissions?limit=${limit}`, { headers: getAuthHeaders() })
       if (res.ok) {
         const data = await res.json()
         setPermissions(data.permissions || [])
