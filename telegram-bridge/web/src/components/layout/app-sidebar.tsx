@@ -3,9 +3,11 @@
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Terminal, Menu, Plus, ShieldCheck, Circle, X, Trash2, Pencil, Settings } from 'lucide-react'
+import { Terminal, Menu, Plus, ShieldCheck, Circle, X, Trash2, Pencil, Settings, LogOut } from 'lucide-react'
 import { cn, formatRelativeTime } from '@/lib/utils'
 import { getSocket } from '@/lib/socket'
+import { getAuthHeaders } from '@/lib/api'
+import { useAuth } from '@/contexts/auth-context'
 import type { Session, ControlState } from '@/types'
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8765'
@@ -23,6 +25,7 @@ const STATUS_CONFIG: Record<ControlState, { color: string; label: string }> = {
 
 export function AppSidebar({ currentPath }: AppSidebarProps) {
   const router = useRouter()
+  const { logout, username } = useAuth()
   const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
   const [sessions, setSessions] = useState<Session[]>([])
@@ -48,7 +51,9 @@ export function AppSidebar({ currentPath }: AppSidebarProps) {
   useEffect(() => {
     const fetchSessions = async () => {
       try {
-        const response = await fetch(`${API_BASE}/sessions`)
+        const response = await fetch(`${API_BASE}/sessions`, {
+          headers: getAuthHeaders(),
+        })
         if (response.ok) {
           const fetchedSessions: Session[] = await response.json()
           setSessions(sortSessions(fetchedSessions))
@@ -109,6 +114,7 @@ export function AppSidebar({ currentPath }: AppSidebarProps) {
     try {
       const response = await fetch(`${API_BASE}/sessions/${sessionId}`, {
         method: 'DELETE',
+        headers: getAuthHeaders(),
       })
       if (response.ok) {
         // If deleting the selected session, go home
@@ -116,7 +122,9 @@ export function AppSidebar({ currentPath }: AppSidebarProps) {
           router.push('/')
         }
         // Refresh sessions list
-        const fetchResponse = await fetch(`${API_BASE}/sessions`)
+        const fetchResponse = await fetch(`${API_BASE}/sessions`, {
+          headers: getAuthHeaders(),
+        })
         if (fetchResponse.ok) {
           const fetchedSessions: Session[] = await fetchResponse.json()
           const sortedSessions = fetchedSessions.sort((a, b) => {
@@ -151,7 +159,7 @@ export function AppSidebar({ currentPath }: AppSidebarProps) {
     try {
       const response = await fetch(
         `${API_BASE}/sessions/${sessionId}/rename?name=${encodeURIComponent(editingName.trim())}`,
-        { method: 'PATCH' }
+        { method: 'PATCH', headers: getAuthHeaders() }
       )
       if (response.ok) {
         // WebSocket will update the sessions list
@@ -276,7 +284,7 @@ export function AppSidebar({ currentPath }: AppSidebarProps) {
         )}
 
         {/* Sessions List */}
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto min-h-0">
           {sessions.length === 0 ? (
             !collapsed && (
               <div className="p-3 text-sm text-gray-500 text-center">
@@ -399,6 +407,35 @@ export function AppSidebar({ currentPath }: AppSidebarProps) {
             </div>
           )}
         </div>
+
+        {/* User & Logout */}
+        {!collapsed && (
+          <div className="p-3 border-t border-gray-800">
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-gray-500 truncate">
+                {username || 'User'}
+              </span>
+              <button
+                onClick={logout}
+                className="p-1.5 text-gray-500 hover:text-white hover:bg-gray-800 rounded transition-colors"
+                title="Sign out"
+              >
+                <LogOut className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+        )}
+        {collapsed && (
+          <div className="p-2 border-t border-gray-800">
+            <button
+              onClick={logout}
+              className="w-full p-2 text-gray-500 hover:text-white hover:bg-gray-800 rounded transition-colors"
+              title="Sign out"
+            >
+              <LogOut className="h-4 w-4 mx-auto" />
+            </button>
+          </div>
+        )}
       </aside>
 
       {/* Mobile Hamburger Button */}

@@ -33,6 +33,14 @@ from core.models import (
     TaskExecuteRequest,
     TaskResponse
 )
+from api.auth import (
+    create_token,
+    verify_token,
+    verify_credentials,
+    verify_api_key,
+    require_auth,
+    JWT_SECRET,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -60,6 +68,51 @@ async def health_check(request: Request):
         active_sessions=len(session_registry.get_active_sessions()),
         bot_connected=bot_manager.is_connected if bot_manager else False
     )
+
+
+# ============ Auth Endpoints ============
+
+@router.post("/auth/login")
+async def login(request: Request):
+    """Login with username and password, returns JWT token"""
+    try:
+        body = await request.json()
+    except:
+        raise HTTPException(status_code=400, detail="Invalid JSON body")
+    
+    username = body.get("username", "")
+    password = body.get("password", "")
+    
+    if not verify_credentials(username, password):
+        raise HTTPException(status_code=401, detail="Invalid username or password")
+    
+    token = create_token(username)
+    return {
+        "success": True,
+        "token": token,
+        "username": username
+    }
+
+
+@router.get("/auth/verify")
+async def verify_auth(request: Request, user: str = Depends(require_auth)):
+    """Verify if the current token is valid"""
+    return {
+        "success": True,
+        "authenticated": True,
+        "username": user
+    }
+
+
+@router.post("/auth/refresh")
+async def refresh_token(request: Request, user: str = Depends(require_auth)):
+    """Refresh the JWT token"""
+    token = create_token(user)
+    return {
+        "success": True,
+        "token": token,
+        "username": user
+    }
 
 
 @router.post("/sessions/register", dependencies=[Depends(verify_secret)])

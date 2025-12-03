@@ -2,6 +2,7 @@
 
 import { io, type Socket } from 'socket.io-client'
 import type { Session, Notification } from '@/types'
+import { getAuthToken } from './api'
 
 interface ActivityEvent {
   type: 'message' | 'tool_call' | 'tool_result' | 'raw'
@@ -44,6 +45,7 @@ let socket: TypedSocket | null = null
 export function getSocket(): TypedSocket {
   if (!socket) {
     const wsUrl = process.env.NEXT_PUBLIC_WS_URL ?? 'http://localhost:8765'
+    const token = getAuthToken()
 
     socket = io(wsUrl, {
       autoConnect: true,
@@ -52,6 +54,8 @@ export function getSocket(): TypedSocket {
       reconnectionDelay: 1000,
       reconnectionDelayMax: 5000,
       transports: ['websocket', 'polling'],
+      auth: token ? { token } : undefined,
+      query: token ? { token } : undefined,
     })
     
     // Log connection events for debugging
@@ -107,6 +111,16 @@ export function disconnectSocket(): void {
   if (socket) {
     socket.disconnect()
   }
+}
+
+export function reconnectSocket(): void {
+  // Disconnect existing socket
+  if (socket) {
+    socket.disconnect()
+    socket = null
+  }
+  // Create new socket with fresh token
+  getSocket()
 }
 
 export function isSocketConnected(): boolean {

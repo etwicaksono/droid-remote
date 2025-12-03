@@ -2,7 +2,8 @@
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useState, useEffect, type ReactNode } from 'react'
-import { connectSocket, disconnectSocket } from '@/lib/socket'
+import { connectSocket } from '@/lib/socket'
+import { AuthProvider } from '@/contexts/auth-context'
 
 interface ProvidersProps {
   children: ReactNode
@@ -28,5 +29,9 @@ export function Providers({ children }: ProvidersProps) {
     // No cleanup - socket should stay connected
   }, [])
 
-  return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  return (
+    <QueryClientProvider client={queryClient}>
+      <AuthProvider>{children}</AuthProvider>
+    </QueryClientProvider>
+  )
 }

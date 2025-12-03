@@ -7,13 +7,15 @@ import asyncio
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from dotenv import load_dotenv
 
 from bot.telegram_bot import TelegramBotManager
 from api.routes import router
 from api.socketio_handlers import create_socketio_server, create_socketio_app
+from api.auth import verify_token, verify_api_key, PUBLIC_ROUTES
 from core.session_registry import session_registry
 from core.database import get_db, migrate_tasks_cascade_delete, migrate_chat_messages_source, migrate_session_settings_autonomy
 from utils.logging_config import setup_logging
@@ -95,6 +97,49 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# Auth middleware
+@app.middleware("http")
+async def auth_middleware(request: Request, call_next):
+    """Check authentication for protected routes"""
+    path = request.url.path
+    
+    # Allow public routes
+    if any(path.startswith(route) for route in PUBLIC_ROUTES):
+        return await call_next(request)
+    
+    # Allow root endpoint
+    if path == "/":
+        return await call_next(request)
+    
+    # Allow socket.io paths
+    if path.startswith("/socket.io"):
+        return await call_next(request)
+    
+    # Check for API key (used by hooks)
+    api_key = request.headers.get("X-API-Key") or request.headers.get("X-Bridge-Secret")
+    if api_key and verify_api_key(api_key):
+        return await call_next(request)
+    
+    # Check for Bearer token
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        token = auth_header[7:]
+        if verify_token(token):
+            return await call_next(request)
+    
+    # Check for token in query params (for some clients)
+    token = request.query_params.get("token")
+    if token and verify_token(token):
+        return await call_next(request)
+    
+    # Not authenticated
+    return JSONResponse(
+        status_code=401,
+        content={"detail": "Not authenticated"}
+    )
+
 
 # Include API routes
 app.include_router(router)
