@@ -13,10 +13,15 @@ export interface UploadedImage {
   ref: string // @1, @2, etc.
 }
 
+interface DropzoneRenderProps {
+  open: () => void
+  isUploading: boolean
+}
+
 interface ImageUploadAreaProps {
   onUpload: (file: File) => Promise<void>
   disabled?: boolean
-  children: React.ReactNode
+  children: React.ReactNode | ((props: DropzoneRenderProps) => React.ReactNode)
 }
 
 export function ImageUploadArea({ onUpload, disabled, children }: ImageUploadAreaProps) {
@@ -60,9 +65,9 @@ export function ImageUploadArea({ onUpload, disabled, children }: ImageUploadAre
         </div>
       )}
       
-      {/* Pass open function to children via context or props */}
+      {/* Pass open function to children via render prop */}
       {typeof children === 'function' 
-        ? (children as (props: { open: () => void; isUploading: boolean }) => React.ReactNode)({ open, isUploading })
+        ? children({ open, isUploading })
         : children
       }
     </div>
