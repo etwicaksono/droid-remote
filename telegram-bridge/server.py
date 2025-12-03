@@ -117,6 +117,11 @@ app.add_middleware(
 async def auth_middleware(request: Request, call_next):
     """Check authentication for protected routes"""
     path = request.url.path
+    method = request.method
+    
+    # Allow CORS preflight requests (OPTIONS)
+    if method == "OPTIONS":
+        return await call_next(request)
     
     # Allow public routes
     if any(path.startswith(route) for route in PUBLIC_ROUTES):
