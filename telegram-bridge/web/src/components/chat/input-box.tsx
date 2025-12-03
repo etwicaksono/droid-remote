@@ -42,6 +42,9 @@ export interface InputBoxProps {
   // Queue mode - show "Add to Queue" instead of "Send"
   queueMode?: boolean
   onQueue?: () => void
+  
+  // Show cancel button (only for Web UI tasks, not CLI)
+  showCancel?: boolean
 }
 
 export function InputBox({
@@ -62,6 +65,7 @@ export function InputBox({
   textareaRef,
   queueMode = false,
   onQueue,
+  showCancel = false,
 }: InputBoxProps) {
   const currentModel = AVAILABLE_MODELS.find(m => m.id === selectedModel)
   const supportsReasoning = currentModel?.reasoning ?? false
@@ -174,7 +178,7 @@ export function InputBox({
             </div>
 
             {/* Send/Cancel/Queue Button */}
-            {executing ? (
+            {showCancel ? (
               <Button
                 type="button"
                 onClick={onCancel}

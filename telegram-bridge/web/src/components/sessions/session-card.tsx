@@ -111,6 +111,8 @@ export function SessionCard({ session }: SessionCardProps) {
   const [pendingRequest, setPendingRequest] = useState(session.pending_request)
   // Real-time activity from droid exec streaming
   const [activityLogs, setActivityLogs] = useState<ActivityEvent[]>([])
+  // CLI thinking state (separate from Web UI executing)
+  const [cliThinking, setCliThinking] = useState(false)
   // Queue state
   const [queuedMessages, setQueuedMessages] = useState<QueuedMessage[]>([])
   const [queueExpanded, setQueueExpanded] = useState(false)
@@ -456,24 +458,22 @@ export function SessionCard({ session }: SessionCardProps) {
           return [...prev, newMessage]
         })
         
-        // If assistant message from CLI, clear thinking state
+        // If assistant message from CLI, clear CLI thinking state
         if (newMessage.type === 'assistant' && newMessage.source === 'cli') {
-          setExecuting(false)
-          setCurrentTaskId(null)
+          setCliThinking(false)
         }
       }
     }
     
     const handleCliThinking = (data: { session_id: string; prompt: string }) => {
       if (data.session_id === session.id) {
-        setExecuting(true)
+        setCliThinking(true)
       }
     }
     
     const handleCliThinkingDone = (data: { session_id: string }) => {
       if (data.session_id === session.id) {
-        setExecuting(false)
-        setCurrentTaskId(null)
+        setCliThinking(false)
       }
     }
     
@@ -502,7 +502,7 @@ export function SessionCard({ session }: SessionCardProps) {
       // Small delay to ensure DOM has updated
       setTimeout(scrollToBottom, 50)
     }
-  }, [chatHistory, executing, scrollToBottom])
+  }, [chatHistory, executing, cliThinking, scrollToBottom])
 
   const hasPendingRequest = pendingRequest !== null
 
@@ -694,8 +694,9 @@ export function SessionCard({ session }: SessionCardProps) {
     }
   }
 
-  // Check if CLI is busy (should show queue mode)
-  const isCliBusy = session.control_state === 'cli_active'
+  // Check if busy (should show queue mode)
+  const isBusy = executing || cliThinking
+  const busySource = executing ? 'web' : cliThinking ? 'cli' : null
 
   useEffect(() => {
     adjustTextareaHeight()
@@ -818,14 +819,10 @@ export function SessionCard({ session }: SessionCardProps) {
                   onSubmit={handleTaskSubmit}
                   onCancel={handleCancelTask}
                   textareaRef={textareaRef}
-                  queueMode={isCliBusy}
+                  queueMode={isBusy}
                   onQueue={handleAddToQueue}
+                  showCancel={executing && !cliThinking}
                 />
-                {isCliBusy && (
-                  <p className="text-xs text-yellow-500 mt-2 text-center">
-                    CLI is processing. New tasks will be queued.
-                  </p>
-                )}
               </div>
             </div>
           ) : (
@@ -854,13 +851,18 @@ export function SessionCard({ session }: SessionCardProps) {
                 {chatHistory.map((msg) => (
                   <ChatBubble key={msg.id} message={msg} />
                 ))}
-                {executing && (
+                {isBusy && (
                   <div className="flex justify-start ms-2">
                     <div className="bg-muted rounded-lg px-3 py-2 max-w-[90%] sm:max-w-[85%]">
                       <div className="flex items-center gap-2 text-sm text-muted-foreground">
                         <Loader2 className="h-4 w-4 animate-spin shrink-0" />
                         <span>Droid is thinking...</span>
                       </div>
+                      <p className="text-xs text-yellow-500 mt-1">
+                        {busySource === 'cli' 
+                          ? 'CLI is processing. New tasks will be queued.'
+                          : 'Droid is processing. New tasks will be queued.'}
+                      </p>
                       {/* Real-time activity logs */}
                       {activityLogs.length > 0 && (
                         <div className="mt-2 pt-2 border-t border-border/50 space-y-1 text-xs">
@@ -920,14 +922,10 @@ export function SessionCard({ session }: SessionCardProps) {
                   onCancel={handleCancelTask}
                   textareaRef={textareaRef}
                   compact
-                  queueMode={isCliBusy}
+                  queueMode={isBusy}
                   onQueue={handleAddToQueue}
+                  showCancel={executing && !cliThinking}
                 />
-                {isCliBusy && (
-                  <p className="text-xs text-yellow-500 mt-2">
-                    CLI is processing. New tasks will be queued.
-                  </p>
-                )}
               </div>
             </>
           )}
