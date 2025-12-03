@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback, type FormEvent } from 'react'
-import { Terminal, Loader2 } from 'lucide-react'
+import { Terminal, Loader2, Clock, ChevronDown, ChevronRight, X, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { useSessionActions } from '@/hooks/use-session-actions'
@@ -9,7 +9,7 @@ import { getSocket } from '@/lib/socket'
 import { getAuthHeaders } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { InputBox, DEFAULT_MODEL, DEFAULT_REASONING, DEFAULT_AUTONOMY } from '@/components/chat/input-box'
-import type { Session, ControlState, ReasoningEffort } from '@/types'
+import type { Session, ControlState, ReasoningEffort, QueuedMessage } from '@/types'
 import modelsConfig from '@/config/models.json'
 
 // Load models from JSON config file
@@ -111,7 +111,10 @@ export function SessionCard({ session }: SessionCardProps) {
   const [pendingRequest, setPendingRequest] = useState(session.pending_request)
   // Real-time activity from droid exec streaming
   const [activityLogs, setActivityLogs] = useState<ActivityEvent[]>([])
-  const { approve, deny, alwaysAllow, executeTask, cancelTask, addChatMessage } = useSessionActions()
+  // Queue state
+  const [queuedMessages, setQueuedMessages] = useState<QueuedMessage[]>([])
+  const [queueExpanded, setQueueExpanded] = useState(false)
+  const { approve, deny, alwaysAllow, executeTask, cancelTask, addChatMessage, getQueue, clearQueue, cancelQueuedMessage, addToQueue } = useSessionActions()
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const chatContainerRef = useRef<HTMLDivElement | null>(null)
   const isLoadingOlderRef = useRef(false)
@@ -174,6 +177,32 @@ export function SessionCard({ session }: SessionCardProps) {
       socket.off('sessions_update', handleSessionsUpdate)
     }
   }, [session.id])
+
+  // Load queue and listen for updates
+  useEffect(() => {
+    const loadQueue = async () => {
+      try {
+        const data = await getQueue({ sessionId: session.id })
+        setQueuedMessages(data.messages || [])
+      } catch (error) {
+        console.error('Failed to load queue:', error)
+      }
+    }
+    
+    loadQueue()
+    
+    const socket = getSocket()
+    const handleQueueUpdated = (data: { session_id: string; queue: QueuedMessage[] }) => {
+      if (data.session_id === session.id) {
+        setQueuedMessages(data.queue || [])
+      }
+    }
+    
+    socket.on('queue_updated', handleQueueUpdated)
+    return () => {
+      socket.off('queue_updated', handleQueueUpdated)
+    }
+  }, [session.id, getQueue])
 
   // Load chat history and settings from API on mount
   useEffect(() => {
@@ -638,6 +667,36 @@ export function SessionCard({ session }: SessionCardProps) {
     }
   }
 
+  const handleCancelQueueItem = async (messageId: number) => {
+    try {
+      await cancelQueuedMessage({ sessionId: session.id, messageId })
+    } catch (error) {
+      console.error('Failed to cancel queued message:', error)
+    }
+  }
+
+  const handleClearQueue = async () => {
+    try {
+      await clearQueue({ sessionId: session.id })
+    } catch (error) {
+      console.error('Failed to clear queue:', error)
+    }
+  }
+
+  const handleAddToQueue = async () => {
+    if (!taskPrompt.trim()) return
+    
+    try {
+      await addToQueue({ sessionId: session.id, content: taskPrompt.trim() })
+      setTaskPrompt('')
+    } catch (error) {
+      console.error('Failed to add to queue:', error)
+    }
+  }
+
+  // Check if CLI is busy (should show queue mode)
+  const isCliBusy = session.control_state === 'cli_active'
+
   useEffect(() => {
     adjustTextareaHeight()
   }, [taskPrompt, adjustTextareaHeight])
@@ -673,6 +732,64 @@ export function SessionCard({ session }: SessionCardProps) {
           </div>
         )}
 
+        {/* Queue Panel */}
+        {queuedMessages.length > 0 && (
+          <div className="rounded-md bg-muted/50 border border-border shrink-0">
+            <button
+              onClick={() => setQueueExpanded(!queueExpanded)}
+              className="w-full flex items-center justify-between p-3 hover:bg-muted/80 transition-colors"
+            >
+              <div className="flex items-center gap-2 text-sm font-medium">
+                {queueExpanded ? (
+                  <ChevronDown className="h-4 w-4" />
+                ) : (
+                  <ChevronRight className="h-4 w-4" />
+                )}
+                <Clock className="h-4 w-4 text-yellow-500" />
+                <span>Queued Tasks ({queuedMessages.length})</span>
+              </div>
+              {queueExpanded && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    handleClearQueue()
+                  }}
+                  className="h-7 text-xs text-muted-foreground hover:text-destructive"
+                >
+                  <Trash2 className="h-3 w-3 mr-1" />
+                  Clear All
+                </Button>
+              )}
+            </button>
+            {queueExpanded && (
+              <div className="border-t border-border p-2 space-y-1 max-h-[200px] overflow-y-auto">
+                {queuedMessages.map((msg, index) => (
+                  <div
+                    key={msg.id}
+                    className="flex items-start gap-2 p-2 rounded bg-background/50 group"
+                  >
+                    <span className="text-xs text-muted-foreground font-mono w-5 shrink-0">
+                      {index + 1}.
+                    </span>
+                    <p className="flex-1 text-sm truncate" title={msg.content}>
+                      {msg.content}
+                    </p>
+                    <button
+                      onClick={() => handleCancelQueueItem(msg.id)}
+                      className="p-1 rounded hover:bg-destructive/20 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
+                      title="Cancel"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Chat Area */}
         <div className="flex-1 flex flex-col pt-2 border-t border-border min-h-0 overflow-hidden">
           {/* Empty State - Centered Welcome */}
@@ -701,7 +818,14 @@ export function SessionCard({ session }: SessionCardProps) {
                   onSubmit={handleTaskSubmit}
                   onCancel={handleCancelTask}
                   textareaRef={textareaRef}
+                  queueMode={isCliBusy}
+                  onQueue={handleAddToQueue}
                 />
+                {isCliBusy && (
+                  <p className="text-xs text-yellow-500 mt-2 text-center">
+                    CLI is processing. New tasks will be queued.
+                  </p>
+                )}
               </div>
             </div>
           ) : (
@@ -796,7 +920,14 @@ export function SessionCard({ session }: SessionCardProps) {
                   onCancel={handleCancelTask}
                   textareaRef={textareaRef}
                   compact
+                  queueMode={isCliBusy}
+                  onQueue={handleAddToQueue}
                 />
+                {isCliBusy && (
+                  <p className="text-xs text-yellow-500 mt-2">
+                    CLI is processing. New tasks will be queued.
+                  </p>
+                )}
               </div>
             </>
           )}

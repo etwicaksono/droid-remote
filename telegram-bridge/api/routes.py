@@ -131,10 +131,16 @@ async def register_session(data: RegisterSessionRequest, request: Request):
     return {"success": True, "session": session.model_dump(mode='json')}
 
 
-@router.get("/sessions", response_model=List[Session])
+@router.get("/sessions")
 async def get_sessions():
-    """Get all sessions"""
-    return session_registry.get_all()
+    """Get all sessions with queue counts"""
+    sessions = session_registry.get_all()
+    result = []
+    for session in sessions:
+        data = session.model_dump(mode='json')
+        data['queue_count'] = session_registry.get_queue_count(session.id)
+        result.append(data)
+    return result
 
 
 @router.get("/sessions/{session_id}")
@@ -143,7 +149,10 @@ async def get_session(session_id: str):
     session = session_registry.get(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
-    return session.model_dump(mode='json')
+    result = session.model_dump(mode='json')
+    # Add queue count
+    result['queue_count'] = session_registry.get_queue_count(session_id)
+    return result
 
 
 @router.patch("/sessions/{session_id}", dependencies=[Depends(verify_secret)])
@@ -688,6 +697,74 @@ async def send_next_queued(session_id: str, request: Request):
             "success": result.success,
             "result": result.result[:500] if result.result else "",
             "task_id": task_id
+        }
+    }
+
+
+@router.post("/sessions/{session_id}/queue/process")
+async def process_queue_item(session_id: str, request: Request):
+    """Process next queued message (called by Stop hook when CLI finishes)"""
+    session = session_registry.get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    # Get next message
+    message = session_registry.get_next_queued_message(session_id)
+    if not message:
+        return {"success": False, "message": "No messages in queue"}
+    
+    # Mark as sent
+    session_registry.mark_message_sent(message['id'])
+    
+    # Execute the task in background
+    task_id = str(uuid.uuid4())
+    
+    # Get socket for emitting events
+    sio = getattr(request.app.state, "sio", None)
+    
+    async def run_task():
+        try:
+            result = await task_executor.execute_task(
+                task_id=task_id,
+                prompt=message['content'],
+                project_dir=session.project_dir,
+                session_id=session_id,
+                source="queue"
+            )
+            # Emit completion
+            if sio:
+                await sio.emit("task_completed", {
+                    "session_id": session_id,
+                    "task_id": task_id,
+                    "success": result.success,
+                    "result": result.result
+                })
+        except Exception as e:
+            logger.error(f"Queue task execution failed: {e}")
+            if sio:
+                await sio.emit("task_error", {
+                    "session_id": session_id,
+                    "task_id": task_id,
+                    "error": str(e)
+                })
+    
+    # Start task in background
+    asyncio.create_task(run_task())
+    
+    # Emit queue update event
+    if sio:
+        messages = session_registry.get_queued_messages(session_id)
+        await sio.emit("queue_updated", {
+            "session_id": session_id,
+            "queue": messages
+        })
+    
+    return {
+        "success": True,
+        "task": {
+            "id": task_id,
+            "prompt": message['content'],
+            "source": "queue"
         }
     }
 

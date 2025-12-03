@@ -231,3 +231,25 @@ def emit_cli_thinking(session_id: str, prompt: str) -> bool:
         timeout=5
     )
     return result.get("success", False)
+
+
+def get_queue_count(session_id: str) -> int:
+    """Get number of pending messages in queue"""
+    result = _make_request(
+        "GET",
+        f"/sessions/{session_id}/queue",
+        timeout=5
+    )
+    return result.get("count", 0)
+
+
+def process_next_queue_item(session_id: str) -> Optional[Dict[str, Any]]:
+    """Get and execute next queued message. Returns task info if started."""
+    result = _make_request(
+        "POST",
+        f"/sessions/{session_id}/queue/process",
+        timeout=30
+    )
+    if result.get("success") and result.get("task"):
+        return result.get("task")
+    return None

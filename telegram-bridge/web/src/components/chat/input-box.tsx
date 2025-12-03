@@ -1,7 +1,7 @@
 'use client'
 
 import { type FormEvent } from 'react'
-import { Square, ArrowUp, Bot, Shield, Brain } from 'lucide-react'
+import { Square, ArrowUp, Bot, Shield, Brain, Clock } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
@@ -38,6 +38,10 @@ export interface InputBoxProps {
   disabled?: boolean
   placeholder?: string
   textareaRef?: React.RefObject<HTMLTextAreaElement | null>
+  
+  // Queue mode - show "Add to Queue" instead of "Send"
+  queueMode?: boolean
+  onQueue?: () => void
 }
 
 export function InputBox({
@@ -56,6 +60,8 @@ export function InputBox({
   disabled = false,
   placeholder = "How can I help you today?",
   textareaRef,
+  queueMode = false,
+  onQueue,
 }: InputBoxProps) {
   const currentModel = AVAILABLE_MODELS.find(m => m.id === selectedModel)
   const supportsReasoning = currentModel?.reasoning ?? false
@@ -81,7 +87,11 @@ export function InputBox({
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault()
               if (taskPrompt.trim() && !executing && !disabled) {
-                onSubmit(e as unknown as FormEvent<HTMLFormElement>)
+                if (queueMode && onQueue) {
+                  onQueue()
+                } else {
+                  onSubmit(e as unknown as FormEvent<HTMLFormElement>)
+                }
               }
             }
           }}
@@ -163,7 +173,7 @@ export function InputBox({
               </select>
             </div>
 
-            {/* Send/Cancel Button */}
+            {/* Send/Cancel/Queue Button */}
             {executing ? (
               <Button
                 type="button"
@@ -174,6 +184,17 @@ export function InputBox({
                 title="Cancel task"
               >
                 <Square className="h-3 w-3" />
+              </Button>
+            ) : queueMode ? (
+              <Button
+                type="button"
+                onClick={onQueue}
+                disabled={disabled || !taskPrompt.trim()}
+                className="h-8 px-3 rounded-full shrink-0 bg-yellow-600 hover:bg-yellow-700 text-xs gap-1"
+                title="Add to queue"
+              >
+                <Clock className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Queue</span>
               </Button>
             ) : (
               <Button

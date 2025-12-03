@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Terminal, Menu, Plus, ShieldCheck, Circle, X, Trash2, Pencil, Settings, LogOut } from 'lucide-react'
+import { Terminal, Menu, Plus, ShieldCheck, Circle, X, Trash2, Pencil, Settings, LogOut, Clock } from 'lucide-react'
 import { cn, formatRelativeTime } from '@/lib/utils'
 import { getSocket } from '@/lib/socket'
 import { getAuthHeaders } from '@/lib/api'
@@ -83,6 +83,11 @@ export function AppSidebar({ currentPath }: AppSidebarProps) {
       fetchSessions()
     }
     
+    const handleQueueUpdated = () => {
+      // Refetch sessions when queue changes (updates queue_count)
+      fetchSessions()
+    }
+    
     const handleConnect = () => {
       // Re-fetch sessions on socket connect/reconnect to catch any missed updates
       fetchSessions()
@@ -91,6 +96,7 @@ export function AppSidebar({ currentPath }: AppSidebarProps) {
     socket.on('sessions_update', handleSessionsUpdate)
     socket.on('task_completed', handleTaskCompleted)
     socket.on('chat_updated', handleChatUpdated)
+    socket.on('queue_updated', handleQueueUpdated)
     socket.on('connect', handleConnect)
     
     // Also fetch on reconnect (socket.io fires 'connect' on reconnect too, but be explicit)
@@ -100,6 +106,7 @@ export function AppSidebar({ currentPath }: AppSidebarProps) {
       socket.off('sessions_update', handleSessionsUpdate)
       socket.off('task_completed', handleTaskCompleted)
       socket.off('chat_updated', handleChatUpdated)
+      socket.off('queue_updated', handleQueueUpdated)
       socket.off('connect', handleConnect)
       socket.io.off('reconnect', handleConnect)
     }
@@ -347,6 +354,15 @@ export function AppSidebar({ currentPath }: AppSidebarProps) {
                             <span>{statusInfo.label}</span>
                             <span>•</span>
                             <SidebarActivityTime lastActivity={session.last_activity} />
+                            {(session.queue_count ?? 0) > 0 && (
+                              <>
+                                <span>•</span>
+                                <span className="flex items-center gap-0.5 text-yellow-500" title={`${session.queue_count} queued`}>
+                                  <Clock className="h-3 w-3" />
+                                  {session.queue_count}
+                                </span>
+                              </>
+                            )}
                           </div>
                         </div>
                       )}

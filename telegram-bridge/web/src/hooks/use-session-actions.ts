@@ -174,6 +174,18 @@ export function useSessionActions() {
     []
   )
 
+  const cancelQueuedMessage = useCallback(
+    async ({ sessionId, messageId }: { sessionId: string; messageId: number }) => {
+      const res = await fetch(`${API_BASE}/sessions/${sessionId}/queue/${messageId}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders(),
+      })
+      if (!res.ok) throw new Error('Failed to cancel queued message')
+      return await res.json()
+    },
+    []
+  )
+
   const getChatHistory = useCallback(
     async (sessionId: string) => {
       const res = await fetch(`${API_BASE}/sessions/${sessionId}/chat`, {
@@ -263,6 +275,7 @@ export function useSessionActions() {
     getQueue,
     addToQueue,
     clearQueue,
+    cancelQueuedMessage,
     getChatHistory,
     addChatMessage,
     getSettings,
