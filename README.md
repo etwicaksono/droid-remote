@@ -43,36 +43,47 @@ Control Factory.ai Droid CLI remotely via Telegram and Web UI.
 3. Save the bot token
 4. Get your chat ID from @userinfobot
 
-### 2. Configure Hooks
+### 2. Configure Environment
 
-Edit `hooks/lib/config.py` with your settings:
-
-```python
-# Bridge Server
-BRIDGE_URL = "http://127.0.0.1:8765"
-BRIDGE_SECRET = "your-secret-here"
-
-# Web UI (for session links in Telegram notifications)
-WEB_UI_URL = "http://192.168.x.x:3000"  # Use your local IP for mobile access
-
-# Timeouts
-DEFAULT_TIMEOUT = 300
-PERMISSION_TIMEOUT = 120
-NOTIFY_TIMEOUT = 10
-```
-
-### 3. Configure Bridge Server
-
-Edit `telegram-bridge/.env`:
+Copy `.env.example` to `.env` at project root and edit:
 
 ```bash
+cp .env.example .env
+```
+
+Edit `.env` with your settings:
+
+```bash
+# Telegram Bot
 TELEGRAM_BOT_TOKEN=your-bot-token
 TELEGRAM_CHAT_ID=your-chat-id
 TELEGRAM_ALLOWED_USERS=your-user-id
+
+# Bridge Server
+BRIDGE_URL=http://127.0.0.1:8765
 BRIDGE_SECRET=your-secret-here
+
+# Web UI Authentication
+AUTH_USERNAME=admin
+AUTH_PASSWORD=your-password
+JWT_SECRET=change-this-to-random-string
+JWT_EXPIRY_HOURS=24
+
+# Web UI URLs (use your local IP for mobile access)
+WEB_UI_URL=http://192.168.x.x:3000
+
+# Timeouts (seconds)
+DEFAULT_TIMEOUT=300
+PERMISSION_TIMEOUT=120
+NOTIFY_TIMEOUT=10
+
+# Telegram Notifications (0 = no truncation)
+TELEGRAM_TASK_RESULT_MAX_LENGTH=500
 ```
 
-### 4. Configure Factory Settings
+**Note:** All configuration is centralized in this single `.env` file.
+
+### 3. Configure Factory Settings
 
 Add hooks to your Factory.ai settings (`~/.factory/settings.json`):
 
@@ -163,7 +174,7 @@ Add hooks to your Factory.ai settings (`~/.factory/settings.json`):
 
 **Note:** Replace `D:/path/to/droid-remote` with your actual project path.
 
-### 5. Start Bridge Server
+### 4. Start Bridge Server
 
 ```bash
 cd telegram-bridge
@@ -176,7 +187,7 @@ pip install -r requirements.txt
 python server.py
 ```
 
-### 6. Start Web UI
+### 5. Start Web UI
 
 ```bash
 cd telegram-bridge/web
@@ -190,7 +201,7 @@ For development:
 npm run dev
 ```
 
-### 7. Start Droid
+### 6. Start Droid
 
 ```bash
 droid
@@ -201,10 +212,17 @@ droid
 
 ```
 droid-remote/
+├── .env                        # Centralized configuration (all settings)
+├── .env.example                # Configuration template
+│
+├── config/                     # Python config module
+│   ├── settings.py             # Loads .env and exports settings
+│   └── settings.json           # Factory CLI settings template
+│
 ├── hooks/                      # Hook scripts for Droid
 │   ├── lib/                    # Shared library
 │   │   ├── bridge_client.py    # HTTP client for bridge
-│   │   ├── config.py           # Centralized configuration
+│   │   ├── config.py           # Imports from config/settings.py
 │   │   └── formatters.py       # Message formatters
 │   ├── telegram_notify.py      # Notification hook
 │   ├── telegram_stop.py        # Stop hook (saves chat, sends notification)
@@ -217,27 +235,24 @@ droid-remote/
 │
 ├── telegram-bridge/            # Bridge server
 │   ├── bot/                    # Telegram bot
-│   ├── api/                    # REST API routes
+│   ├── api/                    # REST API routes + auth
 │   ├── core/                   # Core modules (session registry, db, models)
 │   ├── web/                    # Next.js Web UI
 │   │   └── src/
-│   │       ├── app/            # Next.js app router
+│   │       ├── app/            # Next.js app router (pages)
 │   │       ├── components/     # React components
 │   │       ├── hooks/          # Custom React hooks
 │   │       ├── config/         # Configuration (models.json)
 │   │       └── lib/            # Utilities
 │   ├── server.py               # Main entry point
-│   ├── .env                    # Server configuration
 │   ├── Dockerfile
 │   └── docker-compose.yml
-│
-├── config/                     # Droid configuration templates
-│   └── settings.template.json
 │
 └── docs/                       # Implementation plans
     ├── 01-remote-control-plan.md
     ├── 02-mobile-responsive-plan.md
-    └── 03-sidebar-redesign-plan.md
+    ├── 03-sidebar-redesign-plan.md
+    └── 04-image-support-plan.md
 ```
 
 ## Web UI Features
@@ -251,6 +266,7 @@ Access at `http://localhost:3000` or `http://<your-ip>:3000` for mobile.
 - **Real-Time Activity**: Collapsible panel showing tool executions as they happen
 - **Model Selection**: Choose AI model from toolbar
 - **Thinking Mode**: Adjust reasoning effort for supported models
+- **Autonomy Level**: Control tool execution autonomy (low/medium/high)
 - **Take Control**: Switch from CLI to remote control
 - **Release to CLI**: Return control back to CLI
 - **Cross-Device Sync**: "Droid is thinking" shows on all connected devices
@@ -270,6 +286,7 @@ While Droid is processing, you can see:
 | `/` | Home - Session list and custom task |
 | `/session/{id}` | Individual session view |
 | `/permissions` | Permission request history |
+| `/settings` | Permission allowlist management |
 
 Session URLs are shareable via Telegram notifications and bookmarkable.
 
@@ -277,6 +294,7 @@ Session URLs are shareable via Telegram notifications and bookmarkable.
 - **Sessions**: List of active sessions with status indicators
 - **Custom Task**: Create standalone tasks with directory picker
 - **Permissions**: View permission request history
+- **Settings**: Manage permission allowlist rules
 - Collapsible session header with project folder and last activity
 
 ## Telegram Bot
@@ -334,8 +352,7 @@ To access from phone on same network:
 
 | File | Purpose |
 |------|---------|
-| `hooks/lib/config.py` | Hook settings (URLs, timeouts, notification limits) |
-| `telegram-bridge/.env` | Server settings (tokens, secrets) |
+| `.env` (project root) | All settings (Telegram, bridge, auth, timeouts) |
 | `telegram-bridge/web/.env.local` | Web UI API/WebSocket URLs |
 | `telegram-bridge/web/src/config/models.json` | Available AI models |
 | `~/.factory/settings.json` | Factory CLI hooks configuration |
