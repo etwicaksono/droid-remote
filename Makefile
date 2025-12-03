@@ -15,7 +15,7 @@ help:
 	@echo "make hooks           - Copy hooks to ~/.factory/hooks/"
 	@echo "make docker-up       - Build and start main containers"
 	@echo "make docker-down     - Stop and remove main containers"
-	@echo "make docker-test     - Build and run in temp containers (ports 8766/3001)"
+	@echo "make docker-test     - Build and run in temp containers (stop main first)"
 	@echo "make docker-test-build - Build only, verify no errors"
 
 install:
@@ -64,9 +64,13 @@ docker-down:
 docker-test:
 	@echo Building test images...
 	docker compose -p droid-test build
-	@echo Starting test containers (bridge:8766, web:3001)...
-	@echo Press Ctrl+C to stop and cleanup...
-	set BRIDGE_PORT=8766 && set WEB_PORT=3001 && docker compose -p droid-test up --abort-on-container-exit; docker compose -p droid-test down -v --remove-orphans
+	@echo.
+	@echo NOTE: Stop main containers first with 'make docker-down' if running
+	@echo Starting test containers...
+	@echo Press Ctrl+C to stop, then cleanup runs automatically...
+	-docker compose -p droid-test up --abort-on-container-exit
+	docker compose -p droid-test down -v --remove-orphans
+	@echo Test containers cleaned up.
 
 docker-test-build:
 	@echo Building test images only (no run)...
