@@ -1,4 +1,4 @@
-.PHONY: help install bridge web test clean logs docker-test docker-test-build
+.PHONY: help install bridge web test clean logs docker-test docker-test-build docker-up docker-down
 
 help:
 	@echo "Droid Remote Control - Available Commands"
@@ -13,6 +13,8 @@ help:
 	@echo "make logs            - Show bridge server logs"
 	@echo "make clean           - Clean generated files"
 	@echo "make hooks           - Copy hooks to ~/.factory/hooks/"
+	@echo "make docker-up       - Build and start main containers"
+	@echo "make docker-down     - Stop and remove main containers"
 	@echo "make docker-test     - Build and run in temp containers (ports 8766/3001)"
 	@echo "make docker-test-build - Build only, verify no errors"
 
@@ -50,6 +52,14 @@ hooks:
 	@echo Copying hooks to ~/.factory/hooks/
 	xcopy /E /I /Y hooks "%USERPROFILE%\.factory\hooks"
 	@echo Done! Restart Droid to load new hooks.
+
+docker-up:
+	docker compose up -d --build
+	@echo Containers started. View logs with: docker compose logs -f
+
+docker-down:
+	docker compose down
+	@echo Containers stopped.
 
 docker-test:
 	@echo Building test images...
