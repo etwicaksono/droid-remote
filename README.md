@@ -174,34 +174,46 @@ Add hooks to your Factory.ai settings (`~/.factory/settings.json`):
 
 **Note:** Replace `D:/path/to/droid-remote` with your actual project path.
 
-### 4. Start Bridge Server
+### 4. Start Services
+
+#### Option A: Docker (Recommended)
 
 ```bash
-cd telegram-bridge
-
-# Option A: Docker (recommended)
+# From project root
 docker-compose up -d
 
-# Option B: Native Python
+# View logs
+docker-compose logs -f
+
+# Stop services
+docker-compose down
+```
+
+This starts both the bridge server (port 8765) and web UI (port 3000).
+
+#### Option B: Native (Development)
+
+**Terminal 1 - Bridge Server:**
+```bash
+cd telegram-bridge
 pip install -r requirements.txt
 python server.py
 ```
 
-### 5. Start Web UI
-
+**Terminal 2 - Web UI:**
 ```bash
 cd telegram-bridge/web
 npm install
+npm run dev
+```
+
+For production Web UI:
+```bash
 npm run build
 npm run start
 ```
 
-For development:
-```bash
-npm run dev
-```
-
-### 6. Start Droid
+### 5. Start Droid
 
 ```bash
 droid

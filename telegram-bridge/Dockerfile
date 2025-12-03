@@ -9,14 +9,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies
-COPY requirements.txt .
+COPY telegram-bridge/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application code
-COPY . .
+# Copy config module from project root
+COPY config/ /app/config/
 
-# Create logs directory
-RUN mkdir -p /app/logs
+# Copy application code
+COPY telegram-bridge/ /app/
+
+# Create directories
+RUN mkdir -p /app/logs /app/data
 
 # Expose port
 EXPOSE 8765
