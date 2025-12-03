@@ -38,6 +38,7 @@ def check_allowlist(tool_name: str, tool_input: dict) -> bool:
         })
         url = f"{BRIDGE_URL}/allowlist/check?{params}"
         req = urllib.request.Request(url, method="GET")
+        req.add_header("X-Bridge-Secret", BRIDGE_SECRET)
         with urllib.request.urlopen(req, timeout=0.5) as resp:
             data = json.loads(resp.read().decode())
             return data.get("allowed", False)
@@ -66,6 +67,7 @@ def add_to_allowlist(tool_name: str, tool_input: dict) -> bool:
         })
         url = f"{BRIDGE_URL}/allowlist?{params}"
         req = urllib.request.Request(url, method="POST")
+        req.add_header("X-Bridge-Secret", BRIDGE_SECRET)
         with urllib.request.urlopen(req, timeout=1) as resp:
             data = json.loads(resp.read().decode())
             return data.get("success", False)
