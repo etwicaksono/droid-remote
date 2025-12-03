@@ -81,7 +81,7 @@ export function InputBox({
           rows={compact ? 1 : 2}
           value={taskPrompt}
           onChange={(e) => setTaskPrompt(e.target.value)}
-          disabled={disabled || executing}
+          disabled={disabled}
           className={cn(
             "w-full border-0 bg-transparent resize-none focus-visible:ring-0 focus-visible:ring-offset-0",
             compact ? "min-h-[40px] py-3 px-4" : "min-h-[60px] py-4 px-4",
@@ -90,10 +90,10 @@ export function InputBox({
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault()
-              if (taskPrompt.trim() && !executing && !disabled) {
+              if (taskPrompt.trim() && !disabled) {
                 if (queueMode && onQueue) {
                   onQueue()
-                } else {
+                } else if (!executing) {
                   onSubmit(e as unknown as FormEvent<HTMLFormElement>)
                 }
               }
@@ -177,29 +177,32 @@ export function InputBox({
               </select>
             </div>
 
-            {/* Send/Cancel/Queue Button */}
-            {showCancel ? (
-              <Button
-                type="button"
-                onClick={onCancel}
-                size="icon"
-                variant="destructive"
-                className="h-8 w-8 rounded-full shrink-0"
-                title="Cancel task"
-              >
-                <Square className="h-3 w-3" />
-              </Button>
-            ) : queueMode ? (
-              <Button
-                type="button"
-                onClick={onQueue}
-                disabled={disabled || !taskPrompt.trim()}
-                className="h-8 px-3 rounded-full shrink-0 bg-yellow-600 hover:bg-yellow-700 text-xs gap-1"
-                title="Add to queue"
-              >
-                <Clock className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">Queue</span>
-              </Button>
+            {/* Send/Queue/Cancel Buttons */}
+            {queueMode ? (
+              <div className="flex gap-1">
+                <Button
+                  type="button"
+                  onClick={onQueue}
+                  disabled={disabled || !taskPrompt.trim()}
+                  className="h-8 px-3 rounded-full shrink-0 bg-yellow-600 hover:bg-yellow-700 text-xs gap-1"
+                  title="Add to queue"
+                >
+                  <Clock className="h-3.5 w-3.5" />
+                  <span className="hidden sm:inline">Queue</span>
+                </Button>
+                {showCancel && (
+                  <Button
+                    type="button"
+                    onClick={onCancel}
+                    size="icon"
+                    variant="destructive"
+                    className="h-8 w-8 rounded-full shrink-0"
+                    title="Cancel task"
+                  >
+                    <Square className="h-3 w-3" />
+                  </Button>
+                )}
+              </div>
             ) : (
               <Button
                 type="submit"

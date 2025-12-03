@@ -163,13 +163,25 @@ async def update_session(session_id: str, data: UpdateSessionRequest, request: R
         raise HTTPException(status_code=404, detail="Session not found")
     
     update_data = data.model_dump(exclude_unset=True)
-    session = session_registry.update(session_id, **update_data)
+    
+    # Use update_status for status changes to sync control_state
+    if 'status' in update_data:
+        status = update_data.pop('status')
+        session = session_registry.update_status(session_id, status)
+    
+    # Update other fields if any
+    if update_data:
+        session = session_registry.update(session_id, **update_data)
     
     # Emit sessions_update
     sio = getattr(request.app.state, "sio", None)
     if sio:
         sessions = session_registry.get_all()
         await sio.emit("sessions_update", [s.model_dump(mode='json') for s in sessions])
+        
+        # Emit cli_thinking_done when status changes to waiting (CLI finished)
+        if data.status == 'waiting':
+            await sio.emit("cli_thinking_done", {"session_id": session_id})
     
     return {"success": True, "session": session.model_dump(mode='json')}
 
