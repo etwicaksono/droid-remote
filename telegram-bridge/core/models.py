@@ -140,9 +140,10 @@ class TaskExecuteRequest(BaseModel):
 
 class TaskResponse(BaseModel):
     success: bool
-    result: str
+    result: Optional[str] = None  # None when status is "pending"
     task_id: str
     session_id: Optional[str] = None
     duration_ms: int = 0
     num_turns: int = 0
     error: Optional[str] = None
+    status: str = "completed"  # "pending", "running", "completed", "failed"

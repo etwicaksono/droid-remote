@@ -305,28 +305,67 @@ export function SessionCard({ session }: SessionCardProps) {
       }
     }
     
-    const handleTaskCompleted = async (data: { task_id: string; success: boolean; result: string; session_id?: string }) => {
+    const handleTaskCompleted = async (data: { 
+      task_id: string; 
+      success: boolean; 
+      result: string; 
+      session_id?: string;
+      duration_ms?: number;
+      num_turns?: number;
+      error?: string;
+    }) => {
       // Check if this is for our session
       if (data.task_id === currentTaskId || data.session_id === session.id) {
         setExecuting(false)
         setCurrentTaskId(null)
         
-        // Refresh chat history to get the latest messages (for other devices)
+        // Parse the result to get human-readable content
+        const responseContent = parseResultContent(data.result, data.error)
+        
+        // Save assistant message to database
         try {
-          const chatRes = await fetch(`${API_BASE}/sessions/${session.id}/chat`)
-          if (chatRes.ok) {
-            const data = await chatRes.json()
-            const msgs = data.messages || data
-            setChatHistory(msgs.map((msg: any) => ({
-              id: String(msg.id),
-              type: msg.type as 'user' | 'assistant',
-              content: msg.content,
-              timestamp: new Date(msg.created_at),
-              source: msg.source || 'web',
-            })))
+          const assistantResponse = await addChatMessage({
+            sessionId: session.id,
+            type: 'assistant',
+            content: responseContent,
+            status: data.success ? 'success' : 'error',
+            durationMs: data.duration_ms,
+            numTurns: data.num_turns,
+          })
+          // Add assistant message with DB-assigned ID
+          if (assistantResponse?.message) {
+            const assistantMessage: ChatMessage = {
+              id: String(assistantResponse.message.id),
+              type: 'assistant',
+              content: responseContent,
+              timestamp: new Date(assistantResponse.message.created_at || Date.now()),
+              status: data.success ? 'success' : 'error',
+              source: 'web',
+              meta: data.duration_ms || data.num_turns ? {
+                duration: data.duration_ms,
+                turns: data.num_turns,
+              } : undefined,
+            }
+            setChatHistory(prev => {
+              if (prev.some(msg => msg.id === assistantMessage.id)) return prev
+              return [...prev, assistantMessage]
+            })
           }
         } catch {
-          // Ignore fetch errors
+          // If API fails, add message to local state with temp ID
+          const assistantMessage: ChatMessage = {
+            id: `temp-${Date.now()}`,
+            type: 'assistant',
+            content: responseContent,
+            timestamp: new Date(),
+            status: data.success ? 'success' : 'error',
+            source: 'web',
+            meta: data.duration_ms || data.num_turns ? {
+              duration: data.duration_ms,
+              turns: data.num_turns,
+            } : undefined,
+          }
+          setChatHistory(prev => [...prev, assistantMessage])
         }
       }
     }
@@ -395,7 +434,7 @@ export function SessionCard({ session }: SessionCardProps) {
       socket.off('cli_thinking', handleCliThinking)
       socket.off('cli_thinking_done', handleCliThinkingDone)
     }
-  }, [session.project_dir, session.id, currentTaskId])
+  }, [session.project_dir, session.id, currentTaskId, addChatMessage])
 
   // Scroll to bottom when chat history changes or executing state changes (but not when loading older messages)
   useEffect(() => {
@@ -451,8 +490,9 @@ export function SessionCard({ session }: SessionCardProps) {
       setChatHistory(prev => [...prev, userMessage])
     }
 
+    // Execute task in background - result will come via WebSocket
     try {
-      const result = await executeTask({
+      await executeTask({
         prompt,
         projectDir: session.project_dir,
         taskId: taskId,
@@ -461,55 +501,12 @@ export function SessionCard({ session }: SessionCardProps) {
         reasoningEffort: supportsReasoning ? reasoningEffort : undefined,
         autonomyLevel,
       })
-      
-      // Parse the result to get human-readable content
-      const responseContent = parseResultContent(result.result, result.error)
-
-      // Save assistant message to API and add to local state immediately
-      try {
-        const assistantResponse = await addChatMessage({
-          sessionId: session.id,
-          type: 'assistant',
-          content: responseContent,
-          status: result.success ? 'success' : 'error',
-          durationMs: result.duration_ms,
-          numTurns: result.num_turns,
-        })
-        // Add assistant message with DB-assigned ID immediately
-        if (assistantResponse?.message) {
-          const assistantMessage: ChatMessage = {
-            id: String(assistantResponse.message.id),
-            type: 'assistant',
-            content: responseContent,
-            timestamp: new Date(assistantResponse.message.created_at || Date.now()),
-            status: result.success ? 'success' : 'error',
-            meta: {
-              duration: result.duration_ms,
-              turns: result.num_turns,
-            },
-          }
-          setChatHistory(prev => {
-            if (prev.some(msg => msg.id === assistantMessage.id)) return prev
-            return [...prev, assistantMessage]
-          })
-        }
-      } catch (error) {
-        // If API fails, add message to local state with temp ID
-        const assistantMessage: ChatMessage = {
-          id: `temp-${Date.now() + 1}`,
-          type: 'assistant',
-          content: responseContent,
-          timestamp: new Date(),
-          status: result.success ? 'success' : 'error',
-          meta: {
-            duration: result.duration_ms,
-            turns: result.num_turns,
-          },
-        }
-        setChatHistory(prev => [...prev, assistantMessage])
-      }
+      // Task started successfully - WebSocket 'task_completed' will handle the result
     } catch (error) {
+      // Network error or immediate failure - show error
       const errorContent = String(error)
+      setExecuting(false)
+      setCurrentTaskId(null)
       
       // Save error message to API and add to local state
       try {
@@ -543,9 +540,6 @@ export function SessionCard({ session }: SessionCardProps) {
         }
         setChatHistory(prev => [...prev, errorMessage])
       }
-    } finally {
-      setExecuting(false)
-      setCurrentTaskId(null)
     }
   }
 

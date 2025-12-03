@@ -303,7 +303,8 @@ async def respond_to_session(session_id: str, data: RespondRequest, request: Req
 async def execute_task(data: TaskExecuteRequest, request: Request):
     """
     Execute a task using droid exec (headless mode).
-    Returns the result and session_id for continuation.
+    Returns immediately with task_id, executes in background.
+    Results delivered via WebSocket 'task_completed' event.
     """
     task_id = data.task_id or str(uuid.uuid4())
     sio = getattr(request.app.state, "sio", None)
@@ -348,112 +349,108 @@ async def execute_task(data: TaskExecuteRequest, request: Request):
             "session_id": pending_session_id
         })
     
-    # Execute the task
-    # Determine which session_id to use:
-    # 1. If there's an ACTIVE (running) CLI session for this project → use its session_id
-    # 2. Otherwise, let task_executor manage via _session_map
-    
+    # Determine which session_id to use for droid exec
     droid_session_id = None
-    
-    # Check if there's an active CLI session - use its session_id for continuation
     if data.session_id:
         session = session_registry.get(data.session_id)
         if session and session.status in ('running', 'waiting'):
-            # CLI session exists - use its session_id to continue the conversation
             droid_session_id = data.session_id
             logger.info(f"Continuing CLI session {droid_session_id} via Web UI")
     
-    # Create progress callback to emit WebSocket events
-    async def emit_progress(activity: dict):
-        if sio:
-            await sio.emit("task_activity", {
-                "task_id": task_id,
-                "session_id": pending_session_id,
-                "activity": activity
-            })
-    
-    # Sync wrapper for async emit
-    def on_progress(activity: dict):
-        asyncio.create_task(emit_progress(activity))
-    
-    result = await task_executor.execute_task(
-        task_id=task_id,
-        prompt=data.prompt,
-        project_dir=data.project_dir,
-        session_id=droid_session_id,  # Use CLI session if available
-        autonomy_level=data.autonomy_level,
-        model=data.model,
-        reasoning_effort=data.reasoning_effort,
-        source="api",
-        on_progress=on_progress
-    )
-    
-    # If we created a pending session with task_id, but droid returned a different session_id,
-    # delete the pending one (the real one was created by task_executor)
-    if created_pending and result.session_id and result.session_id != pending_session_id:
-        try:
-            session_repo = get_session_repo()
-            session_repo.delete(pending_session_id)
-            logger.info(f"Deleted pending session {pending_session_id}, using real session {result.session_id}")
-        except Exception as e:
-            logger.error(f"Failed to delete pending session: {e}")
-    
-    # Notify completion via WebSocket
-    if sio:
-        await sio.emit("task_completed", {
-            "task_id": task_id,
-            "success": result.success,
-            "result": result.result[:500] if result.result else "",  # Truncate for event
-            "session_id": result.session_id
-        })
-        
-        # Update sidebar with correct sessions
-        all_sessions = session_registry.get_all()
-        await sio.emit("sessions_update", [s.model_dump(mode='json') for s in all_sessions])
-    
-    # Send Telegram notification
+    # Get bot_manager for later use in background task
     bot_manager_getter = getattr(request.app.state, "bot_manager", None)
-    if bot_manager_getter:
-        bot_manager = bot_manager_getter()
-        if bot_manager:
-            # Build session URL
-            session_url = f"{WEB_UI_URL}/session/{data.session_id}" if data.session_id else None
+    
+    # Background task to execute droid and notify on completion
+    async def run_task_in_background():
+        try:
+            result = await task_executor.execute_task(
+                task_id=task_id,
+                prompt=data.prompt,
+                project_dir=data.project_dir,
+                session_id=droid_session_id,
+                autonomy_level=data.autonomy_level,
+                model=data.model,
+                reasoning_effort=data.reasoning_effort,
+                source="api"
+            )
             
-            # Truncate result if configured
-            result_text = result.result or ""
-            if TELEGRAM_TASK_RESULT_MAX_LENGTH > 0 and len(result_text) > TELEGRAM_TASK_RESULT_MAX_LENGTH:
-                result_text = result_text[:TELEGRAM_TASK_RESULT_MAX_LENGTH] + "..."
+            # If we created a pending session with task_id, but droid returned a different session_id,
+            # delete the pending one (the real one was created by task_executor)
+            if created_pending and result.session_id and result.session_id != pending_session_id:
+                try:
+                    session_repo = get_session_repo()
+                    session_repo.delete(pending_session_id)
+                    logger.info(f"Deleted pending session {pending_session_id}, using real session {result.session_id}")
+                except Exception as e:
+                    logger.error(f"Failed to delete pending session: {e}")
             
-            # Escape markdown special characters in result
-            result_text = result_text.replace("_", "\\_").replace("*", "\\*").replace("`", "\\`")
+            # Notify completion via WebSocket
+            if sio:
+                await sio.emit("task_completed", {
+                    "task_id": task_id,
+                    "success": result.success,
+                    "result": result.result or "",
+                    "session_id": result.session_id,
+                    "duration_ms": result.duration_ms,
+                    "num_turns": result.num_turns,
+                    "error": result.error
+                })
+                
+                # Update sidebar with correct sessions
+                all_sessions = session_registry.get_all()
+                await sio.emit("sessions_update", [s.model_dump(mode='json') for s in all_sessions])
             
-            # Build notification message
-            status_emoji = "✅" if result.success else "❌"
-            project_name = data.project_dir.replace("\\", "/").split("/")[-1]
-            
-            message_parts = [
-                f"{status_emoji} *Task Completed*",
-                f"📁 Project: `{project_name}`",
-                f"💬 Prompt: _{data.prompt[:100]}{'...' if len(data.prompt) > 100 else ''}_",
-                "",
-                f"📝 *Result:*",
-                result_text if result_text else "(no output)"
-            ]
-            
-            if session_url:
-                message_parts.append("")
-                message_parts.append(f"🔗 [Open in Web UI]({session_url})")
-            
-            await bot_manager.send_text("\n".join(message_parts))
+            # Send Telegram notification
+            if bot_manager_getter:
+                bot_manager = bot_manager_getter()
+                if bot_manager:
+                    session_url = f"{WEB_UI_URL}/session/{result.session_id}" if result.session_id else None
+                    
+                    result_text = result.result or ""
+                    if TELEGRAM_TASK_RESULT_MAX_LENGTH > 0 and len(result_text) > TELEGRAM_TASK_RESULT_MAX_LENGTH:
+                        result_text = result_text[:TELEGRAM_TASK_RESULT_MAX_LENGTH] + "..."
+                    
+                    result_text = result_text.replace("_", "\\_").replace("*", "\\*").replace("`", "\\`")
+                    
+                    status_emoji = "✅" if result.success else "❌"
+                    project_name = data.project_dir.replace("\\", "/").split("/")[-1]
+                    
+                    message_parts = [
+                        f"{status_emoji} *Task Completed*",
+                        f"📁 Project: `{project_name}`",
+                        f"💬 Prompt: _{data.prompt[:100]}{'...' if len(data.prompt) > 100 else ''}_",
+                        "",
+                        f"📝 *Result:*",
+                        result_text if result_text else "(no output)"
+                    ]
+                    
+                    if session_url:
+                        message_parts.append("")
+                        message_parts.append(f"🔗 [Open in Web UI]({session_url})")
+                    
+                    await bot_manager.send_text("\n".join(message_parts))
+                    
+        except Exception as e:
+            logger.error(f"Background task failed: {e}")
+            # Notify error via WebSocket
+            if sio:
+                await sio.emit("task_completed", {
+                    "task_id": task_id,
+                    "success": False,
+                    "result": "",
+                    "session_id": pending_session_id,
+                    "error": str(e)
+                })
+    
+    # Start background task and return immediately
+    asyncio.create_task(run_task_in_background())
     
     return TaskResponse(
-        success=result.success,
-        result=result.result,
+        success=True,  # Request accepted
+        result=None,
         task_id=task_id,
-        session_id=result.session_id,
-        duration_ms=result.duration_ms,
-        num_turns=result.num_turns,
-        error=result.error
+        session_id=pending_session_id,
+        status="pending"
     )
 
 
