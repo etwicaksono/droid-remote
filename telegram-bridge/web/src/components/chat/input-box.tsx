@@ -115,29 +115,6 @@ export function InputBox({
               </select>
             </div>
 
-            {/* Autonomy Level Selector */}
-            <div className="flex items-center gap-1 hover:bg-muted rounded-lg transition-colors">
-              <Shield className="h-4 w-4 ml-2 text-muted-foreground shrink-0" />
-              <select
-                value={autonomyLevel}
-                onChange={(e) => setAutonomyLevel(e.target.value)}
-                disabled={disabled || executing}
-                className={cn(
-                  "h-8 px-1 sm:px-2 text-xs bg-transparent border-0 cursor-pointer",
-                  "focus:outline-none focus:ring-0 max-w-[60px] sm:max-w-none",
-                  "[&>option]:bg-background [&>option]:text-foreground",
-                  disabled && "cursor-not-allowed"
-                )}
-                title="Autonomy level"
-              >
-                {AUTONOMY_LEVELS.map((level) => (
-                  <option key={level.id} value={level.id} title={level.description}>
-                    {level.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
             {/* Thinking Mode - Only show if model supports it */}
             {supportsReasoning && (
               <div className="flex items-center gap-1 hover:bg-muted rounded-lg transition-colors">
@@ -162,6 +139,29 @@ export function InputBox({
                 </select>
               </div>
             )}
+
+            {/* Autonomy Level Selector */}
+            <div className="flex items-center gap-1 hover:bg-muted rounded-lg transition-colors">
+              <Shield className="h-4 w-4 ml-2 text-muted-foreground shrink-0" />
+              <select
+                value={autonomyLevel}
+                onChange={(e) => setAutonomyLevel(e.target.value)}
+                disabled={disabled || executing}
+                className={cn(
+                  "h-8 px-1 sm:px-2 text-xs bg-transparent border-0 cursor-pointer",
+                  "focus:outline-none focus:ring-0 max-w-[60px] sm:max-w-none",
+                  "[&>option]:bg-background [&>option]:text-foreground",
+                  disabled && "cursor-not-allowed"
+                )}
+                title="Autonomy level"
+              >
+                {AUTONOMY_LEVELS.map((level) => (
+                  <option key={level.id} value={level.id} title={level.description}>
+                    {level.name}
+                  </option>
+                ))}
+              </select>
+            </div>
 
             {/* Send/Cancel Button */}
             {executing ? (
