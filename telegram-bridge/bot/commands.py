@@ -469,47 +469,4 @@ async def release_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     )
 
 
-async def queue_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle /queue command - show queued messages"""
-    args = context.args
-    
-    # Determine which session's queue to show
-    if args:
-        name = " ".join(args)
-        session = session_registry.get_by_name(name)
-        if not session:
-            try:
-                index = int(name)
-                session = session_registry.get_by_index(index)
-            except ValueError:
-                pass
-    else:
-        active_session_id = context.user_data.get("active_session")
-        if active_session_id:
-            session = session_registry.get(active_session_id)
-        else:
-            sessions = session_registry.get_all()
-            session = sessions[0] if sessions else None
-    
-    if not session:
-        await update.message.reply_text("No session selected.")
-        return
-    
-    messages = session_registry.get_queued_messages(session.id)
-    
-    if not messages:
-        await update.message.reply_text(
-            f"No queued messages for *{session.name}*",
-            parse_mode="Markdown"
-        )
-        return
-    
-    lines = [f"Queued messages for *{session.name}*:\n"]
-    for i, msg in enumerate(messages[:10], 1):  # Limit to 10
-        content = msg['content'][:50] + "..." if len(msg['content']) > 50 else msg['content']
-        lines.append(f"{i}. {content}")
-    
-    if len(messages) > 10:
-        lines.append(f"\n... and {len(messages) - 10} more")
-    
-    await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+

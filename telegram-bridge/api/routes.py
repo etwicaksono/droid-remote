@@ -598,6 +598,9 @@ async def add_to_queue(session_id: str, content: str, source: str = "web", reque
     
     message = session_registry.queue_message(session_id, content, source)
     
+    # Get queue count for notification
+    queue_count = session_registry.get_queue_count(session_id)
+    
     # Emit queue update event
     sio = getattr(request.app.state, "sio", None) if request else None
     if sio:
@@ -606,6 +609,19 @@ async def add_to_queue(session_id: str, content: str, source: str = "web", reque
             "session_id": session_id,
             "queue": messages
         })
+    
+    # Send Telegram notification
+    from bot.telegram_bot import TelegramBotManager
+    bot = TelegramBotManager.get_instance()
+    if bot:
+        truncated = content[:50] + "..." if len(content) > 50 else content
+        truncated = truncated.replace("_", "\\_").replace("*", "\\*").replace("`", "\\`")
+        await bot.send_notification(
+            f"⏳ *Task Queued* \\(#{queue_count}\\)\n"
+            f"📁 `{session.name}`\n"
+            f"💬 _{truncated}_",
+            parse_mode="Markdown"
+        )
     
     return {"success": True, "message": message}
 
