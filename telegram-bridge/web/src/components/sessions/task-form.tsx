@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useRef, useCallback, type FormEvent } from 'react'
-import { Folder, Loader2 } from 'lucide-react'
+import { useState, useRef, useCallback, useEffect, type FormEvent } from 'react'
+import { Folder, Loader2, ChevronDown, Pencil } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useSessionActions } from '@/hooks/use-session-actions'
@@ -10,7 +10,9 @@ import { DirectoryPickerModal } from '@/components/ui/directory-picker-modal'
 import { cn } from '@/lib/utils'
 import type { ReasoningEffort } from '@/types'
 import modelsConfig from '@/config/models.json'
+import { getAuthHeaders } from '@/lib/api'
 
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8765'
 const AVAILABLE_MODELS = modelsConfig.models as { id: string; name: string; reasoning: boolean }[]
 
 function generateUUID(): string {
@@ -69,12 +71,52 @@ export function TaskForm() {
   const [currentTaskId, setCurrentTaskId] = useState<string | null>(null)
   const [showPicker, setShowPicker] = useState(false)
   
+  // Config state
+  const [dockerMode, setDockerMode] = useState(false)
+  const [projectDirs, setProjectDirs] = useState<string[]>([])
+  const [showDirDropdown, setShowDirDropdown] = useState(false)
+  const [isCustomInput, setIsCustomInput] = useState(false)
+  
   const { executeTask, cancelTask } = useSessionActions()
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const chatContainerRef = useRef<HTMLDivElement | null>(null)
+  const dropdownRef = useRef<HTMLDivElement | null>(null)
 
   const currentModel = AVAILABLE_MODELS.find(m => m.id === selectedModel)
   const supportsReasoning = currentModel?.reasoning ?? false
+  
+  // Fetch config on mount
+  useEffect(() => {
+    const fetchConfig = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/config/project-dirs`, { headers: getAuthHeaders() })
+        if (res.ok) {
+          const data = await res.json()
+          setDockerMode(data.docker_mode)
+          setProjectDirs(data.project_dirs || [])
+          // If no predefined dirs, start in custom input mode
+          if (!data.project_dirs || data.project_dirs.length === 0) {
+            setIsCustomInput(true)
+          }
+        }
+      } catch (err) {
+        console.error('Failed to fetch config:', err)
+        setIsCustomInput(true)
+      }
+    }
+    fetchConfig()
+  }, [])
+  
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setShowDirDropdown(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
 
   const scrollToBottom = useCallback(() => {
     if (chatContainerRef.current) {
@@ -172,20 +214,101 @@ export function TaskForm() {
       <div className="shrink-0 pb-4 border-b border-border">
         <label className="text-sm font-medium mb-2 block">Project Directory</label>
         <div className="flex gap-2">
-          <Input
-            placeholder="/path/to/project"
-            value={projectDir}
-            onChange={(e) => setProjectDir(e.target.value)}
-            className="flex-1"
-          />
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => setShowPicker(true)}
-            title="Browse directories"
-          >
-            <Folder className="h-4 w-4" />
-          </Button>
+          {/* Combobox: Select or Custom Input */}
+          <div className="flex-1 relative" ref={dropdownRef}>
+            {isCustomInput ? (
+              <div className="flex gap-2">
+                <Input
+                  placeholder="/path/to/project"
+                  value={projectDir}
+                  onChange={(e) => setProjectDir(e.target.value)}
+                  className="flex-1"
+                />
+                {projectDirs.length > 0 && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    onClick={() => {
+                      setIsCustomInput(false)
+                      setShowDirDropdown(true)
+                    }}
+                    title="Select from saved projects"
+                  >
+                    <ChevronDown className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setShowDirDropdown(!showDirDropdown)}
+                className={cn(
+                  "w-full flex items-center justify-between px-3 py-2 rounded-md border border-input bg-background text-sm",
+                  "hover:bg-accent hover:text-accent-foreground transition-colors",
+                  !projectDir && "text-muted-foreground"
+                )}
+              >
+                <span className="truncate">{projectDir || "Select or type a path..."}</span>
+                <ChevronDown className={cn("h-4 w-4 shrink-0 ml-2 transition-transform", showDirDropdown && "rotate-180")} />
+              </button>
+            )}
+            
+            {/* Dropdown Menu */}
+            {showDirDropdown && !isCustomInput && (
+              <div className="absolute z-50 mt-1 w-full rounded-md border border-border bg-popover shadow-lg">
+                <div className="max-h-60 overflow-y-auto py-1">
+                  {/* Predefined directories */}
+                  {projectDirs.map((dir) => (
+                    <button
+                      key={dir}
+                      type="button"
+                      onClick={() => {
+                        setProjectDir(dir)
+                        setShowDirDropdown(false)
+                      }}
+                      className={cn(
+                        "w-full px-3 py-2 text-left text-sm hover:bg-accent transition-colors",
+                        projectDir === dir && "bg-accent"
+                      )}
+                    >
+                      <span className="truncate block">{dir}</span>
+                    </button>
+                  ))}
+                  
+                  {/* Divider */}
+                  {projectDirs.length > 0 && (
+                    <div className="border-t border-border my-1" />
+                  )}
+                  
+                  {/* Custom input option */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsCustomInput(true)
+                      setShowDirDropdown(false)
+                    }}
+                    className="w-full px-3 py-2 text-left text-sm hover:bg-accent transition-colors flex items-center gap-2 text-muted-foreground"
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                    <span>Type custom path...</span>
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+          
+          {/* Browse button - only in native mode */}
+          {!dockerMode && (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setShowPicker(true)}
+              title="Browse directories"
+            >
+              <Folder className="h-4 w-4" />
+            </Button>
+          )}
         </div>
       </div>
 

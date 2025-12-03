@@ -28,6 +28,9 @@ services:
       # Other
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - TELEGRAM_TASK_RESULT_MAX_LENGTH=${TELEGRAM_TASK_RESULT_MAX_LENGTH:-0}
+      # Docker mode
+      - DOCKER_MODE=true
+      - PROJECT_DIRS=${PROJECT_DIRS:-}
     volumes:
       - ./data:/app/data
       - ./logs:/app/logs
