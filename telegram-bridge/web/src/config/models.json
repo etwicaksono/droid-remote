@@ -1,0 +1,27 @@
+{
+  "models": [
+    { "id": "claude-sonnet-4-5-20250929", "name": "Claude Sonnet 4.5", "reasoning": true },
+    { "id": "gpt-5.1-codex", "name": "GPT-5.1 Codex", "reasoning": false },
+    { "id": "gpt-5.1", "name": "GPT-5.1", "reasoning": true },
+    { "id": "claude-opus-4-5-20251101", "name": "Claude Opus 4.5", "reasoning": true },
+    { "id": "claude-opus-4-1-20250805", "name": "Claude Opus 4.1", "reasoning": true },
+    { "id": "claude-haiku-4-5-20251001", "name": "Claude Haiku 4.5", "reasoning": true },
+    { "id": "gemini-3-pro-preview", "name": "Gemini 3 Pro", "reasoning": false },
+    { "id": "glm-4.6", "name": "Droid Core", "reasoning": false }
+  ],
+  "defaultModel": "claude-sonnet-4-5-20250929",
+  "reasoningLevels": [
+    { "id": "off", "name": "Off" },
+    { "id": "low", "name": "Low" },
+    { "id": "medium", "name": "Medium" },
+    { "id": "high", "name": "High" }
+  ],
+  "defaultReasoningLevel": "medium",
+  "autonomyLevels": [
+    { "id": "off", "name": "Spec", "description": "Research and plan only" },
+    { "id": "low", "name": "Low", "description": "Edits and read-only commands" },
+    { "id": "medium", "name": "Medium", "description": "Allow reversible commands" },
+    { "id": "high", "name": "High", "description": "Allow all commands" }
+  ],
+  "defaultAutonomyLevel": "high"
+}

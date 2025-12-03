@@ -1,0 +1,16 @@
+# Telegram Bot
+python-telegram-bot>=20.0
+
+# HTTP Server & Client
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
+
+# WebSocket / Socket.IO
+python-socketio>=5.11.0
+
+# Utilities
+python-dotenv>=1.0.0
+pydantic>=2.5.0
+
+# Authentication
+PyJWT>=2.8.0
