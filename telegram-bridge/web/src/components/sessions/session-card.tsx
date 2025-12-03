@@ -8,12 +8,13 @@ import { useSessionActions } from '@/hooks/use-session-actions'
 import { getSocket } from '@/lib/socket'
 import { getAuthHeaders } from '@/lib/api'
 import { cn } from '@/lib/utils'
-import { InputBox, DEFAULT_MODEL, DEFAULT_REASONING, DEFAULT_AUTONOMY } from '@/components/chat/input-box'
+import { InputBox, DEFAULT_MODEL, DEFAULT_REASONING, DEFAULT_AUTONOMY, type UploadedImage } from '@/components/chat/input-box'
+import { uploadImage } from '@/lib/api-client'
 import type { Session, ControlState, ReasoningEffort, QueuedMessage } from '@/types'
 import modelsConfig from '@/config/models.json'
 
 // Load models from JSON config file
-const AVAILABLE_MODELS = modelsConfig.models as { id: string; name: string; reasoning: boolean }[]
+const AVAILABLE_MODELS = modelsConfig.models as { id: string; name: string; reasoning: boolean; vision: boolean }[]
 const MAX_MESSAGE_INPUT_HEIGHT = 240
 
 // Generate UUID that works in all browsers (crypto.randomUUID requires HTTPS)
@@ -116,6 +117,9 @@ export function SessionCard({ session }: SessionCardProps) {
   // Queue state
   const [queuedMessages, setQueuedMessages] = useState<QueuedMessage[]>([])
   const [queueExpanded, setQueueExpanded] = useState(false)
+  // Image upload state
+  const [uploadedImages, setUploadedImages] = useState<UploadedImage[]>([])
+  const [isUploading, setIsUploading] = useState(false)
   const { approve, deny, alwaysAllow, executeTask, cancelTask, addChatMessage, getQueue, clearQueue, cancelQueuedMessage, addToQueue } = useSessionActions()
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const chatContainerRef = useRef<HTMLDivElement | null>(null)
@@ -552,6 +556,9 @@ export function SessionCard({ session }: SessionCardProps) {
 
     // Execute task in background - result will come via WebSocket
     try {
+      // Get image URLs before clearing
+      const imageUrls = uploadedImages.map(img => img.url)
+      
       await executeTask({
         prompt,
         projectDir: session.project_dir,
@@ -560,7 +567,12 @@ export function SessionCard({ session }: SessionCardProps) {
         model: selectedModel,
         reasoningEffort: supportsReasoning ? reasoningEffort : undefined,
         autonomyLevel,
+        images: imageUrls.length > 0 ? imageUrls : undefined,
       })
+      
+      // Clear images after task submission
+      setUploadedImages([])
+      
       // Task started successfully - WebSocket 'task_completed' will handle the result
     } catch (error) {
       // Network error or immediate failure - show error
@@ -694,6 +706,38 @@ export function SessionCard({ session }: SessionCardProps) {
     }
   }
 
+  // Image upload handlers
+  const handleImageUpload = async (file: File) => {
+    setIsUploading(true)
+    try {
+      const result = await uploadImage(file, session.id)
+      const ref = `@${uploadedImages.length + 1}`
+      setUploadedImages(prev => [...prev, {
+        url: result.url,
+        public_id: result.public_id,
+        name: file.name,
+        ref,
+      }])
+    } catch (error) {
+      console.error('Failed to upload image:', error)
+    } finally {
+      setIsUploading(false)
+    }
+  }
+
+  const handleImageRemove = (index: number) => {
+    setUploadedImages(prev => {
+      const newImages = prev.filter((_, i) => i !== index)
+      // Re-number refs
+      return newImages.map((img, i) => ({ ...img, ref: `@${i + 1}` }))
+    })
+  }
+
+  const handleInsertRef = (ref: string) => {
+    // This is handled in InputBox via the render prop
+    // Just log for debugging if needed
+  }
+
   // Check if busy (should show queue mode)
   const isBusy = executing || cliThinking
   const busySource = executing ? 'web' : cliThinking ? 'cli' : null
@@ -822,6 +866,11 @@ export function SessionCard({ session }: SessionCardProps) {
                   queueMode={isBusy}
                   onQueue={handleAddToQueue}
                   showCancel={executing && !cliThinking}
+                  images={uploadedImages}
+                  onImageUpload={handleImageUpload}
+                  onImageRemove={handleImageRemove}
+                  onInsertRef={handleInsertRef}
+                  isUploading={isUploading}
                 />
               </div>
             </div>
@@ -925,6 +974,11 @@ export function SessionCard({ session }: SessionCardProps) {
                   queueMode={isBusy}
                   onQueue={handleAddToQueue}
                   showCancel={executing && !cliThinking}
+                  images={uploadedImages}
+                  onImageUpload={handleImageUpload}
+                  onImageRemove={handleImageRemove}
+                  onInsertRef={handleInsertRef}
+                  isUploading={isUploading}
                 />
               </div>
             </>
