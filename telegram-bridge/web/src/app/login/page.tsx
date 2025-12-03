@@ -5,11 +5,13 @@ import { useRouter } from 'next/navigation'
 import { Terminal, Eye, EyeOff, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { useAuth } from '@/contexts/auth-context'
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8765'
 
 export default function LoginPage() {
   const router = useRouter()
+  const { login } = useAuth()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -34,13 +36,11 @@ export default function LoginPage() {
         throw new Error(data.detail || 'Login failed')
       }
 
-      // Store token
-      localStorage.setItem('auth_token', data.token)
-      localStorage.setItem('auth_username', data.username)
+      // Use auth context to store token and reconnect socket
+      login(data.token, data.username)
 
       // Redirect to home
       router.push('/')
-      router.refresh()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed')
     } finally {
