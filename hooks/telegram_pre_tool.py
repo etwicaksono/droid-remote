@@ -23,7 +23,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "lib"))
 
 from bridge_client import register_session, notify, wait_for_response, update_session_status, is_bridge_available
 from formatters import format_session_name, format_permission_request
-from config import PERMISSION_TIMEOUT, BRIDGE_URL
+from config import PERMISSION_TIMEOUT, BRIDGE_URL, BRIDGE_SECRET
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

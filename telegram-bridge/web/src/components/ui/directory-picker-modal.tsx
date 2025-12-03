@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Folder, ChevronRight, HardDrive, Loader2, X, ArrowUp } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+import { getAuthHeaders } from '@/lib/api'
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8765'
 
@@ -46,7 +47,7 @@ export function DirectoryPickerModal({
       const url = path 
         ? `${API_BASE}/filesystem/browse?path=${encodeURIComponent(path)}`
         : `${API_BASE}/filesystem/browse`
-      const res = await fetch(url)
+      const res = await fetch(url, { headers: getAuthHeaders() })
       if (!res.ok) {
         const data = await res.json()
         throw new Error(data.detail || 'Failed to browse directory')
