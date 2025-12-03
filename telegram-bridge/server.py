@@ -15,7 +15,7 @@ from dotenv import load_dotenv
 from bot.telegram_bot import TelegramBotManager
 from api.routes import router
 from api.socketio_handlers import create_socketio_server, create_socketio_app
-from api.auth import verify_token, verify_api_key, PUBLIC_ROUTES
+from api.auth import verify_token, verify_api_key, PUBLIC_ROUTES, log_auth_config
 from core.session_registry import session_registry
 from core.database import get_db, migrate_tasks_cascade_delete, migrate_chat_messages_source, migrate_session_settings_autonomy
 from utils.logging_config import setup_logging
@@ -38,6 +38,9 @@ async def lifespan(app: FastAPI):
     
     # Startup
     logger.info("Starting Telegram-Droid Bridge Server...")
+    
+    # Log auth config for debugging
+    log_auth_config()
     
     # Initialize database
     try:

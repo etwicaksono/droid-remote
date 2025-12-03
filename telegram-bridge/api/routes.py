@@ -39,7 +39,6 @@ from api.auth import (
     verify_credentials,
     verify_api_key,
     require_auth,
-    JWT_SECRET,
 )
 
 logger = logging.getLogger(__name__)

@@ -11,12 +11,38 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 logger = logging.getLogger(__name__)
 
-# Auth config from environment
-AUTH_USERNAME = os.getenv("AUTH_USERNAME", "admin")
-AUTH_PASSWORD = os.getenv("AUTH_PASSWORD", "changeme123")
-JWT_SECRET = os.getenv("JWT_SECRET", "change-this-to-random-32-char-secret")
-JWT_EXPIRY_HOURS = int(os.getenv("JWT_EXPIRY_HOURS", "24"))
-BRIDGE_SECRET = os.getenv("BRIDGE_SECRET", "")
+
+# Lazy loading of auth config (to ensure .env is loaded first)
+def get_auth_username() -> str:
+    return os.getenv("AUTH_USERNAME", "admin")
+
+def get_auth_password() -> str:
+    return os.getenv("AUTH_PASSWORD", "changeme123")
+
+def get_jwt_secret() -> str:
+    return os.getenv("JWT_SECRET", "change-this-to-random-32-char-secret")
+
+def get_jwt_expiry_hours() -> int:
+    return int(os.getenv("JWT_EXPIRY_HOURS", "24"))
+
+def get_bridge_secret() -> str:
+    return os.getenv("BRIDGE_SECRET", "")
+
+
+# Log auth config on startup (mask password)
+def log_auth_config():
+    username = get_auth_username()
+    password = get_auth_password()
+    jwt_secret = get_jwt_secret()
+    jwt_expiry = get_jwt_expiry_hours()
+    bridge_secret = get_bridge_secret()
+    
+    logger.info(f"Auth config loaded:")
+    logger.info(f"  AUTH_USERNAME: {username}")
+    logger.info(f"  AUTH_PASSWORD: {'*' * len(password)} ({len(password)} chars)")
+    logger.info(f"  JWT_SECRET: {jwt_secret[:8]}... ({len(jwt_secret)} chars)")
+    logger.info(f"  JWT_EXPIRY_HOURS: {jwt_expiry}")
+    logger.info(f"  BRIDGE_SECRET: {bridge_secret[:8] if bridge_secret else 'not set'}...")
 
 # Security scheme
 security = HTTPBearer(auto_error=False)
@@ -35,15 +61,15 @@ def create_token(username: str) -> str:
     payload = {
         "sub": username,
         "iat": datetime.now(timezone.utc),
-        "exp": datetime.now(timezone.utc) + timedelta(hours=JWT_EXPIRY_HOURS),
+        "exp": datetime.now(timezone.utc) + timedelta(hours=get_jwt_expiry_hours()),
     }
-    return jwt.encode(payload, JWT_SECRET, algorithm="HS256")
+    return jwt.encode(payload, get_jwt_secret(), algorithm="HS256")
 
 
 def verify_token(token: str) -> Optional[dict]:
     """Verify a JWT token and return the payload"""
     try:
-        payload = jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
+        payload = jwt.decode(token, get_jwt_secret(), algorithms=["HS256"])
         return payload
     except jwt.ExpiredSignatureError:
         logger.warning("Token expired")
@@ -55,12 +81,12 @@ def verify_token(token: str) -> Optional[dict]:
 
 def verify_credentials(username: str, password: str) -> bool:
     """Verify username and password against env config"""
-    return username == AUTH_USERNAME and password == AUTH_PASSWORD
+    return username == get_auth_username() and password == get_auth_password()
 
 
 def verify_api_key(api_key: str) -> bool:
     """Verify API key (used by hooks) - accepts JWT_SECRET or BRIDGE_SECRET"""
-    return api_key == JWT_SECRET or api_key == BRIDGE_SECRET
+    return api_key == get_jwt_secret() or api_key == get_bridge_secret()
 
 
 async def get_current_user(
