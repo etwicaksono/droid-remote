@@ -31,6 +31,7 @@ services:
     volumes:
       - bridge-data:/app/data
       - bridge-logs:/app/logs
+      - ./hooks:/app/hooks:ro
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8765/health"]
       interval: 30s
