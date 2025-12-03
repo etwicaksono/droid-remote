@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { useSessionActions } from '@/hooks/use-session-actions'
 import { getSocket } from '@/lib/socket'
+import { getAuthHeaders } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { InputBox, DEFAULT_MODEL, DEFAULT_REASONING, DEFAULT_AUTONOMY } from '@/components/chat/input-box'
 import type { Session, ControlState, ReasoningEffort } from '@/types'
@@ -187,8 +188,8 @@ export function SessionCard({ session }: SessionCardProps) {
       try {
         // Load chat history and settings in parallel
         const [chatRes, settingsRes] = await Promise.all([
-          fetch(`${API_BASE}/sessions/${session.id}/chat?limit=${CHAT_PAGE_SIZE}&offset=0`),
-          fetch(`${API_BASE}/sessions/${session.id}/settings`)
+          fetch(`${API_BASE}/sessions/${session.id}/chat?limit=${CHAT_PAGE_SIZE}&offset=0`, { headers: getAuthHeaders() }),
+          fetch(`${API_BASE}/sessions/${session.id}/settings`, { headers: getAuthHeaders() })
         ])
         
         if (chatRes.ok) {
@@ -228,7 +229,8 @@ export function SessionCard({ session }: SessionCardProps) {
       const timeoutId = setTimeout(() => controller.abort(), 3000)
       try {
         const res = await fetch(`${API_BASE}/sessions/${sessionId}/cli-thinking`, {
-          signal: controller.signal
+          signal: controller.signal,
+          headers: getAuthHeaders()
         })
         clearTimeout(timeoutId)
         if (res.ok) {
@@ -254,7 +256,7 @@ export function SessionCard({ session }: SessionCardProps) {
       const container = chatContainerRef.current
       const scrollHeightBefore = container?.scrollHeight || 0
       
-      const chatRes = await fetch(`${API_BASE}/sessions/${session.id}/chat?limit=${CHAT_PAGE_SIZE}&offset=${chatOffset}`)
+      const chatRes = await fetch(`${API_BASE}/sessions/${session.id}/chat?limit=${CHAT_PAGE_SIZE}&offset=${chatOffset}`, { headers: getAuthHeaders() })
       if (chatRes.ok) {
         const data = await chatRes.json()
         if (data.messages?.length > 0) {
@@ -297,7 +299,8 @@ export function SessionCard({ session }: SessionCardProps) {
           autonomy_level: autonomyLevel
         })
         await fetch(`${API_BASE}/sessions/${session.id}/settings?${params}`, {
-          method: 'PUT'
+          method: 'PUT',
+          headers: getAuthHeaders()
         })
       } catch {
         // Ignore save errors
