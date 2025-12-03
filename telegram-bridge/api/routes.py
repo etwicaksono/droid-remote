@@ -360,19 +360,49 @@ async def execute_task(data: TaskExecuteRequest, request: Request):
     # Get bot_manager for later use in background task
     bot_manager_getter = getattr(request.app.state, "bot_manager", None)
     
-    # Background task to execute droid and notify on completion
+    # Background task to execute droid with real-time streaming
     async def run_task_in_background():
         try:
-            result = await task_executor.execute_task(
+            final_result = None
+            final_session_id = None
+            
+            # Use streaming to get real-time events
+            async for event in task_executor.execute_task_streaming(
                 task_id=task_id,
                 prompt=data.prompt,
                 project_dir=data.project_dir,
                 session_id=droid_session_id,
                 autonomy_level=data.autonomy_level,
                 model=data.model,
-                reasoning_effort=data.reasoning_effort,
-                source="api"
-            )
+                reasoning_effort=data.reasoning_effort
+            ):
+                event_type = event.get("type")
+                
+                # Emit activity events to frontend
+                if sio and event_type in ("message", "tool_call", "tool_result"):
+                    await sio.emit("task_activity", {
+                        "task_id": task_id,
+                        "session_id": pending_session_id,
+                        "event": event
+                    })
+                
+                # Capture completion event
+                if event_type == "completion":
+                    final_result = event.get("finalText", "")
+                    final_session_id = event.get("session_id")
+            
+            # Get task result
+            task = task_executor.get_task(task_id)
+            result = task.result if task else None
+            
+            # Use captured data if task result not available
+            if not result:
+                from core.task_executor import TaskResult
+                result = TaskResult(
+                    success=True,
+                    result=final_result or "",
+                    session_id=final_session_id
+                )
             
             # If we created a pending session with task_id, but droid returned a different session_id,
             # delete the pending one (the real one was created by task_executor)

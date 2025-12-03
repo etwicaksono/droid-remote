@@ -83,6 +83,17 @@ interface ChatMessage {
   source?: 'web' | 'cli'
 }
 
+// Activity event from stream-json
+interface ActivityEvent {
+  type: 'message' | 'tool_call' | 'tool_result' | 'raw'
+  role?: string
+  text?: string
+  toolName?: string
+  parameters?: Record<string, unknown>
+  value?: string
+  isError?: boolean
+}
+
 export function SessionCard({ session }: SessionCardProps) {
   const [taskPrompt, setTaskPrompt] = useState('')
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([])
@@ -97,6 +108,8 @@ export function SessionCard({ session }: SessionCardProps) {
   const [chatOffset, setChatOffset] = useState(0)
   // Local state for real-time updates (pending_request)
   const [pendingRequest, setPendingRequest] = useState(session.pending_request)
+  // Real-time activity from droid exec streaming
+  const [activityLogs, setActivityLogs] = useState<ActivityEvent[]>([])
   const { approve, deny, executeTask, cancelTask, addChatMessage } = useSessionActions()
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const chatContainerRef = useRef<HTMLDivElement | null>(null)
@@ -302,6 +315,14 @@ export function SessionCard({ session }: SessionCardProps) {
       if (data.session_id === session.id || data.project_dir === session.project_dir) {
         setExecuting(true)
         setCurrentTaskId(data.task_id)
+        setActivityLogs([]) // Clear previous activity
+      }
+    }
+    
+    const handleTaskActivity = (data: { task_id: string; session_id?: string; event: ActivityEvent }) => {
+      // Check if this is for our session
+      if (data.task_id === currentTaskId || data.session_id === session.id) {
+        setActivityLogs(prev => [...prev, data.event])
       }
     }
     
@@ -318,6 +339,7 @@ export function SessionCard({ session }: SessionCardProps) {
       if (data.task_id === currentTaskId || data.session_id === session.id) {
         setExecuting(false)
         setCurrentTaskId(null)
+        setActivityLogs([]) // Clear activity on completion
         
         // Parse the result to get human-readable content
         const responseContent = parseResultContent(data.result, data.error)
@@ -420,6 +442,7 @@ export function SessionCard({ session }: SessionCardProps) {
     }
     
     socket.on('task_started', handleTaskStarted)
+    socket.on('task_activity', handleTaskActivity)
     socket.on('task_completed', handleTaskCompleted)
     socket.on('task_cancelled', handleTaskCancelled)
     socket.on('chat_updated', handleChatUpdated)
@@ -428,6 +451,7 @@ export function SessionCard({ session }: SessionCardProps) {
     
     return () => {
       socket.off('task_started', handleTaskStarted)
+      socket.off('task_activity', handleTaskActivity)
       socket.off('task_completed', handleTaskCompleted)
       socket.off('task_cancelled', handleTaskCancelled)
       socket.off('chat_updated', handleChatUpdated)
@@ -692,9 +716,49 @@ export function SessionCard({ session }: SessionCardProps) {
                 ))}
                 {executing && (
                   <div className="flex justify-start ms-2">
-                    <div className="bg-muted rounded-lg px-3 py-2 flex items-center gap-2 text-sm text-muted-foreground">
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Droid is thinking...
+                    <div className="bg-muted rounded-lg px-3 py-2 max-w-[90%] sm:max-w-[85%]">
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+                        <span>Droid is thinking...</span>
+                      </div>
+                      {/* Real-time activity logs */}
+                      {activityLogs.length > 0 && (
+                        <div className="mt-2 pt-2 border-t border-border/50 space-y-1 text-xs">
+                          {activityLogs.slice(-5).map((event, idx) => (
+                            <div key={idx} className="text-muted-foreground">
+                              {event.type === 'tool_call' && (
+                                <span className="flex items-center gap-1">
+                                  <Terminal className="h-3 w-3 text-blue-400" />
+                                  <span className="text-blue-400">{event.toolName}</span>
+                                  {event.parameters && 'command' in event.parameters && (
+                                    <code className="ml-1 text-[10px] bg-background/50 px-1 rounded truncate max-w-[200px]">
+                                      {String(event.parameters.command).slice(0, 50)}
+                                    </code>
+                                  )}
+                                  {event.parameters && 'file_path' in event.parameters && (
+                                    <code className="ml-1 text-[10px] bg-background/50 px-1 rounded truncate max-w-[200px]">
+                                      {String(event.parameters.file_path).split(/[/\\]/).pop()}
+                                    </code>
+                                  )}
+                                </span>
+                              )}
+                              {event.type === 'tool_result' && (
+                                <span className={cn(
+                                  "flex items-center gap-1",
+                                  event.isError ? "text-red-400" : "text-green-400"
+                                )}>
+                                  {event.isError ? '✗' : '✓'} Result received
+                                </span>
+                              )}
+                              {event.type === 'message' && event.role === 'assistant' && event.text && (
+                                <span className="text-foreground/70 line-clamp-2">
+                                  {event.text.slice(0, 100)}{event.text.length > 100 ? '...' : ''}
+                                </span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}

@@ -3,12 +3,23 @@
 import { io, type Socket } from 'socket.io-client'
 import type { Session, Notification } from '@/types'
 
+interface ActivityEvent {
+  type: 'message' | 'tool_call' | 'tool_result' | 'raw'
+  role?: string
+  text?: string
+  toolName?: string
+  parameters?: Record<string, unknown>
+  value?: string
+  isError?: boolean
+}
+
 interface ServerToClientEvents {
   sessions_update: (sessions: Session[]) => void
   notification: (notification: Notification) => void
   session_status: (data: { sessionId: string; status: string }) => void
   response_delivered: (data: { sessionId: string; requestId: string }) => void
   task_started: (data: { task_id: string; project_dir: string; prompt: string; session_id?: string }) => void
+  task_activity: (data: { task_id: string; session_id?: string; event: ActivityEvent }) => void
   task_completed: (data: { task_id: string; success: boolean; result: string; session_id?: string }) => void
   task_cancelled: (data: { task_id: string }) => void
   chat_updated: (data: { session_id: string; message: any }) => void

@@ -428,7 +428,8 @@ class TaskExecutor:
         project_dir: str,
         session_id: Optional[str] = None,
         autonomy_level: str = "high",
-        model: Optional[str] = None
+        model: Optional[str] = None,
+        reasoning_effort: Optional[str] = None
     ) -> AsyncIterator[Dict[str, Any]]:
         """
         Execute task with streaming output (stream-json format).
@@ -443,7 +444,8 @@ class TaskExecutor:
             project_dir=project_dir,
             session_id=session_id,
             autonomy_level=autonomy_level,
-            model=model
+            model=model,
+            reasoning_effort=reasoning_effort
         )
         self._tasks[task_id] = task
         
@@ -451,6 +453,9 @@ class TaskExecutor:
         
         if task.model:
             cmd.extend(["--model", task.model])
+        
+        if task.reasoning_effort:
+            cmd.extend(["--reasoning-effort", task.reasoning_effort])
         
         if task.autonomy_level:
             cmd.extend(["--auto", task.autonomy_level])
