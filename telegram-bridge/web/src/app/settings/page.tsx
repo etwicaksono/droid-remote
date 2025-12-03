@@ -1,14 +1,13 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Trash2, Plus, Shield, ArrowLeft } from 'lucide-react'
-import Link from 'next/link'
+import { Trash2, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { PageLayout } from '@/components/layout/page-layout'
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8765'
 
-// Common tools in Factory.ai
 const TOOLS = [
   'Edit',
   'Read', 
@@ -37,7 +36,6 @@ export default function SettingsPage() {
   const [newPattern, setNewPattern] = useState('*')
   const [adding, setAdding] = useState(false)
 
-  // Fetch rules on mount
   useEffect(() => {
     fetchRules()
   }, [])
@@ -104,24 +102,14 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background p-4 sm:p-6">
-      <div className="max-w-3xl mx-auto space-y-6">
-        {/* Header */}
-        <div className="flex items-center gap-3">
-          <Link href="/">
-            <Button variant="ghost" size="icon">
-              <ArrowLeft className="h-5 w-5" />
-            </Button>
-          </Link>
-          <div>
-            <h1 className="text-2xl font-semibold flex items-center gap-2">
-              <Shield className="h-6 w-6" />
-              Permission Allowlist
-            </h1>
-            <p className="text-sm text-muted-foreground">
-              Tools that will be auto-approved without prompting
-            </p>
-          </div>
+    <PageLayout title="Settings" currentPath="/settings">
+      <div className="max-w-3xl mx-auto space-y-6 p-4">
+        {/* Section Header */}
+        <div>
+          <h2 className="text-lg font-semibold">Permission Allowlist</h2>
+          <p className="text-sm text-muted-foreground">
+            Tools that will be auto-approved without prompting
+          </p>
         </div>
 
         {/* Add Rule Card */}
@@ -134,7 +122,7 @@ export default function SettingsPage() {
               <select
                 value={newTool}
                 onChange={(e) => setNewTool(e.target.value)}
-                className="h-10 px-3 rounded-md border border-input bg-background text-sm"
+                className="h-10 px-3 rounded-md border border-input bg-background text-sm [&>option]:bg-background [&>option]:text-foreground"
               >
                 {TOOLS.map(tool => (
                   <option key={tool} value={tool}>{tool}</option>
@@ -240,6 +228,6 @@ export default function SettingsPage() {
           </CardContent>
         </Card>
       </div>
-    </div>
+    </PageLayout>
   )
 }

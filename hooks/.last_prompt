@@ -1,1 +1,1 @@
-{"1b165ad5-cea6-4ce4-a4b9-4617a072f93b": "session_id is crucial, if it's gone it should break the process, if we need to log for debugging, do it before the code break"}
+{"1b165ad5-cea6-4ce4-a4b9-4617a072f93b": "why setting page doesn't use existing sidebar and topbar?"}
