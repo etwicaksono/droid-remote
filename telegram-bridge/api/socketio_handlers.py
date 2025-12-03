@@ -23,8 +23,8 @@ def create_socketio_server() -> socketio.AsyncServer:
     )
     
     @sio.event
-    async def connect(sid, environ):
-        """Handle client connection"""
+    async def connect(sid, environ, auth=None):
+        """Handle client connection (auth contains token if provided)"""
         logger.info(f"Client connected: {sid}")
         
         # Send current sessions

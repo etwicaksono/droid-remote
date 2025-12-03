@@ -2,6 +2,7 @@
 
 import { useCallback, useState } from 'react'
 import { getSocket } from '@/lib/socket'
+import { getAuthHeaders } from '@/lib/api'
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8765'
 
@@ -58,6 +59,7 @@ export function useSessionActions() {
       try {
         const res = await fetch(`${API_BASE}/sessions/${sessionId}/handoff`, {
           method: 'POST',
+          headers: getAuthHeaders(),
         })
         const data = await res.json()
         if (!res.ok) {
@@ -77,6 +79,7 @@ export function useSessionActions() {
       try {
         const res = await fetch(`${API_BASE}/sessions/${sessionId}/release`, {
           method: 'POST',
+          headers: getAuthHeaders(),
         })
         if (!res.ok) throw new Error('Release failed')
         return await res.json()
@@ -101,7 +104,7 @@ export function useSessionActions() {
       try {
         const res = await fetch(`${API_BASE}/tasks/execute`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
           body: JSON.stringify({
             prompt: params.prompt,
             project_dir: params.projectDir,
@@ -128,6 +131,7 @@ export function useSessionActions() {
     async (taskId: string) => {
       const res = await fetch(`${API_BASE}/tasks/${taskId}/cancel`, {
         method: 'POST',
+        headers: getAuthHeaders(),
       })
       if (!res.ok) throw new Error('Failed to cancel task')
       return await res.json()
@@ -137,7 +141,9 @@ export function useSessionActions() {
 
   const getQueue = useCallback(
     async ({ sessionId }: SessionIdParam) => {
-      const res = await fetch(`${API_BASE}/sessions/${sessionId}/queue`)
+      const res = await fetch(`${API_BASE}/sessions/${sessionId}/queue`, {
+        headers: getAuthHeaders(),
+      })
       if (!res.ok) throw new Error('Failed to get queue')
       return await res.json()
     },
@@ -148,6 +154,7 @@ export function useSessionActions() {
     async ({ sessionId, content }: { sessionId: string; content: string }) => {
       const res = await fetch(`${API_BASE}/sessions/${sessionId}/queue?content=${encodeURIComponent(content)}&source=web`, {
         method: 'POST',
+        headers: getAuthHeaders(),
       })
       if (!res.ok) throw new Error('Failed to add to queue')
       return await res.json()
@@ -159,6 +166,7 @@ export function useSessionActions() {
     async ({ sessionId }: SessionIdParam) => {
       const res = await fetch(`${API_BASE}/sessions/${sessionId}/queue`, {
         method: 'DELETE',
+        headers: getAuthHeaders(),
       })
       if (!res.ok) throw new Error('Failed to clear queue')
       return await res.json()
@@ -168,7 +176,9 @@ export function useSessionActions() {
 
   const getChatHistory = useCallback(
     async (sessionId: string) => {
-      const res = await fetch(`${API_BASE}/sessions/${sessionId}/chat`)
+      const res = await fetch(`${API_BASE}/sessions/${sessionId}/chat`, {
+        headers: getAuthHeaders(),
+      })
       if (!res.ok) throw new Error('Failed to get chat history')
       return await res.json()
     },
@@ -194,6 +204,7 @@ export function useSessionActions() {
       
       const res = await fetch(`${API_BASE}/sessions/${params.sessionId}/chat?${searchParams}`, {
         method: 'POST',
+        headers: getAuthHeaders(),
       })
       if (!res.ok) throw new Error('Failed to add chat message')
       return await res.json()
@@ -203,7 +214,9 @@ export function useSessionActions() {
 
   const getSettings = useCallback(
     async (sessionId: string) => {
-      const res = await fetch(`${API_BASE}/sessions/${sessionId}/settings`)
+      const res = await fetch(`${API_BASE}/sessions/${sessionId}/settings`, {
+        headers: getAuthHeaders(),
+      })
       if (!res.ok) throw new Error('Failed to get settings')
       return await res.json()
     },
@@ -218,6 +231,7 @@ export function useSessionActions() {
       
       const res = await fetch(`${API_BASE}/sessions/${params.sessionId}/settings?${searchParams}`, {
         method: 'PUT',
+        headers: getAuthHeaders(),
       })
       if (!res.ok) throw new Error('Failed to update settings')
       return await res.json()
@@ -229,6 +243,7 @@ export function useSessionActions() {
     async (sessionId: string) => {
       const res = await fetch(`${API_BASE}/sessions/${sessionId}`, {
         method: 'DELETE',
+        headers: getAuthHeaders(),
       })
       if (!res.ok) throw new Error('Failed to delete session')
       return await res.json()

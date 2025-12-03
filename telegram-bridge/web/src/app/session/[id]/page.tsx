@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { SessionCard } from '@/components/sessions/session-card'
 import { PageLayout } from '@/components/layout/page-layout'
+import { getAuthHeaders } from '@/lib/api'
 import type { Session } from '@/types'
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8765'
@@ -22,7 +23,9 @@ export default function SessionPage() {
     const fetchSession = async () => {
       try {
         // Fetch single session directly
-        const response = await fetch(`${API_BASE}/sessions/${sessionId}`)
+        const response = await fetch(`${API_BASE}/sessions/${sessionId}`, {
+          headers: getAuthHeaders(),
+        })
         if (response.ok) {
           const sessionData: Session = await response.json()
           setSession(sessionData)
