@@ -33,8 +33,12 @@ def main():
         logger.error(f"Failed to parse input JSON: {e}")
         sys.exit(0)  # Fail gracefully
     
-    # Extract session info
-    session_id = input_data.get("session_id") or os.environ.get("FACTORY_SESSION_ID")
+    # Extract session info (Factory sends camelCase: sessionId)
+    session_id = (
+        input_data.get("session_id") or 
+        input_data.get("sessionId") or 
+        os.environ.get("FACTORY_SESSION_ID")
+    )
     if not session_id:
         logger.error("No session_id found in input or environment")
         sys.exit(1)
