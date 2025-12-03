@@ -24,29 +24,46 @@ logger = logging.getLogger(__name__)
 
 
 def main():
+    # Debug logging to file
+    import tempfile
+    log_file = os.path.join(tempfile.gettempdir(), "session_start_debug.log")
+    
+    def debug_log(msg):
+        with open(log_file, "a") as f:
+            f.write(f"{datetime.now()}: {msg}\n")
+    
+    debug_log("=== SessionStart Hook Started ===")
+    debug_log(f"DROID_EXEC_MODE: {os.environ.get('DROID_EXEC_MODE', 'not set')}")
+    debug_log(f"FACTORY_SESSION_ID: {os.environ.get('FACTORY_SESSION_ID', 'not set')}")
+    debug_log(f"FACTORY_PROJECT_DIR: {os.environ.get('FACTORY_PROJECT_DIR', 'not set')}")
+    
     # Skip notification if running via droid exec (task executor)
     if os.environ.get("DROID_EXEC_MODE") == "1":
-        logger.info("Running in exec mode, skipping session start notification")
+        debug_log("Running in exec mode, skipping")
         sys.exit(0)
     
     # Quick check if bridge is available (300ms timeout)
     if not is_bridge_available():
-        logger.warning("Bridge not available, skipping session start")
+        debug_log("Bridge not available, skipping")
         sys.exit(0)
     
     try:
         input_data = json.load(sys.stdin)
+        debug_log(f"Input data: {json.dumps(input_data, default=str)}")
     except json.JSONDecodeError as e:
-        logger.error(f"Failed to parse input JSON: {e}")
+        debug_log(f"Failed to parse JSON: {e}")
         sys.exit(0)
     
-    # Debug: log what Factory sends
-    logger.info(f"SessionStart received: {json.dumps(input_data, default=str)}")
-    logger.info(f"Environment FACTORY_SESSION_ID: {os.environ.get('FACTORY_SESSION_ID', 'not set')}")
+    # Extract session info - try multiple sources
+    session_id = (
+        input_data.get("session_id") or 
+        input_data.get("sessionId") or
+        os.environ.get("FACTORY_SESSION_ID")
+    )
+    debug_log(f"Extracted session_id: {session_id}")
     
-    # Extract session info
-    session_id = input_data.get("session_id") or os.environ.get("FACTORY_SESSION_ID")
     if not session_id:
+        debug_log("No session_id found - exiting with error")
         logger.error("No session_id found in input or environment")
         sys.exit(1)
     project_dir = os.environ.get("FACTORY_PROJECT_DIR", os.getcwd())
