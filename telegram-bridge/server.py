@@ -19,11 +19,12 @@ PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 # Load environment variables from project root first, then fallback to local
+# Use override=True to ensure .env values take precedence over system env vars
 env_file = PROJECT_ROOT / ".env"
 if env_file.exists():
-    load_dotenv(env_file)
+    load_dotenv(env_file, override=True)
 else:
-    load_dotenv()  # Fallback to telegram-bridge/.env
+    load_dotenv(override=True)  # Fallback to telegram-bridge/.env
 
 from bot.telegram_bot import TelegramBotManager
 from api.routes import router
