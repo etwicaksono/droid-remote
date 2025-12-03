@@ -29,8 +29,8 @@ services:
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - TELEGRAM_TASK_RESULT_MAX_LENGTH=${TELEGRAM_TASK_RESULT_MAX_LENGTH:-0}
     volumes:
-      - bridge-data:/app/data
-      - bridge-logs:/app/logs
+      - ./data:/app/data
+      - ./logs:/app/logs
       - ./hooks:/app/hooks:ro
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8765/health"]
@@ -58,12 +58,6 @@ services:
         condition: service_healthy
     networks:
       - droid-network
-
-volumes:
-  bridge-data:
-    name: droid-bridge-data
-  bridge-logs:
-    name: droid-bridge-logs
 
 networks:
   droid-network:

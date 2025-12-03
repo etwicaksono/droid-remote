@@ -38,4 +38,5 @@ htmlcov/
 
 # Database
 *.db
+data/
 telegram-bridge/data/
