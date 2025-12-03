@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Terminal, Menu, Plus, ShieldCheck, Circle, X, Trash2, Pencil } from 'lucide-react'
+import { Terminal, Menu, Plus, ShieldCheck, Circle, X, Trash2, Pencil, Settings } from 'lucide-react'
 import { cn, formatRelativeTime } from '@/lib/utils'
 import { getSocket } from '@/lib/socket'
 import type { Session, ControlState } from '@/types'
@@ -247,6 +247,21 @@ export function AppSidebar({ currentPath }: AppSidebarProps) {
           >
             <ShieldCheck className="h-4 w-4 flex-shrink-0" />
             {!collapsed && <span>Permissions</span>}
+          </Link>
+
+          {/* Settings */}
+          <Link
+            href="/settings"
+            onClick={() => setMobileOpen(false)}
+            className={cn(
+              'flex items-center gap-2 p-3 rounded-md text-sm font-medium transition-colors',
+              currentPath === '/settings'
+                ? 'bg-gray-800 text-white'
+                : 'text-gray-400 hover:bg-gray-800/50 hover:text-white'
+            )}
+          >
+            <Settings className="h-4 w-4 flex-shrink-0" />
+            {!collapsed && <span>Settings</span>}
           </Link>
 
         </div>
