@@ -610,7 +610,7 @@ export function SessionCard({ session }: SessionCardProps) {
       <CardContent className="flex-1 flex flex-col space-y-3 overflow-hidden pt-0">
         {/* Pending Request */}
         {hasPendingRequest && pendingRequest && (
-          <div className="rounded-md bg-muted p-3 shrink-0 max-h-[30vh] overflow-y-auto">
+          <div className="rounded-md bg-yellow-500/20 border border-yellow-500/40 p-3 shrink-0 max-h-[30vh] overflow-y-auto">
             <p className="text-sm whitespace-pre-wrap">{pendingRequest.message}</p>
 
             {pendingRequest.tool_name && (
