@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { PageLayout } from '@/components/layout/page-layout'
 import { formatRelativeTime } from '@/lib/utils'
+import { getAuthHeaders } from '@/lib/api'
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8765'
 
@@ -45,7 +46,7 @@ export default function SettingsPage() {
   const fetchRules = async () => {
     setLoading(true)
     try {
-      const res = await fetch(`${API_BASE}/allowlist`)
+      const res = await fetch(`${API_BASE}/allowlist`, { headers: getAuthHeaders() })
       if (res.ok) {
         const data = await res.json()
         setRules(data.rules || [])
@@ -101,6 +102,7 @@ export default function SettingsPage() {
       })
       const res = await fetch(`${API_BASE}/allowlist?${params}`, {
         method: 'POST',
+        headers: getAuthHeaders(),
       })
       if (res.ok) {
         await fetchRules()
@@ -119,6 +121,7 @@ export default function SettingsPage() {
     try {
       const res = await fetch(`${API_BASE}/allowlist/${ruleId}`, {
         method: 'DELETE',
+        headers: getAuthHeaders(),
       })
       if (res.ok) {
         setRules(prev => prev.filter(r => r.id !== ruleId))
