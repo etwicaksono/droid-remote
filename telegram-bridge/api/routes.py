@@ -9,9 +9,9 @@ import logging
 from typing import List, Optional
 from fastapi import APIRouter, HTTPException, Request, Depends, Header
 
-# Add hooks lib to path for config
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'hooks'))
-from lib.config import TELEGRAM_TASK_RESULT_MAX_LENGTH, WEB_UI_URL
+# Get config from environment
+TELEGRAM_TASK_RESULT_MAX_LENGTH = int(os.getenv("TELEGRAM_TASK_RESULT_MAX_LENGTH", "0"))
+WEB_UI_URL = os.getenv("WEB_UI_URL", "http://localhost:3000")
 
 from core.session_registry import session_registry
 from core.message_queue import message_queue
