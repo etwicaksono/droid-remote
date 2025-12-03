@@ -594,7 +594,8 @@ class SessionSettingsRepository:
         self,
         session_id: str,
         model: Optional[str] = None,
-        reasoning_effort: Optional[str] = None
+        reasoning_effort: Optional[str] = None,
+        autonomy_level: Optional[str] = None
     ) -> dict:
         """Create or update settings for a session"""
         db = get_db()
@@ -611,6 +612,9 @@ class SessionSettingsRepository:
             if reasoning_effort is not None:
                 updates.append("reasoning_effort = ?")
                 params.append(reasoning_effort)
+            if autonomy_level is not None:
+                updates.append("autonomy_level = ?")
+                params.append(autonomy_level)
             updates.append("updated_at = ?")
             params.append(now)
             params.append(session_id)
@@ -621,12 +625,13 @@ class SessionSettingsRepository:
         else:
             # Insert new
             db.execute("""
-                INSERT INTO session_settings (session_id, model, reasoning_effort, updated_at)
-                VALUES (?, ?, ?, ?)
+                INSERT INTO session_settings (session_id, model, reasoning_effort, autonomy_level, updated_at)
+                VALUES (?, ?, ?, ?, ?)
             """, (
                 session_id,
                 model or 'claude-sonnet-4-5-20250929',
                 reasoning_effort or 'medium',
+                autonomy_level or 'high',
                 now
             ))
         

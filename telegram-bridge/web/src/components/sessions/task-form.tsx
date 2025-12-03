@@ -5,7 +5,7 @@ import { Folder, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useSessionActions } from '@/hooks/use-session-actions'
-import { InputBox, DEFAULT_MODEL, DEFAULT_REASONING } from '@/components/chat/input-box'
+import { InputBox, DEFAULT_MODEL, DEFAULT_REASONING, DEFAULT_AUTONOMY } from '@/components/chat/input-box'
 import { DirectoryPickerModal } from '@/components/ui/directory-picker-modal'
 import { cn } from '@/lib/utils'
 import type { ReasoningEffort } from '@/types'
@@ -63,6 +63,7 @@ export function TaskForm() {
   const [taskPrompt, setTaskPrompt] = useState('')
   const [selectedModel, setSelectedModel] = useState(DEFAULT_MODEL)
   const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort>(DEFAULT_REASONING)
+  const [autonomyLevel, setAutonomyLevel] = useState(DEFAULT_AUTONOMY)
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([])
   const [executing, setExecuting] = useState(false)
   const [currentTaskId, setCurrentTaskId] = useState<string | null>(null)
@@ -108,6 +109,7 @@ export function TaskForm() {
         taskId,
         model: selectedModel,
         reasoningEffort: supportsReasoning ? reasoningEffort : undefined,
+        autonomyLevel,
       })
       
       const responseContent = parseResultContent(result.result, result.error)
@@ -213,6 +215,8 @@ export function TaskForm() {
                 setSelectedModel={setSelectedModel}
                 reasoningEffort={reasoningEffort}
                 setReasoningEffort={setReasoningEffort}
+                autonomyLevel={autonomyLevel}
+                setAutonomyLevel={setAutonomyLevel}
                 onSubmit={handleTaskSubmit}
                 onCancel={handleCancelTask}
                 disabled={isDisabled}
@@ -248,6 +252,8 @@ export function TaskForm() {
                 setSelectedModel={setSelectedModel}
                 reasoningEffort={reasoningEffort}
                 setReasoningEffort={setReasoningEffort}
+                autonomyLevel={autonomyLevel}
+                setAutonomyLevel={setAutonomyLevel}
                 onSubmit={handleTaskSubmit}
                 onCancel={handleCancelTask}
                 disabled={isDisabled}

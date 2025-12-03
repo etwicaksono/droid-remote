@@ -15,7 +15,7 @@ from datetime import datetime
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "lib"))
 
-from bridge_client import notify, unregister_session, is_bridge_available
+from bridge_client import notify, update_session_status, is_bridge_available
 from formatters import format_session_name
 
 logging.basicConfig(level=logging.INFO)

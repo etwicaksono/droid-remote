@@ -16,5 +16,12 @@
     { "id": "medium", "name": "Medium" },
     { "id": "high", "name": "High" }
   ],
-  "defaultReasoningLevel": "medium"
+  "defaultReasoningLevel": "medium",
+  "autonomyLevels": [
+    { "id": "off", "name": "Spec", "description": "Research and plan only" },
+    { "id": "low", "name": "Low", "description": "Edits and read-only commands" },
+    { "id": "medium", "name": "Medium", "description": "Allow reversible commands" },
+    { "id": "high", "name": "High", "description": "Allow all commands" }
+  ],
+  "defaultAutonomyLevel": "high"
 }

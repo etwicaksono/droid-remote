@@ -7,7 +7,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { useSessionActions } from '@/hooks/use-session-actions'
 import { getSocket } from '@/lib/socket'
 import { cn } from '@/lib/utils'
-import { InputBox, DEFAULT_MODEL, DEFAULT_REASONING } from '@/components/chat/input-box'
+import { InputBox, DEFAULT_MODEL, DEFAULT_REASONING, DEFAULT_AUTONOMY } from '@/components/chat/input-box'
 import type { Session, ControlState, ReasoningEffort } from '@/types'
 import modelsConfig from '@/config/models.json'
 
@@ -90,6 +90,7 @@ export function SessionCard({ session }: SessionCardProps) {
   const [currentTaskId, setCurrentTaskId] = useState<string | null>(null)
   const [selectedModel, setSelectedModel] = useState(DEFAULT_MODEL)
   const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort>(DEFAULT_REASONING)
+  const [autonomyLevel, setAutonomyLevel] = useState(DEFAULT_AUTONOMY)
   const [settingsLoaded, setSettingsLoaded] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
   const [controlAction, setControlAction] = useState<'handoff' | 'release' | null>(null)
@@ -197,6 +198,7 @@ export function SessionCard({ session }: SessionCardProps) {
           const settings = await settingsRes.json()
           if (settings.model) setSelectedModel(settings.model)
           if (settings.reasoning_effort) setReasoningEffort(settings.reasoning_effort as ReasoningEffort)
+          if (settings.autonomy_level) setAutonomyLevel(settings.autonomy_level)
         }
         
         setSettingsLoaded(true)
@@ -283,7 +285,8 @@ export function SessionCard({ session }: SessionCardProps) {
       try {
         const params = new URLSearchParams({
           model: selectedModel,
-          reasoning_effort: reasoningEffort
+          reasoning_effort: reasoningEffort,
+          autonomy_level: autonomyLevel
         })
         await fetch(`${API_BASE}/sessions/${session.id}/settings?${params}`, {
           method: 'PUT'
@@ -293,7 +296,7 @@ export function SessionCard({ session }: SessionCardProps) {
       }
     }
     saveSettings()
-  }, [selectedModel, reasoningEffort, session.id, settingsLoaded])
+  }, [selectedModel, reasoningEffort, autonomyLevel, session.id, settingsLoaded])
 
   // Listen for task events via WebSocket (sync across devices)
   useEffect(() => {
@@ -464,6 +467,7 @@ export function SessionCard({ session }: SessionCardProps) {
         sessionId: session.id,
         model: selectedModel,
         reasoningEffort: supportsReasoning ? reasoningEffort : undefined,
+        autonomyLevel,
       })
       
       // Parse the result to get human-readable content
@@ -721,6 +725,8 @@ export function SessionCard({ session }: SessionCardProps) {
                   setSelectedModel={setSelectedModel}
                   reasoningEffort={reasoningEffort}
                   setReasoningEffort={setReasoningEffort}
+                  autonomyLevel={autonomyLevel}
+                  setAutonomyLevel={setAutonomyLevel}
                   onSubmit={handleTaskSubmit}
                   onCancel={handleCancelTask}
                   isRemoteControlled={isRemoteControlled}
@@ -779,6 +785,8 @@ export function SessionCard({ session }: SessionCardProps) {
                   setSelectedModel={setSelectedModel}
                   reasoningEffort={reasoningEffort}
                   setReasoningEffort={setReasoningEffort}
+                  autonomyLevel={autonomyLevel}
+                  setAutonomyLevel={setAutonomyLevel}
                   onSubmit={handleTaskSubmit}
                   onCancel={handleCancelTask}
                   isRemoteControlled={isRemoteControlled}

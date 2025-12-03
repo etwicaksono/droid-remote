@@ -15,7 +15,7 @@ from bot.telegram_bot import TelegramBotManager
 from api.routes import router
 from api.socketio_handlers import create_socketio_server, create_socketio_app
 from core.session_registry import session_registry
-from core.database import get_db, migrate_tasks_cascade_delete, migrate_chat_messages_source
+from core.database import get_db, migrate_tasks_cascade_delete, migrate_chat_messages_source, migrate_session_settings_autonomy
 from utils.logging_config import setup_logging
 
 # Load environment variables
@@ -45,6 +45,7 @@ async def lifespan(app: FastAPI):
         # Run migrations
         migrate_tasks_cascade_delete()
         migrate_chat_messages_source()
+        migrate_session_settings_autonomy()
     except Exception as e:
         logger.error(f"Failed to initialize database: {e}")
         raise

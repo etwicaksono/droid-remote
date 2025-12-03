@@ -88,6 +88,7 @@ export function useSessionActions() {
       sessionId?: string
       model?: string
       reasoningEffort?: string
+      autonomyLevel?: string
     }) => {
       setLoading(true)
       try {
@@ -101,6 +102,7 @@ export function useSessionActions() {
             session_id: params.sessionId,
             model: params.model,
             reasoning_effort: params.reasoningEffort,
+            autonomy_level: params.autonomyLevel,
           }),
         })
         if (!res.ok) {

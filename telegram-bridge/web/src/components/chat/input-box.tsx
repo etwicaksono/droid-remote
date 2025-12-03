@@ -11,9 +11,11 @@ import modelsConfig from '@/config/models.json'
 // Load models from JSON config file
 const AVAILABLE_MODELS = modelsConfig.models as { id: string; name: string; reasoning: boolean }[]
 const REASONING_LEVELS = modelsConfig.reasoningLevels as { id: ReasoningEffort; name: string }[]
+const AUTONOMY_LEVELS = modelsConfig.autonomyLevels as { id: string; name: string; description: string }[]
 
 export const DEFAULT_MODEL = modelsConfig.defaultModel
 export const DEFAULT_REASONING = modelsConfig.defaultReasoningLevel as ReasoningEffort
+export const DEFAULT_AUTONOMY = modelsConfig.defaultAutonomyLevel as string
 
 const MAX_MESSAGE_INPUT_HEIGHT = 240
 
@@ -26,6 +28,8 @@ export interface InputBoxProps {
   setSelectedModel: (value: string) => void
   reasoningEffort: ReasoningEffort
   setReasoningEffort: (value: ReasoningEffort) => void
+  autonomyLevel: string
+  setAutonomyLevel: (value: string) => void
   onSubmit: (e: FormEvent<HTMLFormElement>) => void
   onCancel: () => void
   
@@ -53,6 +57,8 @@ export function InputBox({
   setSelectedModel,
   reasoningEffort,
   setReasoningEffort,
+  autonomyLevel,
+  setAutonomyLevel,
   onSubmit,
   onCancel,
   isRemoteControlled = true,
@@ -144,6 +150,25 @@ export function InputBox({
               {AVAILABLE_MODELS.map((model) => (
                 <option key={model.id} value={model.id}>
                   {model.name}
+                </option>
+              ))}
+            </select>
+
+            {/* Autonomy Level Selector */}
+            <select
+              value={autonomyLevel}
+              onChange={(e) => setAutonomyLevel(e.target.value)}
+              disabled={disabled || executing}
+              className={cn(
+                "h-8 px-1 sm:px-2 text-xs rounded-lg bg-transparent border-0 hover:bg-muted transition-colors cursor-pointer",
+                "focus:outline-none focus:ring-0 max-w-[60px] sm:max-w-none",
+                disabled && "cursor-not-allowed"
+              )}
+              title="Autonomy level"
+            >
+              {AUTONOMY_LEVELS.map((level) => (
+                <option key={level.id} value={level.id} title={level.description}>
+                  {level.name}
                 </option>
               ))}
             </select>

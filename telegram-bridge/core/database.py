@@ -100,6 +100,7 @@ CREATE TABLE IF NOT EXISTS session_settings (
     session_id TEXT PRIMARY KEY,
     model TEXT DEFAULT 'claude-sonnet-4-5-20250929',
     reasoning_effort TEXT DEFAULT 'medium',
+    autonomy_level TEXT DEFAULT 'high',
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
 );
@@ -322,6 +323,34 @@ def migrate_chat_messages_source():
             logger.info("Migration completed: Added source column")
         else:
             logger.info("chat_messages.source column already exists, skipping migration")
+            
+    except Exception as e:
+        logger.error(f"Migration failed: {e}")
+        conn.rollback()
+
+
+def migrate_session_settings_autonomy():
+    """
+    Migration: Add autonomy_level column to session_settings table
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    db = Database.get_instance()
+    conn = db._get_connection()
+    
+    try:
+        # Check if column exists
+        cursor = conn.execute("PRAGMA table_info(session_settings)")
+        columns = [row[1] for row in cursor.fetchall()]
+        
+        if 'autonomy_level' not in columns:
+            logger.info("Adding 'autonomy_level' column to session_settings table...")
+            conn.execute("ALTER TABLE session_settings ADD COLUMN autonomy_level TEXT DEFAULT 'high'")
+            conn.commit()
+            logger.info("Migration completed: Added autonomy_level column")
+        else:
+            logger.info("session_settings.autonomy_level column already exists, skipping migration")
             
     except Exception as e:
         logger.error(f"Migration failed: {e}")

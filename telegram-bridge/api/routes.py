@@ -355,16 +355,13 @@ async def execute_task(data: TaskExecuteRequest, request: Request):
     
     droid_session_id = None
     
-    # Check if there's an active CLI session for this project
-    # If CLI is running, we can't execute via Web UI (CLI holds the Factory.ai session)
+    # Check if there's an active CLI session - use its session_id for continuation
     if data.session_id:
         session = session_registry.get(data.session_id)
         if session and session.status in ('running', 'waiting'):
-            # CLI session is active - can't run droid exec (session is locked by CLI process)
-            raise HTTPException(
-                status_code=409,  # Conflict
-                detail=f"CLI session is active (status: {session.status}). Use CLI to continue, or close CLI first."
-            )
+            # CLI session exists - use its session_id to continue the conversation
+            droid_session_id = data.session_id
+            logger.info(f"Continuing CLI session {droid_session_id} via Web UI")
     
     # Create progress callback to emit WebSocket events
     async def emit_progress(activity: dict):
@@ -857,7 +854,8 @@ async def get_session_settings(session_id: str):
         settings = {
             "session_id": session_id,
             "model": "claude-sonnet-4-5-20250929",
-            "reasoning_effort": "medium"
+            "reasoning_effort": "medium",
+            "autonomy_level": "high"
         }
     return settings
 
@@ -866,13 +864,15 @@ async def get_session_settings(session_id: str):
 async def update_session_settings(
     session_id: str,
     model: Optional[str] = None,
-    reasoning_effort: Optional[str] = None
+    reasoning_effort: Optional[str] = None,
+    autonomy_level: Optional[str] = None
 ):
     """Update settings for a session"""
     settings = get_settings_repo().upsert(
         session_id=session_id,
         model=model,
-        reasoning_effort=reasoning_effort
+        reasoning_effort=reasoning_effort,
+        autonomy_level=autonomy_level
     )
     return {"success": True, "settings": settings}
 
