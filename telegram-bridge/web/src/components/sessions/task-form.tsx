@@ -5,15 +5,16 @@ import { Folder, Loader2 } from 'lucide-react'
 import CreatableSelect from 'react-select/creatable'
 import { Button } from '@/components/ui/button'
 import { useSessionActions } from '@/hooks/use-session-actions'
-import { InputBox, DEFAULT_MODEL, DEFAULT_REASONING, DEFAULT_AUTONOMY } from '@/components/chat/input-box'
+import { InputBox, DEFAULT_MODEL, DEFAULT_REASONING, DEFAULT_AUTONOMY, type UploadedImage } from '@/components/chat/input-box'
 import { DirectoryPickerModal } from '@/components/ui/directory-picker-modal'
+import { uploadImage } from '@/lib/api-client'
 import { cn } from '@/lib/utils'
 import type { ReasoningEffort } from '@/types'
 import modelsConfig from '@/config/models.json'
 import { getAuthHeaders } from '@/lib/api'
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8765'
-const AVAILABLE_MODELS = modelsConfig.models as { id: string; name: string; reasoning: boolean }[]
+const AVAILABLE_MODELS = modelsConfig.models as { id: string; name: string; reasoning: boolean; vision: boolean }[]
 
 interface DirOption {
   value: string
@@ -80,6 +81,10 @@ export function TaskForm() {
   const [dockerMode, setDockerMode] = useState(false)
   const [dirOptions, setDirOptions] = useState<DirOption[]>([])
   
+  // Image upload state
+  const [uploadedImages, setUploadedImages] = useState<UploadedImage[]>([])
+  const [isUploading, setIsUploading] = useState(false)
+  
   const { executeTask, cancelTask } = useSessionActions()
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const chatContainerRef = useRef<HTMLDivElement | null>(null)
@@ -132,6 +137,9 @@ export function TaskForm() {
     setTimeout(scrollToBottom, 100)
 
     try {
+      // Get image URLs before clearing
+      const imageUrls = uploadedImages.map(img => img.url)
+      
       const result = await executeTask({
         prompt,
         projectDir: projectDir.trim(),
@@ -139,7 +147,11 @@ export function TaskForm() {
         model: selectedModel,
         reasoningEffort: supportsReasoning ? reasoningEffort : undefined,
         autonomyLevel,
+        images: imageUrls.length > 0 ? imageUrls : undefined,
       })
+      
+      // Clear images after submission
+      setUploadedImages([])
       
       const responseContent = parseResultContent(result.result, result.error)
 
@@ -191,6 +203,36 @@ export function TaskForm() {
       setExecuting(false)
       setCurrentTaskId(null)
     }
+  }
+
+  // Image upload handlers
+  const handleImageUpload = async (file: File) => {
+    setIsUploading(true)
+    try {
+      const result = await uploadImage(file, 'custom-task')
+      const ref = `@${uploadedImages.length + 1}`
+      setUploadedImages(prev => [...prev, {
+        url: result.url,
+        public_id: result.public_id,
+        name: file.name,
+        ref,
+      }])
+    } catch (error) {
+      console.error('Failed to upload image:', error)
+    } finally {
+      setIsUploading(false)
+    }
+  }
+
+  const handleImageRemove = (index: number) => {
+    setUploadedImages(prev => {
+      const newImages = prev.filter((_, i) => i !== index)
+      return newImages.map((img, i) => ({ ...img, ref: `@${i + 1}` }))
+    })
+  }
+
+  const handleInsertRef = () => {
+    // Handled in InputBox
   }
 
   const isDisabled = !projectDir.trim()
@@ -280,6 +322,11 @@ export function TaskForm() {
                 disabled={isDisabled}
                 textareaRef={textareaRef}
                 placeholder={isDisabled ? "Select a project directory first..." : "What would you like me to do?"}
+                images={uploadedImages}
+                onImageUpload={handleImageUpload}
+                onImageRemove={handleImageRemove}
+                onInsertRef={handleInsertRef}
+                isUploading={isUploading}
               />
             </div>
           </div>
@@ -317,6 +364,11 @@ export function TaskForm() {
                 disabled={isDisabled}
                 textareaRef={textareaRef}
                 compact
+                images={uploadedImages}
+                onImageUpload={handleImageUpload}
+                onImageRemove={handleImageRemove}
+                onInsertRef={handleInsertRef}
+                isUploading={isUploading}
               />
             </div>
           </>
