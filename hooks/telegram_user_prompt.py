@@ -45,11 +45,10 @@ def main():
         sys.exit(0)
     
     # Extract session info
-    session_id = (
-        input_data.get("session_id") or 
-        input_data.get("sessionId") or 
-        "unknown"
-    )
+    session_id = input_data.get("session_id") or os.environ.get("FACTORY_SESSION_ID")
+    if not session_id:
+        logger.error("No session_id found in input or environment")
+        sys.exit(1)
     prompt = input_data.get("prompt", "")
     
     if not prompt:

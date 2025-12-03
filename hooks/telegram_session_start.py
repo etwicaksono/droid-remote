@@ -44,17 +44,11 @@ def main():
     logger.info(f"SessionStart received: {json.dumps(input_data, default=str)}")
     logger.info(f"Environment FACTORY_SESSION_ID: {os.environ.get('FACTORY_SESSION_ID', 'not set')}")
     
-    # Extract session info - try multiple possible key names
-    # Factory may nest session info or use various key names
-    session_id = (
-        os.environ.get("FACTORY_SESSION_ID") or  # Try env var first
-        input_data.get("session_id") or 
-        input_data.get("sessionId") or 
-        input_data.get("id") or
-        input_data.get("session", {}).get("id") or
-        input_data.get("session", {}).get("session_id") or
-        "unknown"
-    )
+    # Extract session info
+    session_id = input_data.get("session_id") or os.environ.get("FACTORY_SESSION_ID")
+    if not session_id:
+        logger.error("No session_id found in input or environment")
+        sys.exit(1)
     project_dir = os.environ.get("FACTORY_PROJECT_DIR", os.getcwd())
     session_name = format_session_name(project_dir, session_id)
     trigger = input_data.get("trigger", "unknown")

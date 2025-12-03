@@ -58,18 +58,16 @@ def main():
         print(json.dumps({"hookSpecificOutput": {"permissionDecision": "allow"}}))
         sys.exit(0)
     
-    # Extract session info - try multiple possible field names
-    session_id = (
-        input_data.get("session_id") or 
-        input_data.get("sessionId") or 
-        os.environ.get("FACTORY_SESSION_ID") or
-        os.environ.get("SESSION_ID") or
-        "unknown"
-    )
+    # Extract session info
+    session_id = input_data.get("session_id") or os.environ.get("FACTORY_SESSION_ID")
+    if not session_id:
+        logger.error("No session_id found in input or environment")
+        sys.exit(1)
+    
     project_dir = os.environ.get("FACTORY_PROJECT_DIR", os.getcwd())
     session_name = format_session_name(project_dir, session_id)
-    tool_name = input_data.get("tool_name") or input_data.get("toolName", "Unknown")
-    tool_input = input_data.get("tool_input") or input_data.get("toolInput", {})
+    tool_name = input_data.get("tool_name", "Unknown")
+    tool_input = input_data.get("tool_input", {})
     
     debug_log(f"Session ID: {session_id}")
     debug_log(f"Tool: {tool_name}")
