@@ -266,7 +266,7 @@ export function SessionCard({ session }: SessionCardProps) {
         clearTimeout(timeoutId)
         if (res.ok) {
           const data = await res.json()
-          if (data.thinking) setExecuting(true)
+          if (data.thinking) setCliThinking(true)
         }
       } catch {
         // Ignore - non-critical
