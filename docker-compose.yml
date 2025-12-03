@@ -25,8 +25,8 @@ services:
       # Other
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - TELEGRAM_TASK_RESULT_MAX_LENGTH=${TELEGRAM_TASK_RESULT_MAX_LENGTH:-0}
-      # Docker mode
-      - DOCKER_MODE=true
+      # Directory browser (disabled in Docker since it can't access host filesystem)
+      - ENABLE_DIRECTORY_BROWSER=false
       - PROJECT_DIRS=${PROJECT_DIRS:-}
       # Cloudinary (for image upload)
       - CLOUDINARY_CLOUD_NAME=${CLOUDINARY_CLOUD_NAME:-}

@@ -70,15 +70,15 @@ async def health_check(request: Request):
 
 @router.get("/config/project-dirs")
 async def get_project_dirs():
-    """Get Docker mode and predefined project directories"""
-    docker_mode = os.getenv("DOCKER_MODE", "false").lower() == "true"
+    """Get directory browser setting and predefined project directories"""
+    browser_enabled = os.getenv("ENABLE_DIRECTORY_BROWSER", "true").lower() == "true"
     project_dirs_str = os.getenv("PROJECT_DIRS", "")
     
     # Split by pipe delimiter, filter empty strings
     project_dirs = [d.strip() for d in project_dirs_str.split("|") if d.strip()]
     
     return {
-        "docker_mode": docker_mode,
+        "browser_enabled": browser_enabled,
         "project_dirs": project_dirs
     }
 

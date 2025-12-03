@@ -78,7 +78,7 @@ export function TaskForm() {
   const [showPicker, setShowPicker] = useState(false)
   
   // Config state
-  const [dockerMode, setDockerMode] = useState(false)
+  const [browserEnabled, setBrowserEnabled] = useState(true)
   const [dirOptions, setDirOptions] = useState<DirOption[]>([])
   
   // Image upload state
@@ -99,7 +99,7 @@ export function TaskForm() {
         const res = await fetch(`${API_BASE}/config/project-dirs`, { headers: getAuthHeaders() })
         if (res.ok) {
           const data = await res.json()
-          setDockerMode(data.docker_mode)
+          setBrowserEnabled(data.browser_enabled !== false)
           const dirs = data.project_dirs || []
           setDirOptions(dirs.map((d: string) => ({ value: d, label: d })))
         }
@@ -275,8 +275,8 @@ export function TaskForm() {
             />
           </div>
           
-          {/* Browse button - only in native mode */}
-          {!dockerMode && (
+          {/* Browse button - only when directory browser is enabled */}
+          {browserEnabled && (
             <Button
               type="button"
               variant="outline"
