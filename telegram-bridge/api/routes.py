@@ -39,13 +39,11 @@ from api.auth import (
     verify_credentials,
     verify_api_key,
     require_auth,
+    get_bridge_secret,
 )
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
-
-# Secret for hook authentication
-BRIDGE_SECRET = os.getenv("BRIDGE_SECRET", "")
 
 # Track CLI thinking state per session (in-memory, ephemeral)
 cli_thinking_state: dict[str, bool] = {}
@@ -53,7 +51,8 @@ cli_thinking_state: dict[str, bool] = {}
 
 def verify_secret(x_bridge_secret: Optional[str] = Header(None)):
     """Verify the bridge secret header"""
-    if BRIDGE_SECRET and x_bridge_secret != BRIDGE_SECRET:
+    secret = get_bridge_secret()
+    if secret and x_bridge_secret != secret:
         raise HTTPException(status_code=401, detail="Invalid bridge secret")
     return True
 

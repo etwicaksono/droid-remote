@@ -3,14 +3,27 @@ Telegram-Droid Bridge Server
 Main entry point - runs FastAPI server with Socket.IO and Telegram bot
 """
 import os
+import sys
 import asyncio
 import logging
+from pathlib import Path
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from dotenv import load_dotenv
+
+# Add project root to path for config imports
+PROJECT_ROOT = Path(__file__).parent.parent
+sys.path.insert(0, str(PROJECT_ROOT))
+
+# Load environment variables from project root first, then fallback to local
+env_file = PROJECT_ROOT / ".env"
+if env_file.exists():
+    load_dotenv(env_file)
+else:
+    load_dotenv()  # Fallback to telegram-bridge/.env
 
 from bot.telegram_bot import TelegramBotManager
 from api.routes import router
@@ -19,9 +32,6 @@ from api.auth import verify_token, verify_api_key, PUBLIC_ROUTES, log_auth_confi
 from core.session_registry import session_registry
 from core.database import get_db, migrate_tasks_cascade_delete, migrate_chat_messages_source, migrate_session_settings_autonomy
 from utils.logging_config import setup_logging
-
-# Load environment variables
-load_dotenv()
 
 # Setup logging
 setup_logging()
