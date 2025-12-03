@@ -1,4 +1,4 @@
-.PHONY: help install bridge web test clean logs docker-test docker-test-build docker-up docker-down
+.PHONY: help install bridge web test clean logs docker-test docker-test-build docker-test-clean docker-up docker-down
 
 help:
 	@echo "Droid Remote Control - Available Commands"
@@ -15,8 +15,9 @@ help:
 	@echo "make hooks           - Copy hooks to ~/.factory/hooks/"
 	@echo "make docker-up       - Build and start main containers"
 	@echo "make docker-down     - Stop and remove main containers"
-	@echo "make docker-test     - Test build in temp containers (auto-restores main)"
+	@echo "make docker-test       - Test build (pause main, run test, resume main)"
 	@echo "make docker-test-build - Build only, verify no errors"
+	@echo "make docker-test-clean - Cleanup test containers and resume main"
 
 install:
 	cd telegram-bridge && pip install -r requirements.txt
@@ -67,10 +68,13 @@ docker-test:
 	@echo Pausing main containers...
 	-docker compose stop
 	@echo Starting test containers...
-	@echo Press Ctrl+C to stop...
+	@echo Press Ctrl+C to stop, then run 'make docker-test-clean'
 	-docker compose -p droid-test up --abort-on-container-exit
+	@echo Run 'make docker-test-clean' to cleanup and resume main containers
+
+docker-test-clean:
 	@echo Cleaning up test containers...
-	docker compose -p droid-test down -v --remove-orphans
+	-docker compose -p droid-test down -v --remove-orphans
 	@echo Resuming main containers...
 	docker compose start
 	@echo Done! Main containers resumed.
