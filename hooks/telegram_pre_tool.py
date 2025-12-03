@@ -4,8 +4,9 @@ PreToolUse Hook Script
 
 Receives: JSON via stdin with tool_name and tool_input
 Action:
-  1. Send approval request to Telegram with tool details
-  2. Wait for user response (approve/deny)
+  1. Check allowlist - if allowed, return immediately
+  2. Send approval request to Web UI with tool details
+  3. Wait for user response (approve/deny/always_allow)
 Output:
   - JSON with permissionDecision: "allow" or "deny"
 """
@@ -14,16 +15,63 @@ import sys
 import json
 import uuid
 import logging
+import urllib.request
+import urllib.parse
 
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "lib"))
 
 from bridge_client import register_session, notify, wait_for_response, update_session_status, is_bridge_available
 from formatters import format_session_name, format_permission_request
-from config import PERMISSION_TIMEOUT
+from config import PERMISSION_TIMEOUT, BRIDGE_URL
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+def check_allowlist(tool_name: str, tool_input: dict) -> bool:
+    """Check if tool is in allowlist (quick HTTP check)"""
+    try:
+        params = urllib.parse.urlencode({
+            "tool_name": tool_name,
+            "tool_input": json.dumps(tool_input)
+        })
+        url = f"{BRIDGE_URL}/allowlist/check?{params}"
+        req = urllib.request.Request(url, method="GET")
+        with urllib.request.urlopen(req, timeout=0.5) as resp:
+            data = json.loads(resp.read().decode())
+            return data.get("allowed", False)
+    except Exception:
+        return False
+
+
+def add_to_allowlist(tool_name: str, tool_input: dict) -> bool:
+    """Add tool to allowlist"""
+    try:
+        # Determine pattern based on tool type
+        if tool_name == "Execute":
+            command = tool_input.get("command", "")
+            # Use first word + wildcard (e.g., "npm *")
+            parts = command.split()
+            pattern = f"{parts[0]} *" if parts else "*"
+        elif tool_name in ("Read", "Edit", "Create", "MultiEdit"):
+            pattern = "*"  # Allow all file operations
+        else:
+            pattern = "*"  # Allow all for this tool
+        
+        params = urllib.parse.urlencode({
+            "tool_name": tool_name,
+            "pattern": pattern,
+            "description": f"Auto-added via Always Allow"
+        })
+        url = f"{BRIDGE_URL}/allowlist?{params}"
+        req = urllib.request.Request(url, method="POST")
+        with urllib.request.urlopen(req, timeout=1) as resp:
+            data = json.loads(resp.read().decode())
+            return data.get("success", False)
+    except Exception as e:
+        logger.error(f"Failed to add to allowlist: {e}")
+        return False
 
 
 def main():
@@ -40,13 +88,8 @@ def main():
     # Quick check if bridge is available (300ms timeout)
     if not is_bridge_available():
         debug_log("Bridge not available, allowing tool (fail open)")
-        print(json.dumps({"permissionDecision": "allow"}))
+        print(json.dumps({"hookSpecificOutput": {"permissionDecision": "allow"}}))
         sys.exit(0)
-    
-    debug_log(f"Environment variables:")
-    for key, value in os.environ.items():
-        if 'FACTORY' in key or 'SESSION' in key or 'DROID' in key:
-            debug_log(f"  {key}={value}")
     
     try:
         input_data = json.load(sys.stdin)
@@ -71,7 +114,14 @@ def main():
     
     debug_log(f"Session ID: {session_id}")
     debug_log(f"Tool: {tool_name}")
-    debug_log(f"Tool input keys: {list(tool_input.keys()) if isinstance(tool_input, dict) else 'not a dict'}")
+    
+    # Check allowlist first - if allowed, return immediately
+    if check_allowlist(tool_name, tool_input):
+        debug_log(f"Tool {tool_name} allowed by allowlist")
+        print(json.dumps({"hookSpecificOutput": {"permissionDecision": "allow"}}))
+        sys.exit(0)
+    
+    debug_log(f"Tool {tool_name} not in allowlist, requesting permission")
     
     # Register/update session
     register_session(session_id, project_dir, session_name)
@@ -80,7 +130,7 @@ def main():
     # Format permission request message
     message = format_permission_request(session_name, tool_name, tool_input)
     
-    # Send approval request and get request_id
+    # Send approval request with "Always Allow" button
     debug_log(f"Calling notify...")
     notify_result = notify(
         session_id=session_id,
@@ -90,7 +140,7 @@ def main():
         buttons=[
             {"text": "✅ Approve", "callback": "approve"},
             {"text": "❌ Deny", "callback": "deny"},
-            {"text": "✅ Approve All", "callback": "approve_all"}
+            {"text": "✅ Always Allow", "callback": "always_allow"}
         ],
         tool_name=tool_name,
         tool_input=tool_input
@@ -114,14 +164,19 @@ def main():
     if response:
         response_lower = response.lower().strip()
         
-        if response_lower in ["approve", "yes", "y", "ok", "allow", "approve_all"]:
+        if response_lower == "always_allow":
+            # Add to allowlist and approve
+            add_to_allowlist(tool_name, tool_input)
+            output = {"hookSpecificOutput": {"permissionDecision": "allow"}}
+            logger.info(f"Tool {tool_name} added to allowlist and approved")
+        elif response_lower in ["approve", "yes", "y", "ok", "allow"]:
             output = {"hookSpecificOutput": {"permissionDecision": "allow"}}
             logger.info(f"Tool {tool_name} approved by user")
         else:
             output = {
                 "hookSpecificOutput": {
                     "permissionDecision": "deny",
-                    "permissionDecisionReason": f"User denied via Telegram: {response}"
+                    "permissionDecisionReason": f"User denied: {response}"
                 }
             }
             logger.info(f"Tool {tool_name} denied by user: {response}")

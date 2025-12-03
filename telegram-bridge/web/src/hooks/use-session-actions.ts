@@ -45,6 +45,13 @@ export function useSessionActions() {
     [socket]
   )
 
+  const alwaysAllow = useCallback(
+    ({ sessionId }: ApproveParams) => {
+      socket.emit('always_allow', { sessionId })
+    },
+    [socket]
+  )
+
   const handoff = useCallback(
     async ({ sessionId }: SessionIdParam): Promise<{ success: boolean; error?: string }> => {
       setLoading(true)
@@ -233,6 +240,7 @@ export function useSessionActions() {
     respond,
     approve,
     deny,
+    alwaysAllow,
     handoff,
     release,
     executeTask,

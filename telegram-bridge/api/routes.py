@@ -972,3 +972,54 @@ async def browse_filesystem(path: Optional[str] = None):
         raise HTTPException(status_code=403, detail=f"Permission denied: {path}")
     
     return result
+
+
+# Permission Allowlist Endpoints
+
+@router.get("/allowlist")
+async def get_allowlist():
+    """Get all permission allowlist rules"""
+    from core.repositories import get_allowlist_repo
+    rules = get_allowlist_repo().get_all()
+    return {"rules": rules}
+
+
+@router.post("/allowlist")
+async def add_allowlist_rule(tool_name: str, pattern: str, description: Optional[str] = None):
+    """Add a permission allowlist rule"""
+    from core.repositories import get_allowlist_repo
+    rule = get_allowlist_repo().add(tool_name, pattern, description)
+    if rule:
+        return {"success": True, "rule": rule}
+    else:
+        raise HTTPException(status_code=400, detail="Failed to add rule (may already exist)")
+
+
+@router.delete("/allowlist/{rule_id}")
+async def remove_allowlist_rule(rule_id: int):
+    """Remove a permission allowlist rule"""
+    from core.repositories import get_allowlist_repo
+    success = get_allowlist_repo().remove(rule_id)
+    if success:
+        return {"success": True}
+    else:
+        raise HTTPException(status_code=404, detail="Rule not found")
+
+
+@router.get("/allowlist/check")
+async def check_allowlist(tool_name: str, tool_input: str = "{}"):
+    """
+    Check if a tool call is allowed by the allowlist.
+    tool_input should be JSON-encoded.
+    Used by PreToolUse hook for quick check.
+    """
+    import json
+    from core.repositories import get_allowlist_repo
+    
+    try:
+        input_dict = json.loads(tool_input)
+    except json.JSONDecodeError:
+        input_dict = {"raw": tool_input}
+    
+    allowed = get_allowlist_repo().is_allowed(tool_name, input_dict)
+    return {"allowed": allowed, "tool_name": tool_name}

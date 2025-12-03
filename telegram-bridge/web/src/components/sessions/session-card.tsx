@@ -110,7 +110,7 @@ export function SessionCard({ session }: SessionCardProps) {
   const [pendingRequest, setPendingRequest] = useState(session.pending_request)
   // Real-time activity from droid exec streaming
   const [activityLogs, setActivityLogs] = useState<ActivityEvent[]>([])
-  const { approve, deny, executeTask, cancelTask, addChatMessage } = useSessionActions()
+  const { approve, deny, alwaysAllow, executeTask, cancelTask, addChatMessage } = useSessionActions()
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const chatContainerRef = useRef<HTMLDivElement | null>(null)
   const isLoadingOlderRef = useRef(false)
@@ -625,6 +625,12 @@ export function SessionCard({ session }: SessionCardProps) {
     }
   }
 
+  const handleAlwaysAllow = () => {
+    if (pendingRequest) {
+      alwaysAllow({ sessionId: session.id })
+    }
+  }
+
   useEffect(() => {
     adjustTextareaHeight()
   }, [taskPrompt, adjustTextareaHeight])
@@ -645,12 +651,15 @@ export function SessionCard({ session }: SessionCardProps) {
             )}
 
             {pendingRequest.type === 'permission' && (
-              <div className="mt-3 flex gap-2">
+              <div className="mt-3 flex flex-wrap gap-2">
                 <Button size="sm" onClick={handleApprove}>
                   Approve
                 </Button>
                 <Button size="sm" variant="destructive" onClick={handleDeny}>
                   Deny
+                </Button>
+                <Button size="sm" variant="outline" onClick={handleAlwaysAllow} title="Approve and add to allowlist">
+                  Always Allow
                 </Button>
               </div>
             )}

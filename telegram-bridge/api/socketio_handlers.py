@@ -139,6 +139,38 @@ def create_socketio_server() -> socketio.AsyncServer:
         return {"success": True}
     
     @sio.event
+    async def always_allow(sid, data):
+        """Handle always_allow action from Web UI - approves and adds to allowlist"""
+        session_id = data.get("sessionId")
+        request_id = data.get("requestId")
+        
+        if not session_id:
+            return {"error": "Missing sessionId"}
+        
+        # Get request_id and tool info from session if not provided
+        session = session_registry.get(session_id)
+        if session and session.pending_request:
+            if not request_id:
+                request_id = session.pending_request.id
+        
+        # Deliver "always_allow" response to the hook
+        message_queue.deliver_response(session_id, request_id, "always_allow")
+        
+        # Update permission in database
+        if request_id:
+            get_permission_repo().resolve(request_id, "always_allowed", "web")
+        
+        session_registry.update_status(session_id, SessionStatus.RUNNING)
+        session_registry.set_pending_request(session_id, None)
+        
+        # Broadcast update
+        sessions = session_registry.get_all()
+        await sio.emit("sessions_update", [s.model_dump(mode='json') for s in sessions])
+        
+        logger.info(f"Always allowed via WebSocket: session={session_id}, request={request_id}")
+        return {"success": True}
+    
+    @sio.event
     async def get_sessions(sid):
         """Get all sessions"""
         sessions = session_registry.get_all()

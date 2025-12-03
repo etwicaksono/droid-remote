@@ -649,6 +649,112 @@ _chat_repo: Optional[ChatMessageRepository] = None
 _settings_repo: Optional[SessionSettingsRepository] = None
 
 
+class AllowlistRepository:
+    """Repository for permission allowlist"""
+    
+    def add(self, tool_name: str, pattern: str, description: Optional[str] = None) -> Optional[dict]:
+        """Add a new allowlist rule"""
+        db = get_db()
+        try:
+            db.execute("""
+                INSERT INTO permission_allowlist (tool_name, pattern, description)
+                VALUES (?, ?, ?)
+            """, (tool_name, pattern, description))
+            db.commit()
+            
+            cursor = db.execute(
+                "SELECT * FROM permission_allowlist WHERE tool_name = ? AND pattern = ?",
+                (tool_name, pattern)
+            )
+            row = cursor.fetchone()
+            return row_to_dict(row) if row else None
+        except Exception:
+            # Likely duplicate
+            return None
+    
+    def remove(self, rule_id: int) -> bool:
+        """Remove an allowlist rule by ID"""
+        db = get_db()
+        cursor = db.execute("DELETE FROM permission_allowlist WHERE id = ?", (rule_id,))
+        db.commit()
+        return cursor.rowcount > 0
+    
+    def get_all(self) -> List[dict]:
+        """Get all allowlist rules"""
+        db = get_db()
+        cursor = db.execute("SELECT * FROM permission_allowlist ORDER BY tool_name, pattern")
+        return [row_to_dict(row) for row in cursor.fetchall()]
+    
+    def get_by_tool(self, tool_name: str) -> List[dict]:
+        """Get all rules for a specific tool"""
+        db = get_db()
+        cursor = db.execute(
+            "SELECT * FROM permission_allowlist WHERE tool_name = ?",
+            (tool_name,)
+        )
+        return [row_to_dict(row) for row in cursor.fetchall()]
+    
+    def is_allowed(self, tool_name: str, tool_input: Dict[str, Any]) -> bool:
+        """
+        Check if a tool call is allowed based on allowlist rules.
+        
+        Pattern matching:
+        - "*" matches everything
+        - "prefix *" matches if the relevant input starts with prefix
+        - exact string matches exactly
+        
+        For Execute tool, checks 'command' parameter.
+        For Read/Edit/Create, checks 'file_path' parameter.
+        For other tools, "*" pattern allows all.
+        """
+        rules = self.get_by_tool(tool_name)
+        if not rules:
+            return False
+        
+        for rule in rules:
+            pattern = rule['pattern']
+            
+            # Wildcard matches everything
+            if pattern == '*':
+                return True
+            
+            # Get the relevant value to match against
+            if tool_name == 'Execute':
+                value = tool_input.get('command', '')
+            elif tool_name in ('Read', 'Edit', 'Create', 'MultiEdit'):
+                value = tool_input.get('file_path', '')
+            elif tool_name == 'Grep':
+                value = tool_input.get('pattern', '')
+            elif tool_name == 'Glob':
+                value = '*'  # Glob is generally safe
+            elif tool_name == 'LS':
+                value = tool_input.get('directory_path', '*')
+            else:
+                value = str(tool_input)
+            
+            # Prefix match (e.g., "npm *" matches "npm install")
+            if pattern.endswith(' *'):
+                prefix = pattern[:-2]
+                if value.startswith(prefix):
+                    return True
+            # Exact match
+            elif value == pattern:
+                return True
+        
+        return False
+
+
+# Singleton instances
+_allowlist_repo: Optional[AllowlistRepository] = None
+
+
+def get_allowlist_repo() -> AllowlistRepository:
+    global _allowlist_repo
+    if _allowlist_repo is None:
+        _allowlist_repo = AllowlistRepository()
+    return _allowlist_repo
+
+
 def get_session_repo() -> SessionRepository:
     global _session_repo
     if _session_repo is None:

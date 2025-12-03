@@ -33,6 +33,7 @@ interface ClientToServerEvents {
   respond: (data: { sessionId: string; requestId?: string; response: string }) => void
   approve: (data: { sessionId: string; requestId?: string }) => void
   deny: (data: { sessionId: string; requestId?: string }) => void
+  always_allow: (data: { sessionId: string; requestId?: string }) => void
   get_sessions: () => void
 }
 

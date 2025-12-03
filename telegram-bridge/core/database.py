@@ -105,6 +105,16 @@ CREATE TABLE IF NOT EXISTS session_settings (
     FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
 );
 
+-- Permission allowlist (auto-approve rules)
+CREATE TABLE IF NOT EXISTS permission_allowlist (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tool_name TEXT NOT NULL,
+    pattern TEXT NOT NULL,  -- "*" for all, "npm *" for prefix match, exact string for exact match
+    description TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(tool_name, pattern)
+);
+
 -- Indexes for common queries
 CREATE INDEX IF NOT EXISTS idx_session_events_session ON session_events(session_id);
 CREATE INDEX IF NOT EXISTS idx_session_events_created ON session_events(created_at);
@@ -115,6 +125,7 @@ CREATE INDEX IF NOT EXISTS idx_tasks_session ON tasks(session_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_created ON tasks(created_at);
 CREATE INDEX IF NOT EXISTS idx_chat_messages_session ON chat_messages(session_id);
 CREATE INDEX IF NOT EXISTS idx_chat_messages_created ON chat_messages(created_at);
+CREATE INDEX IF NOT EXISTS idx_permission_allowlist_tool ON permission_allowlist(tool_name);
 """
 
 
