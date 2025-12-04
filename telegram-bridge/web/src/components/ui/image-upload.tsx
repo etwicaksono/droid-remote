@@ -118,6 +118,7 @@ export function ImagePreview({ images, onRemove, onInsertRef }: ImagePreviewProp
             onClick={() => onInsertRef(image.ref)}
             title={`Click to insert ${image.ref}`}
           >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={image.url}
               alt={image.name}
