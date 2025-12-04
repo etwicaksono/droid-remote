@@ -3,6 +3,7 @@
 import { useCallback, useState } from 'react'
 import { useDropzone } from 'react-dropzone'
 import { Paperclip, X, Loader2, ImageIcon } from 'lucide-react'
+import Image from 'next/image'
 import { Button } from './button'
 import { cn } from '@/lib/utils'
 
@@ -118,11 +119,12 @@ export function ImagePreview({ images, onRemove, onInsertRef }: ImagePreviewProp
             onClick={() => onInsertRef(image.ref)}
             title={`Click to insert ${image.ref}`}
           >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
+            <Image
               src={image.url}
               alt={image.name}
-              className="h-full w-full object-cover"
+              fill
+              className="object-cover"
+              sizes="64px"
             />
             {/* Reference badge */}
             <div className="absolute bottom-0 left-0 right-0 bg-black/70 text-white text-xs text-center py-0.5 font-mono">
