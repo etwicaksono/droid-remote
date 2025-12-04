@@ -115,6 +115,16 @@ CREATE TABLE IF NOT EXISTS permission_allowlist (
     UNIQUE(tool_name, pattern)
 );
 
+-- Session images (for Cloudinary cleanup on session delete)
+CREATE TABLE IF NOT EXISTS session_images (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id TEXT NOT NULL,
+    public_id TEXT NOT NULL,  -- Cloudinary public_id
+    url TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+);
+
 -- Indexes for common queries
 CREATE INDEX IF NOT EXISTS idx_session_events_session ON session_events(session_id);
 CREATE INDEX IF NOT EXISTS idx_session_events_created ON session_events(created_at);
@@ -126,6 +136,7 @@ CREATE INDEX IF NOT EXISTS idx_tasks_created ON tasks(created_at);
 CREATE INDEX IF NOT EXISTS idx_chat_messages_session ON chat_messages(session_id);
 CREATE INDEX IF NOT EXISTS idx_chat_messages_created ON chat_messages(created_at);
 CREATE INDEX IF NOT EXISTS idx_permission_allowlist_tool ON permission_allowlist(tool_name);
+CREATE INDEX IF NOT EXISTS idx_session_images_session ON session_images(session_id);
 """
 
 
@@ -362,6 +373,34 @@ def migrate_session_settings_autonomy():
             logger.info("Migration completed: Added autonomy_level column")
         else:
             logger.info("session_settings.autonomy_level column already exists, skipping migration")
+            
+    except Exception as e:
+        logger.error(f"Migration failed: {e}")
+        conn.rollback()
+
+
+def migrate_chat_messages_images():
+    """
+    Migration: Add images column to chat_messages table (JSON array of image URLs)
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    db = Database.get_instance()
+    conn = db._get_connection()
+    
+    try:
+        # Check if column exists
+        cursor = conn.execute("PRAGMA table_info(chat_messages)")
+        columns = [row[1] for row in cursor.fetchall()]
+        
+        if 'images' not in columns:
+            logger.info("Adding 'images' column to chat_messages table...")
+            conn.execute("ALTER TABLE chat_messages ADD COLUMN images TEXT")  # JSON array
+            conn.commit()
+            logger.info("Migration completed: Added images column")
+        else:
+            logger.info("chat_messages.images column already exists, skipping migration")
             
     except Exception as e:
         logger.error(f"Migration failed: {e}")

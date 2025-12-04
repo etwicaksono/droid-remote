@@ -516,14 +516,16 @@ class ChatMessageRepository:
         status: Optional[str] = None,
         duration_ms: Optional[int] = None,
         num_turns: Optional[int] = None,
-        source: str = 'web'  # 'web' or 'cli'
+        source: str = 'web',  # 'web' or 'cli'
+        images: Optional[List[str]] = None  # List of image URLs
     ) -> dict:
         """Create a new chat message"""
         db = get_db()
+        images_json = json_serialize(images) if images else None
         cursor = db.execute("""
-            INSERT INTO chat_messages (session_id, type, content, status, duration_ms, num_turns, source)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, (session_id, msg_type, content, status, duration_ms, num_turns, source))
+            INSERT INTO chat_messages (session_id, type, content, status, duration_ms, num_turns, source, images)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (session_id, msg_type, content, status, duration_ms, num_turns, source, images_json))
         db.commit()
         
         return {
@@ -535,8 +537,16 @@ class ChatMessageRepository:
             "duration_ms": duration_ms,
             "num_turns": num_turns,
             "source": source,
+            "images": images,
             "created_at": datetime.utcnow().isoformat()
         }
+    
+    def _parse_message(self, row: dict) -> dict:
+        """Parse a message row, deserializing images JSON"""
+        msg = row_to_dict(row) if hasattr(row, 'keys') else row
+        if msg.get('images'):
+            msg['images'] = json_deserialize(msg['images'])
+        return msg
     
     def get_by_session(self, session_id: str, limit: int = 100) -> List[dict]:
         """Get chat messages for a session (oldest first)"""
@@ -547,7 +557,7 @@ class ChatMessageRepository:
             ORDER BY created_at ASC
             LIMIT ?
         """, (session_id, limit))
-        return [row_to_dict(row) for row in cursor.fetchall()]
+        return [self._parse_message(row) for row in cursor.fetchall()]
     
     def get_by_session_paginated(self, session_id: str, limit: int = 30, offset: int = 0) -> List[dict]:
         """Get chat messages for a session with pagination (newest first, then reversed for display)"""
@@ -559,7 +569,7 @@ class ChatMessageRepository:
             ORDER BY created_at DESC
             LIMIT ? OFFSET ?
         """, (session_id, limit, offset))
-        messages = [row_to_dict(row) for row in cursor.fetchall()]
+        messages = [self._parse_message(row) for row in cursor.fetchall()]
         # Reverse to get chronological order (oldest first for display)
         return list(reversed(messages))
     

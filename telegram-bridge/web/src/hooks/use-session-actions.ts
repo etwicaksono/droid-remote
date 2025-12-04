@@ -207,6 +207,7 @@ export function useSessionActions() {
       status?: 'success' | 'error'
       durationMs?: number
       numTurns?: number
+      images?: string[]  // Array of image URLs
     }) => {
       const searchParams = new URLSearchParams({
         msg_type: params.type,
@@ -215,6 +216,9 @@ export function useSessionActions() {
       if (params.status) searchParams.append('status', params.status)
       if (params.durationMs) searchParams.append('duration_ms', String(params.durationMs))
       if (params.numTurns) searchParams.append('num_turns', String(params.numTurns))
+      if (params.images && params.images.length > 0) {
+        searchParams.append('images', JSON.stringify(params.images))
+      }
       
       const res = await fetch(`${API_BASE}/sessions/${params.sessionId}/chat?${searchParams}`, {
         method: 'POST',

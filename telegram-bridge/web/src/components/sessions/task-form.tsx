@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { useSessionActions } from '@/hooks/use-session-actions'
 import { InputBox, DEFAULT_MODEL, DEFAULT_REASONING, DEFAULT_AUTONOMY, type UploadedImage } from '@/components/chat/input-box'
 import { DirectoryPickerModal } from '@/components/ui/directory-picker-modal'
-import { uploadImage } from '@/lib/api-client'
+import { uploadImage, deleteImage } from '@/lib/api-client'
 import { cn } from '@/lib/utils'
 import type { ReasoningEffort } from '@/types'
 import modelsConfig from '@/config/models.json'
@@ -224,11 +224,23 @@ export function TaskForm() {
     }
   }
 
-  const handleImageRemove = (index: number) => {
+  const handleImageRemove = async (index: number) => {
+    const imageToRemove = uploadedImages[index]
+    
+    // Remove from local state immediately
     setUploadedImages(prev => {
       const newImages = prev.filter((_, i) => i !== index)
       return newImages.map((img, i) => ({ ...img, ref: `@${i + 1}` }))
     })
+    
+    // Delete from Cloudinary in background
+    if (imageToRemove?.public_id) {
+      try {
+        await deleteImage(imageToRemove.public_id)
+      } catch (error) {
+        console.error('Failed to delete image from Cloudinary:', error)
+      }
+    }
   }
 
   const handleInsertRef = () => {

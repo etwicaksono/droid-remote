@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback, type FormEvent } from 'react'
+import Image from 'next/image'
 import { Terminal, Loader2, Clock, ChevronDown, ChevronRight, X, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -9,7 +10,7 @@ import { getSocket } from '@/lib/socket'
 import { getAuthHeaders } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { InputBox, DEFAULT_MODEL, DEFAULT_REASONING, DEFAULT_AUTONOMY, type UploadedImage } from '@/components/chat/input-box'
-import { uploadImage } from '@/lib/api-client'
+import { uploadImage, deleteImage } from '@/lib/api-client'
 import type { Session, ControlState, ReasoningEffort, QueuedMessage } from '@/types'
 import modelsConfig from '@/config/models.json'
 
@@ -83,6 +84,7 @@ interface ChatMessage {
   status?: 'success' | 'error'
   meta?: { duration?: number; turns?: number }
   source?: 'web' | 'cli'
+  images?: string[]  // Array of image URLs
 }
 
 // Activity event from stream-json
@@ -159,7 +161,8 @@ export function SessionCard({ session }: SessionCardProps) {
     meta: msg.duration_ms || msg.num_turns ? {
       duration: msg.duration_ms,
       turns: msg.num_turns
-    } : undefined
+    } : undefined,
+    images: msg.images || undefined
   })
 
   // Sync local state with session prop changes
@@ -523,12 +526,16 @@ export function SessionCard({ session }: SessionCardProps) {
     setExecuting(true)
     setCurrentTaskId(taskId) // Set immediately before execution
 
+    // Get image URLs before clearing (need them for both message and task)
+    const imageUrls = uploadedImages.map(img => img.url)
+    
     // Save user message to API and add to local state immediately
     try {
       const response = await addChatMessage({
         sessionId: session.id,
         type: 'user',
         content: prompt,
+        images: imageUrls.length > 0 ? imageUrls : undefined,
       })
       // Add user message with DB-assigned ID immediately
       if (response?.message) {
@@ -537,6 +544,7 @@ export function SessionCard({ session }: SessionCardProps) {
           type: 'user',
           content: prompt,
           timestamp: new Date(response.message.created_at || Date.now()),
+          images: imageUrls.length > 0 ? imageUrls : undefined,
         }
         setChatHistory(prev => {
           if (prev.some(msg => msg.id === userMessage.id)) return prev
@@ -550,14 +558,13 @@ export function SessionCard({ session }: SessionCardProps) {
         type: 'user',
         content: prompt,
         timestamp: new Date(),
+        images: imageUrls.length > 0 ? imageUrls : undefined,
       }
       setChatHistory(prev => [...prev, userMessage])
     }
 
     // Execute task in background - result will come via WebSocket
     try {
-      // Get image URLs before clearing
-      const imageUrls = uploadedImages.map(img => img.url)
       console.log(`[Submit] Sending task with ${imageUrls.length} image(s):`, imageUrls)
       
       await executeTask({
@@ -729,12 +736,25 @@ export function SessionCard({ session }: SessionCardProps) {
     }
   }
 
-  const handleImageRemove = (index: number) => {
+  const handleImageRemove = async (index: number) => {
+    const imageToRemove = uploadedImages[index]
+    
+    // Remove from local state immediately
     setUploadedImages(prev => {
       const newImages = prev.filter((_, i) => i !== index)
       // Re-number refs
       return newImages.map((img, i) => ({ ...img, ref: `@${i + 1}` }))
     })
+    
+    // Delete from Cloudinary in background
+    if (imageToRemove?.public_id) {
+      try {
+        await deleteImage(imageToRemove.public_id)
+      } catch (error) {
+        console.error('Failed to delete image from Cloudinary:', error)
+        // Don't show error to user - image is already removed from UI
+      }
+    }
   }
 
   const handleInsertRef = (ref: string) => {
@@ -996,8 +1016,10 @@ export function SessionCard({ session }: SessionCardProps) {
 function ChatBubble({ message }: { message: ChatMessage }) {
   const [expanded, setExpanded] = useState(false)
   const [showTimestamp, setShowTimestamp] = useState(false)
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null)
   const isUser = message.type === 'user'
   const isLong = message.content.length > 300
+  const hasImages = message.images && message.images.length > 0
 
   const formattedTime = message.timestamp.toLocaleString(undefined, {
     month: 'short',
@@ -1007,70 +1029,141 @@ function ChatBubble({ message }: { message: ChatMessage }) {
     minute: '2-digit',
   })
 
+  // Handle escape key to close lightbox
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setLightboxUrl(null)
+    }
+    if (lightboxUrl) {
+      document.addEventListener('keydown', handleEscape)
+      return () => document.removeEventListener('keydown', handleEscape)
+    }
+  }, [lightboxUrl])
+
   return (
-    <div className={cn('flex', isUser ? 'justify-end me-2' : 'justify-start ms-2')}>
-      <div
-        className={cn(
-          'max-w-[90%] sm:max-w-[85%] rounded-lg px-3 py-2 group relative',
-          isUser
-            ? 'bg-blue-600 text-white'
-            : message.status === 'error'
-            ? 'bg-red-500/20 border border-red-500/30'
-            : 'bg-muted'
-        )}
-        onClick={() => setShowTimestamp(prev => !prev)}
-        title={formattedTime}
-      >
-        {/* Message Content */}
-        <div className="text-sm whitespace-pre-wrap break-words">
-          {isLong && !expanded
-            ? message.content.substring(0, 300) + '...'
-            : message.content}
-        </div>
-
-        {/* Show more/less for long messages */}
-        {isLong && (
-          <button
-            className="text-xs mt-1 opacity-70 hover:opacity-100"
-            onClick={() => setExpanded(!expanded)}
-          >
-            {expanded ? 'Show less' : 'Show more'}
-          </button>
-        )}
-
-        {/* Meta info for assistant messages */}
-        {!isUser && (message.meta || message.source) && (
-          <div className="flex items-center gap-2 mt-1 text-xs opacity-60">
-            {message.source === 'cli' && (
-              <span className="px-1 py-0.5 bg-blue-500/20 text-blue-400 rounded text-[10px]">CLI</span>
-            )}
-            {message.meta?.duration && message.meta.duration > 0 && (
-              <span>{(message.meta.duration / 1000).toFixed(1)}s</span>
-            )}
-            {message.meta?.turns && message.meta.turns > 0 && (
-              <span>{message.meta.turns} turns</span>
-            )}
+    <>
+      <div className={cn('flex', isUser ? 'justify-end me-2' : 'justify-start ms-2')}>
+        <div
+          className={cn(
+            'max-w-[90%] sm:max-w-[85%] rounded-lg px-3 py-2 group relative',
+            isUser
+              ? 'bg-blue-600 text-white'
+              : message.status === 'error'
+              ? 'bg-red-500/20 border border-red-500/30'
+              : 'bg-muted'
+          )}
+          onClick={() => setShowTimestamp(prev => !prev)}
+          title={formattedTime}
+        >
+          {/* Images */}
+          {hasImages && (
+            <div className="flex flex-wrap gap-2 mb-2">
+              {message.images!.map((url, idx) => (
+                <div
+                  key={idx}
+                  className="relative h-20 w-20 rounded border border-white/20 overflow-hidden cursor-pointer hover:ring-2 hover:ring-white/50 transition-all"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setLightboxUrl(url)
+                  }}
+                >
+                  <Image
+                    src={url}
+                    alt={`Image ${idx + 1}`}
+                    fill
+                    className="object-cover"
+                    sizes="80px"
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+          
+          {/* Message Content */}
+          <div className="text-sm whitespace-pre-wrap break-words">
+            {isLong && !expanded
+              ? message.content.substring(0, 300) + '...'
+              : message.content}
           </div>
-        )}
-        
-        {/* Source indicator for user messages */}
-        {isUser && message.source === 'cli' && (
-          <div className="flex justify-end mt-1">
-            <span className="px-1 py-0.5 bg-white/20 rounded text-[10px]">CLI</span>
-          </div>
-        )}
 
-        {/* Timestamp - visible on hover (desktop) or click (mobile) */}
-        <div className={cn(
-          'text-[10px] mt-1 transition-opacity duration-200',
-          isUser ? 'text-white/60' : 'text-muted-foreground',
-          'sm:opacity-0 sm:group-hover:opacity-100',
-          showTimestamp ? 'opacity-100' : 'opacity-0 sm:opacity-0'
-        )}>
-          {formattedTime}
+          {/* Show more/less for long messages */}
+          {isLong && (
+            <button
+              className="text-xs mt-1 opacity-70 hover:opacity-100"
+              onClick={(e) => {
+                e.stopPropagation()
+                setExpanded(!expanded)
+              }}
+            >
+              {expanded ? 'Show less' : 'Show more'}
+            </button>
+          )}
+
+          {/* Meta info for assistant messages */}
+          {!isUser && (message.meta || message.source) && (
+            <div className="flex items-center gap-2 mt-1 text-xs opacity-60">
+              {message.source === 'cli' && (
+                <span className="px-1 py-0.5 bg-blue-500/20 text-blue-400 rounded text-[10px]">CLI</span>
+              )}
+              {message.meta?.duration && message.meta.duration > 0 && (
+                <span>{(message.meta.duration / 1000).toFixed(1)}s</span>
+              )}
+              {message.meta?.turns && message.meta.turns > 0 && (
+                <span>{message.meta.turns} turns</span>
+              )}
+            </div>
+          )}
+          
+          {/* Source indicator for user messages */}
+          {isUser && message.source === 'cli' && (
+            <div className="flex justify-end mt-1">
+              <span className="px-1 py-0.5 bg-white/20 rounded text-[10px]">CLI</span>
+            </div>
+          )}
+
+          {/* Timestamp - visible on hover (desktop) or click (mobile) */}
+          <div className={cn(
+            'text-[10px] mt-1 transition-opacity duration-200',
+            isUser ? 'text-white/60' : 'text-muted-foreground',
+            'sm:opacity-0 sm:group-hover:opacity-100',
+            showTimestamp ? 'opacity-100' : 'opacity-0 sm:opacity-0'
+          )}>
+            {formattedTime}
+          </div>
         </div>
       </div>
-    </div>
+      
+      {/* Lightbox Overlay */}
+      {lightboxUrl && (
+        <div 
+          className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4"
+          onClick={() => setLightboxUrl(null)}
+        >
+          <button
+            onClick={() => setLightboxUrl(null)}
+            className="absolute top-4 right-4 p-2 bg-white/10 hover:bg-white/20 rounded-full text-white transition-colors"
+            title="Close (Esc)"
+          >
+            <X className="h-6 w-6" />
+          </button>
+          
+          <div 
+            className="relative max-w-4xl max-h-[85vh] w-full flex items-center justify-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <Image
+              src={lightboxUrl}
+              alt="Full size"
+              width={1200}
+              height={900}
+              className="object-contain max-h-[85vh] w-auto h-auto rounded-lg"
+              sizes="(max-width: 768px) 100vw, 1200px"
+              priority
+            />
+          </div>
+        </div>
+      )}
+    </>
   )
 }
 

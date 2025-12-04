@@ -36,7 +36,7 @@ def check_allowlist(tool_name: str, tool_input: dict) -> bool:
             "tool_name": tool_name,
             "tool_input": json.dumps(tool_input)
         })
-        url = f"{BRIDGE_URL}/allowlist/check?{params}"
+        url = f"{BRIDGE_URL}/hooks/allowlist/check?{params}"
         req = urllib.request.Request(url, method="GET")
         req.add_header("X-Bridge-Secret", BRIDGE_SECRET)
         with urllib.request.urlopen(req, timeout=0.5) as resp:

@@ -102,6 +102,8 @@ def upload_to_cloudinary(content: bytes, filename: str, session_id: str) -> Dict
     try:
         import io
         import time
+        from datetime import datetime
+        
         safe_filename = secure_filename(filename)
         
         # Remove extension from filename (Cloudinary adds it automatically)
@@ -111,9 +113,12 @@ def upload_to_cloudinary(content: bytes, filename: str, session_id: str) -> Dict
         timestamp = int(time.time() * 1000)
         unique_id = f"session-{session_id}-{name_without_ext}-{timestamp}"
         
+        # Organize by date (YYYY-MM-DD)
+        date_folder = datetime.now().strftime('%Y-%m-%d')
+        
         result = cloudinary.uploader.upload(
             io.BytesIO(content),
-            folder="droid-remote",
+            folder=f"droid-remote/{date_folder}",
             public_id=unique_id,
             resource_type="image",
             overwrite=True,  # Allow overwrite since we have unique timestamp
@@ -151,6 +156,67 @@ def delete_from_cloudinary(public_id: str) -> bool:
     except Exception as e:
         logger.error(f"Error deleting {public_id}: {e}")
         return False
+
+
+def save_image_record(session_id: str, public_id: str, url: str) -> bool:
+    """Save image record to database for tracking"""
+    try:
+        from core.database import get_db
+        db = get_db()
+        
+        # Check if session exists (foreign key constraint)
+        cursor = db.execute("SELECT 1 FROM sessions WHERE id = ?", (session_id,))
+        if not cursor.fetchone():
+            logger.debug(f"Session {session_id} not found, skipping image record")
+            return False
+        
+        db.execute(
+            "INSERT INTO session_images (session_id, public_id, url) VALUES (?, ?, ?)",
+            (session_id, public_id, url)
+        )
+        db.commit()
+        logger.info(f"Saved image record: {public_id} for session {session_id}")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to save image record: {e}")
+        return False
+
+
+def get_session_images(session_id: str) -> list:
+    """Get all images for a session"""
+    try:
+        from core.database import get_db
+        db = get_db()
+        cursor = db.execute(
+            "SELECT public_id, url FROM session_images WHERE session_id = ?",
+            (session_id,)
+        )
+        return [{"public_id": row[0], "url": row[1]} for row in cursor.fetchall()]
+    except Exception as e:
+        logger.error(f"Failed to get session images: {e}")
+        return []
+
+
+def delete_session_images(session_id: str) -> int:
+    """Delete all images for a session from Cloudinary and database"""
+    images = get_session_images(session_id)
+    deleted_count = 0
+    
+    for img in images:
+        if delete_from_cloudinary(img["public_id"]):
+            deleted_count += 1
+    
+    # Delete records from database (CASCADE will handle this, but be explicit)
+    try:
+        from core.database import get_db
+        db = get_db()
+        db.execute("DELETE FROM session_images WHERE session_id = ?", (session_id,))
+        db.commit()
+    except Exception as e:
+        logger.error(f"Failed to delete image records: {e}")
+    
+    logger.info(f"Deleted {deleted_count}/{len(images)} images for session {session_id}")
+    return deleted_count
 
 
 # Initialize on module load

@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useState } from 'react'
+import { useCallback, useState, useEffect } from 'react'
 import { useDropzone } from 'react-dropzone'
 import { Paperclip, X, Loader2, ImageIcon } from 'lucide-react'
 import Image from 'next/image'
@@ -108,45 +108,105 @@ interface ImagePreviewProps {
 }
 
 export function ImagePreview({ images, onRemove, onInsertRef }: ImagePreviewProps) {
+  const [lightboxImage, setLightboxImage] = useState<UploadedImage | null>(null)
+  
+  // Handle escape key to close lightbox
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setLightboxImage(null)
+    }
+    if (lightboxImage) {
+      document.addEventListener('keydown', handleEscape)
+      return () => document.removeEventListener('keydown', handleEscape)
+    }
+  }, [lightboxImage])
+  
   if (images.length === 0) return null
 
   return (
-    <div className="flex flex-wrap gap-2 p-2 border-b border-border">
-      {images.map((image, index) => (
-        <div key={image.public_id} className="relative group">
+    <>
+      <div className="flex flex-wrap gap-2 p-2 border-b border-border">
+        {images.map((image, index) => (
+          <div key={image.public_id} className="relative group">
+            <div 
+              className="relative h-16 w-16 rounded border border-border overflow-hidden cursor-pointer hover:ring-2 hover:ring-primary transition-all"
+              onClick={() => setLightboxImage(image)}
+              title="Click to view larger"
+            >
+              <Image
+                src={image.url}
+                alt={image.name}
+                fill
+                className="object-cover"
+                sizes="64px"
+              />
+            </div>
+            
+            {/* Reference badge - click to insert */}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                onInsertRef(image.ref)
+              }}
+              className="absolute bottom-0 left-0 right-0 bg-black/70 text-white text-xs text-center py-0.5 font-mono hover:bg-primary transition-colors"
+              title={`Click to insert ${image.ref}`}
+            >
+              {image.ref}
+            </button>
+            
+            {/* Remove button */}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                onRemove(index)
+              }}
+              className="absolute -top-1.5 -right-1.5 p-0.5 bg-destructive text-destructive-foreground rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+              title="Remove image"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </div>
+        ))}
+      </div>
+      
+      {/* Lightbox Overlay */}
+      {lightboxImage && (
+        <div 
+          className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4"
+          onClick={() => setLightboxImage(null)}
+        >
+          {/* Close button */}
+          <button
+            onClick={() => setLightboxImage(null)}
+            className="absolute top-4 right-4 p-2 bg-white/10 hover:bg-white/20 rounded-full text-white transition-colors"
+            title="Close (Esc)"
+          >
+            <X className="h-6 w-6" />
+          </button>
+          
+          {/* Image container */}
           <div 
-            className="relative h-16 w-16 rounded border border-border overflow-hidden cursor-pointer hover:ring-2 hover:ring-primary transition-all"
-            onClick={() => onInsertRef(image.ref)}
-            title={`Click to insert ${image.ref}`}
+            className="relative max-w-4xl max-h-[85vh] w-full"
+            onClick={(e) => e.stopPropagation()}
           >
             <Image
-              src={image.url}
-              alt={image.name}
-              fill
-              className="object-cover"
-              sizes="64px"
+              src={lightboxImage.url}
+              alt={lightboxImage.name}
+              width={1200}
+              height={900}
+              className="object-contain max-h-[85vh] w-auto h-auto mx-auto rounded-lg"
+              sizes="(max-width: 768px) 100vw, 1200px"
+              priority
             />
-            {/* Reference badge */}
-            <div className="absolute bottom-0 left-0 right-0 bg-black/70 text-white text-xs text-center py-0.5 font-mono">
-              {image.ref}
-            </div>
+            <p className="text-center text-sm text-white/70 mt-3">
+              {lightboxImage.name}
+            </p>
           </div>
-          
-          {/* Remove button */}
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation()
-              onRemove(index)
-            }}
-            className="absolute -top-1.5 -right-1.5 p-0.5 bg-destructive text-destructive-foreground rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-            title="Remove image"
-          >
-            <X className="h-3 w-3" />
-          </button>
         </div>
-      ))}
-    </div>
+      )}
+    </>
   )
 }
 

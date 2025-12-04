@@ -39,11 +39,19 @@ from api.auth import (
     verify_credentials,
     verify_api_key,
     require_auth,
+    require_bearer,
+    require_api_key,
     get_bridge_secret,
 )
 
 logger = logging.getLogger(__name__)
-router = APIRouter()
+
+# Two routers for organizational separation
+# web_router: General endpoints (Web UI and shared)
+# hooks_router: CLI hook endpoints (mounted at /hooks prefix)
+# Auth is handled by middleware (accepts both Bearer tokens and API keys)
+web_router = APIRouter()
+hooks_router = APIRouter(prefix="/hooks")
 
 # Track CLI thinking state per session (in-memory, ephemeral)
 cli_thinking_state: dict[str, bool] = {}
@@ -57,7 +65,7 @@ def verify_secret(x_bridge_secret: Optional[str] = Header(None)):
     return True
 
 
-@router.get("/health", response_model=HealthResponse)
+@web_router.get("/health", response_model=HealthResponse)
 async def health_check(request: Request):
     """Health check endpoint"""
     bot_manager = request.app.state.bot_manager()
@@ -68,7 +76,7 @@ async def health_check(request: Request):
     )
 
 
-@router.get("/config/project-dirs")
+@web_router.get("/config/project-dirs")
 async def get_project_dirs():
     """Get directory browser setting and predefined project directories"""
     browser_enabled = os.getenv("ENABLE_DIRECTORY_BROWSER", "true").lower() == "true"
@@ -85,7 +93,7 @@ async def get_project_dirs():
 
 # ============ Auth Endpoints ============
 
-@router.post("/auth/login")
+@web_router.post("/auth/login")
 async def login(request: Request):
     """Login with username and password, returns JWT token"""
     try:
@@ -107,7 +115,7 @@ async def login(request: Request):
     }
 
 
-@router.get("/auth/verify")
+@web_router.get("/auth/verify")
 async def verify_auth(request: Request, user: str = Depends(require_auth)):
     """Verify if the current token is valid"""
     return {
@@ -117,7 +125,7 @@ async def verify_auth(request: Request, user: str = Depends(require_auth)):
     }
 
 
-@router.post("/auth/refresh")
+@web_router.post("/auth/refresh")
 async def refresh_token(request: Request, user: str = Depends(require_auth)):
     """Refresh the JWT token"""
     token = create_token(user)
@@ -128,7 +136,7 @@ async def refresh_token(request: Request, user: str = Depends(require_auth)):
     }
 
 
-@router.post("/sessions/register", dependencies=[Depends(verify_secret)])
+@hooks_router.post("/sessions/register")
 async def register_session(data: RegisterSessionRequest, request: Request):
     """Register or update a Droid session"""
     session = session_registry.register(
@@ -146,7 +154,7 @@ async def register_session(data: RegisterSessionRequest, request: Request):
     return {"success": True, "session": session.model_dump(mode='json')}
 
 
-@router.get("/sessions")
+@web_router.get("/sessions")
 async def get_sessions():
     """Get all sessions with queue counts"""
     sessions = session_registry.get_all()
@@ -158,7 +166,7 @@ async def get_sessions():
     return result
 
 
-@router.get("/sessions/{session_id}")
+@web_router.get("/sessions/{session_id}")
 async def get_session(session_id: str):
     """Get a single session by ID"""
     session = session_registry.get(session_id)
@@ -170,7 +178,7 @@ async def get_session(session_id: str):
     return result
 
 
-@router.patch("/sessions/{session_id}", dependencies=[Depends(verify_secret)])
+@hooks_router.patch("/sessions/{session_id}")
 async def update_session(session_id: str, data: UpdateSessionRequest, request: Request):
     """Update session attributes"""
     session = session_registry.get(session_id)
@@ -201,7 +209,7 @@ async def update_session(session_id: str, data: UpdateSessionRequest, request: R
     return {"success": True, "session": session.model_dump(mode='json')}
 
 
-@router.patch("/sessions/{session_id}/rename")
+@web_router.patch("/sessions/{session_id}/rename")
 async def rename_session(session_id: str, name: str, request: Request):
     """Rename a session"""
     session = session_registry.get(session_id)
@@ -228,13 +236,17 @@ async def rename_session(session_id: str, name: str, request: Request):
     return {"success": True, "session": session.model_dump(mode='json')}
 
 
-@router.delete("/sessions/{session_id}")
+@web_router.delete("/sessions/{session_id}")
 async def delete_session(session_id: str, request: Request):
     """Delete a session"""
     # Get session before deleting to access project_dir
     session = session_registry.get(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
+    
+    # Delete images from Cloudinary
+    from .cloudinary_handler import delete_session_images
+    delete_session_images(session_id)
     
     # Clear droid exec session for this project (if any)
     task_executor.clear_session(session.project_dir)
@@ -256,7 +268,7 @@ async def delete_session(session_id: str, request: Request):
     return {"success": True}
 
 
-@router.post("/sessions/{session_id}/notify", dependencies=[Depends(verify_secret)])
+@hooks_router.post("/sessions/{session_id}/notify")
 async def notify_session(session_id: str, data: NotifyRequest, request: Request):
     """Send notification to Telegram for a session"""
     session = session_registry.get(session_id)
@@ -319,7 +331,7 @@ async def notify_session(session_id: str, data: NotifyRequest, request: Request)
     return {"success": True, "request_id": request_id}
 
 
-@router.post("/sessions/{session_id}/wait", dependencies=[Depends(verify_secret)])
+@hooks_router.post("/sessions/{session_id}/wait")
 async def wait_for_response(session_id: str, data: WaitRequest):
     """Wait for user response (blocking)"""
     session = session_registry.get(session_id)
@@ -345,7 +357,7 @@ async def wait_for_response(session_id: str, data: WaitRequest):
     return WaitResponse(response=response, timeout=False, has_response=True)
 
 
-@router.get("/sessions/{session_id}/response/{request_id}", dependencies=[Depends(verify_secret)])
+@hooks_router.get("/sessions/{session_id}/response/{request_id}")
 async def get_pending_response(session_id: str, request_id: str):
     """Check for pending response without blocking"""
     response = message_queue.get_pending_response(session_id, request_id)
@@ -356,7 +368,7 @@ async def get_pending_response(session_id: str, request_id: str):
     return WaitResponse(response=response, has_response=True)
 
 
-@router.post("/sessions/{session_id}/respond", dependencies=[Depends(verify_secret)])
+@hooks_router.post("/sessions/{session_id}/respond")
 async def respond_to_session(session_id: str, data: RespondRequest, request: Request):
     """Deliver a response to a waiting session"""
     session = session_registry.get(session_id)
@@ -386,7 +398,7 @@ async def respond_to_session(session_id: str, data: RespondRequest, request: Req
 
 # Task Execution Endpoints (droid exec)
 
-@router.post("/tasks/execute", response_model=TaskResponse)
+@web_router.post("/tasks/execute", response_model=TaskResponse)
 async def execute_task(data: TaskExecuteRequest, request: Request):
     """
     Execute a task using droid exec (headless mode).
@@ -588,7 +600,7 @@ async def execute_task(data: TaskExecuteRequest, request: Request):
     )
 
 
-@router.post("/tasks/{task_id}/cancel")
+@web_router.post("/tasks/{task_id}/cancel")
 async def cancel_task(task_id: str, request: Request):
     """Cancel a running task."""
     success = task_executor.cancel_task(task_id)
@@ -606,14 +618,14 @@ async def cancel_task(task_id: str, request: Request):
     return {"success": True, "message": "Task cancelled"}
 
 
-@router.get("/tasks/{project_dir:path}/session")
+@web_router.get("/tasks/{project_dir:path}/session")
 async def get_project_session(project_dir: str):
     """Get the stored session ID for a project (for continuation)."""
     session_id = task_executor.get_session_id(project_dir)
     return {"session_id": session_id}
 
 
-@router.delete("/tasks/{project_dir:path}/session")
+@web_router.delete("/tasks/{project_dir:path}/session")
 async def clear_project_session(project_dir: str):
     """Clear the stored session for a project (start fresh)."""
     success = task_executor.clear_session(project_dir)
@@ -622,7 +634,7 @@ async def clear_project_session(project_dir: str):
 
 # Queue Management Endpoints
 
-@router.get("/sessions/{session_id}/queue")
+@web_router.get("/sessions/{session_id}/queue")
 async def get_session_queue(session_id: str):
     """Get queued messages for a session"""
     session = session_registry.get(session_id)
@@ -633,7 +645,7 @@ async def get_session_queue(session_id: str):
     return {"session_id": session_id, "messages": messages, "count": len(messages)}
 
 
-@router.post("/sessions/{session_id}/queue")
+@web_router.post("/sessions/{session_id}/queue")
 async def add_to_queue(session_id: str, content: str, source: str = "web", request: Request = None):
     """Add a message to the queue"""
     session = session_registry.get(session_id)
@@ -670,7 +682,7 @@ async def add_to_queue(session_id: str, content: str, source: str = "web", reque
     return {"success": True, "message": message}
 
 
-@router.delete("/sessions/{session_id}/queue/{message_id}")
+@web_router.delete("/sessions/{session_id}/queue/{message_id}")
 async def cancel_queued_message(session_id: str, message_id: int, request: Request):
     """Cancel a specific queued message"""
     success = session_registry.cancel_queued_message(message_id)
@@ -689,7 +701,7 @@ async def cancel_queued_message(session_id: str, message_id: int, request: Reque
     return {"success": True}
 
 
-@router.delete("/sessions/{session_id}/queue")
+@web_router.delete("/sessions/{session_id}/queue")
 async def clear_session_queue(session_id: str, request: Request):
     """Clear all queued messages for a session"""
     session = session_registry.get(session_id)
@@ -709,7 +721,7 @@ async def clear_session_queue(session_id: str, request: Request):
     return {"success": True, "cleared_count": count}
 
 
-@router.post("/sessions/{session_id}/queue/send-next")
+@web_router.post("/sessions/{session_id}/queue/send-next")
 async def send_next_queued(session_id: str, request: Request):
     """Send the next queued message"""
     session = session_registry.get(session_id)
@@ -761,7 +773,7 @@ async def send_next_queued(session_id: str, request: Request):
     }
 
 
-@router.post("/sessions/{session_id}/queue/process")
+@web_router.post("/sessions/{session_id}/queue/process")
 async def process_queue_item(session_id: str, request: Request):
     """Process next queued message (called by Stop hook when CLI finishes)"""
     session = session_registry.get(session_id)
@@ -831,7 +843,7 @@ async def process_queue_item(session_id: str, request: Request):
 
 # Control State Endpoints
 
-@router.post("/sessions/{session_id}/handoff")
+@web_router.post("/sessions/{session_id}/handoff")
 async def handoff_session(session_id: str, request: Request):
     """Hand off control from CLI to remote"""
     session = session_registry.handoff_to_remote(session_id)
@@ -852,7 +864,7 @@ async def handoff_session(session_id: str, request: Request):
     return {"success": True, "session": session.model_dump(mode='json')}
 
 
-@router.post("/sessions/{session_id}/release")
+@web_router.post("/sessions/{session_id}/release")
 async def release_session(session_id: str, request: Request):
     """Release control back to CLI"""
     session = session_registry.release_to_cli(session_id)
@@ -875,7 +887,7 @@ async def release_session(session_id: str, request: Request):
 
 # History and Troubleshooting Endpoints
 
-@router.get("/sessions/{session_id}/permissions")
+@web_router.get("/sessions/{session_id}/permissions")
 async def get_permission_history(session_id: str, limit: int = 50):
     """Get permission request history for a session"""
     session = session_registry.get(session_id)
@@ -886,14 +898,14 @@ async def get_permission_history(session_id: str, limit: int = 50):
     return {"session_id": session_id, "permissions": permissions}
 
 
-@router.get("/permissions")
+@web_router.get("/permissions")
 async def get_all_permissions(limit: int = 50):
     """Get all permission requests (for troubleshooting)"""
     permissions = get_permission_repo().get_history(limit=limit)
     return {"permissions": permissions}
 
 
-@router.post("/sessions/{session_id}/permissions/{request_id}/resolve")
+@web_router.post("/sessions/{session_id}/permissions/{request_id}/resolve")
 async def resolve_permission(session_id: str, request_id: str, decision: str, request: Request):
     """Resolve a permission request from Web UI"""
     if decision not in ["approved", "denied"]:
@@ -920,7 +932,7 @@ async def resolve_permission(session_id: str, request_id: str, decision: str, re
     return {"success": True, "permission": perm}
 
 
-@router.get("/sessions/{session_id}/events")
+@web_router.get("/sessions/{session_id}/events")
 async def get_session_events(session_id: str, limit: int = 100):
     """Get session events for troubleshooting"""
     session = session_registry.get(session_id)
@@ -931,7 +943,7 @@ async def get_session_events(session_id: str, limit: int = 100):
     return {"session_id": session_id, "events": events}
 
 
-@router.get("/sessions/{session_id}/timeline")
+@web_router.get("/sessions/{session_id}/timeline")
 async def get_session_timeline(session_id: str, limit: int = 50):
     """Get unified timeline for a session (events, permissions, tasks)"""
     session = session_registry.get(session_id)
@@ -942,7 +954,7 @@ async def get_session_timeline(session_id: str, limit: int = 50):
     return {"session_id": session_id, "timeline": timeline}
 
 
-@router.get("/tasks")
+@web_router.get("/tasks")
 async def get_task_history(
     session_id: Optional[str] = None,
     source: Optional[str] = None,
@@ -959,7 +971,7 @@ async def get_task_history(
     return {"tasks": tasks}
 
 
-@router.get("/tasks/failed")
+@web_router.get("/tasks/failed")
 async def get_failed_tasks(limit: int = 20):
     """Get failed tasks for troubleshooting"""
     tasks = get_task_repo().get_failed(limit=limit)
@@ -967,7 +979,7 @@ async def get_failed_tasks(limit: int = 20):
 
 
 # Chat History Endpoints
-@router.get("/sessions/{session_id}/chat")
+@web_router.get("/sessions/{session_id}/chat")
 async def get_chat_history(session_id: str, limit: int = 30, offset: int = 0):
     """Get chat messages for a session (newest first for pagination)"""
     repo = get_chat_repo()
@@ -984,7 +996,7 @@ async def get_chat_history(session_id: str, limit: int = 30, offset: int = 0):
     }
 
 
-@router.post("/sessions/{session_id}/chat")
+@web_router.post("/sessions/{session_id}/chat")
 async def add_chat_message(
     session_id: str,
     msg_type: str,
@@ -993,9 +1005,18 @@ async def add_chat_message(
     status: Optional[str] = None,
     duration_ms: Optional[int] = None,
     num_turns: Optional[int] = None,
-    source: str = 'web'
+    source: str = 'web',
+    images: Optional[str] = None  # JSON array of image URLs
 ):
     """Add a chat message"""
+    import json
+    images_list = None
+    if images:
+        try:
+            images_list = json.loads(images)
+        except json.JSONDecodeError:
+            pass
+    
     message = get_chat_repo().create(
         session_id=session_id,
         msg_type=msg_type,
@@ -1003,7 +1024,8 @@ async def add_chat_message(
         status=status,
         duration_ms=duration_ms,
         num_turns=num_turns,
-        source=source
+        source=source,
+        images=images_list
     )
     
     # Clear thinking state when assistant message is added from CLI
@@ -1026,14 +1048,14 @@ async def add_chat_message(
     return {"success": True, "message": message}
 
 
-@router.delete("/sessions/{session_id}/chat")
+@web_router.delete("/sessions/{session_id}/chat")
 async def clear_chat_history(session_id: str):
     """Clear all chat messages for a session"""
     count = get_chat_repo().clear_session(session_id)
     return {"success": True, "deleted": count}
 
 
-@router.post("/sessions/{session_id}/cli-thinking")
+@hooks_router.post("/sessions/{session_id}/cli-thinking")
 async def cli_thinking(session_id: str, request: Request):
     """Notify Web UI that CLI is processing a prompt (show thinking indicator)"""
     body = await request.json()
@@ -1053,14 +1075,14 @@ async def cli_thinking(session_id: str, request: Request):
     return {"success": True}
 
 
-@router.get("/sessions/{session_id}/cli-thinking")
+@web_router.get("/sessions/{session_id}/cli-thinking")
 async def get_cli_thinking(session_id: str):
     """Check if CLI is currently thinking for this session"""
     return {"thinking": cli_thinking_state.get(session_id, False)}
 
 
 # Session Settings Endpoints
-@router.get("/sessions/{session_id}/settings")
+@web_router.get("/sessions/{session_id}/settings")
 async def get_session_settings(session_id: str):
     """Get settings for a session"""
     settings = get_settings_repo().get(session_id)
@@ -1075,7 +1097,7 @@ async def get_session_settings(session_id: str):
     return settings
 
 
-@router.put("/sessions/{session_id}/settings")
+@web_router.put("/sessions/{session_id}/settings")
 async def update_session_settings(
     session_id: str,
     model: Optional[str] = None,
@@ -1093,17 +1115,21 @@ async def update_session_settings(
 
 
 # Image Upload Endpoints
-@router.post("/upload-image")
+@web_router.post("/upload-image")
 async def upload_image(
     image: UploadFile = File(...),
     session_id: str = Form("unknown")
 ):
     """Upload image to Cloudinary and return public URL"""
-    from .cloudinary_handler import upload_to_cloudinary
+    from .cloudinary_handler import upload_to_cloudinary, save_image_record
     
     try:
         content = await image.read()
         result = upload_to_cloudinary(content, image.filename or "image.png", session_id)
+        
+        # Save image record for tracking (cleanup on session delete)
+        if session_id != "unknown":
+            save_image_record(session_id, result['public_id'], result['url'])
         
         return {
             'success': True,
@@ -1121,7 +1147,7 @@ async def upload_image(
         raise HTTPException(status_code=500, detail="Upload failed")
 
 
-@router.post("/delete-image")
+@web_router.post("/delete-image")
 async def delete_image(request: Request):
     """Delete image from Cloudinary"""
     from .cloudinary_handler import delete_from_cloudinary
@@ -1143,7 +1169,7 @@ async def delete_image(request: Request):
 
 
 # Filesystem Browser Endpoint
-@router.get("/filesystem/browse")
+@web_router.get("/filesystem/browse")
 async def browse_filesystem(path: Optional[str] = None):
     """Browse filesystem directories for project selection"""
     import os
@@ -1214,7 +1240,7 @@ async def browse_filesystem(path: Optional[str] = None):
 
 # Permission Allowlist Endpoints
 
-@router.get("/allowlist")
+@web_router.get("/allowlist")
 async def get_allowlist():
     """Get all permission allowlist rules"""
     from core.repositories import get_allowlist_repo
@@ -1222,7 +1248,7 @@ async def get_allowlist():
     return {"rules": rules}
 
 
-@router.post("/allowlist")
+@web_router.post("/allowlist")
 async def add_allowlist_rule(tool_name: str, pattern: str, description: Optional[str] = None):
     """Add a permission allowlist rule"""
     from core.repositories import get_allowlist_repo
@@ -1233,7 +1259,7 @@ async def add_allowlist_rule(tool_name: str, pattern: str, description: Optional
         raise HTTPException(status_code=400, detail="Failed to add rule (may already exist)")
 
 
-@router.delete("/allowlist/{rule_id}")
+@web_router.delete("/allowlist/{rule_id}")
 async def remove_allowlist_rule(rule_id: int):
     """Remove a permission allowlist rule"""
     from core.repositories import get_allowlist_repo
@@ -1244,7 +1270,7 @@ async def remove_allowlist_rule(rule_id: int):
         raise HTTPException(status_code=404, detail="Rule not found")
 
 
-@router.get("/allowlist/check")
+@hooks_router.get("/allowlist/check")
 async def check_allowlist(tool_name: str, tool_input: str = "{}"):
     """
     Check if a tool call is allowed by the allowlist.
