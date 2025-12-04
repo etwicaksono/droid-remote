@@ -558,6 +558,7 @@ export function SessionCard({ session }: SessionCardProps) {
     try {
       // Get image URLs before clearing
       const imageUrls = uploadedImages.map(img => img.url)
+      console.log(`[Submit] Sending task with ${imageUrls.length} image(s):`, imageUrls)
       
       await executeTask({
         prompt,
@@ -710,7 +711,9 @@ export function SessionCard({ session }: SessionCardProps) {
   const handleImageUpload = async (file: File) => {
     setIsUploading(true)
     try {
+      console.log(`[Upload] Starting upload: ${file.name} (${(file.size / 1024).toFixed(1)}KB)`)
       const result = await uploadImage(file, session.id)
+      console.log(`[Upload] Success: ${result.url}`)
       const ref = `@${uploadedImages.length + 1}`
       setUploadedImages(prev => [...prev, {
         url: result.url,
@@ -719,7 +722,8 @@ export function SessionCard({ session }: SessionCardProps) {
         ref,
       }])
     } catch (error) {
-      console.error('Failed to upload image:', error)
+      console.error('[Upload] Failed:', error)
+      alert(`Failed to upload image: ${error instanceof Error ? error.message : 'Unknown error'}`)
     } finally {
       setIsUploading(false)
     }
