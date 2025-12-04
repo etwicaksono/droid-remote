@@ -329,8 +329,8 @@ class TaskExecutor:
         # JSON format suppresses activity output
         cmd.extend(["--output-format", "text"])
         
-        # Add the prompt
-        cmd.append(task.prompt)
+        # Add the prompt (quoted for Windows compatibility)
+        cmd.append(f'"{task.prompt}"')
         
         logger.info(f"Executing: {' '.join(cmd)}")
         
@@ -511,7 +511,7 @@ class TaskExecutor:
         
         cmd.extend(["--cwd", task.project_dir])
         cmd.extend(["--output-format", "stream-json"])
-        cmd.append(task.prompt)
+        cmd.append(f'"{task.prompt}"')
         
         logger.info(f"Executing (streaming): {' '.join(cmd)}")
         
