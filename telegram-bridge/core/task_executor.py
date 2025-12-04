@@ -93,11 +93,20 @@ class TaskExecutor:
         Returns:
             TaskResult with success status and output
         """
-        # Replace @N references with actual image URLs
+        # Handle image URLs in prompt
         if images:
-            for i, url in enumerate(images, 1):
-                prompt = prompt.replace(f"@{i}", f"[image: {url}]")
-            logger.info(f"Replaced {len(images)} image reference(s) in prompt")
+            # Check if prompt contains @N references
+            has_refs = any(f"@{i}" in prompt for i in range(1, len(images) + 1))
+            if has_refs:
+                # Replace @N references with actual image URLs
+                for i, url in enumerate(images, 1):
+                    prompt = prompt.replace(f"@{i}", f"[image: {url}]")
+                logger.info(f"Replaced {len(images)} image reference(s) in prompt")
+            else:
+                # Auto-append all images to prompt
+                image_refs = " ".join(f"[image: {url}]" for url in images)
+                prompt = f"{prompt}\n\n{image_refs}"
+                logger.info(f"Auto-appended {len(images)} image(s) to prompt")
         
         # Use stored session_id if available for this project
         if not session_id and project_dir in self._session_map:
@@ -444,10 +453,15 @@ class TaskExecutor:
         Execute task with streaming output (stream-json format).
         Yields events as they occur.
         """
-        # Replace @N references with actual image URLs
+        # Handle image URLs in prompt
         if images:
-            for i, url in enumerate(images, 1):
-                prompt = prompt.replace(f"@{i}", f"[image: {url}]")
+            has_refs = any(f"@{i}" in prompt for i in range(1, len(images) + 1))
+            if has_refs:
+                for i, url in enumerate(images, 1):
+                    prompt = prompt.replace(f"@{i}", f"[image: {url}]")
+            else:
+                image_refs = " ".join(f"[image: {url}]" for url in images)
+                prompt = f"{prompt}\n\n{image_refs}"
         
         if not session_id and project_dir in self._session_map:
             session_id = self._session_map[project_dir]
