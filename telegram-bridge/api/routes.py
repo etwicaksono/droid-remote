@@ -493,14 +493,30 @@ async def execute_task(data: TaskExecuteRequest, request: Request):
                 )
             
             # If we created a pending session with task_id, but droid returned a different session_id,
-            # delete the pending one (the real one was created by task_executor)
+            # delete the pending one and create/update the real one
             if created_pending and result.session_id and result.session_id != pending_session_id:
                 try:
                     session_repo = get_session_repo()
+                    # Delete pending session
                     session_repo.delete(pending_session_id)
+                    
+                    # Create or update the real session
+                    from pathlib import Path
+                    session_name = Path(data.project_dir).name or "custom-task"
+                    existing = session_repo.get(result.session_id)
+                    if not existing:
+                        session_repo.create(
+                            session_id=result.session_id,
+                            name=session_name,
+                            project_dir=data.project_dir,
+                            status="running",
+                            control_state="remote_active"
+                        )
+                        logger.info(f"Created real session {result.session_id} for {data.project_dir}")
+                    
                     logger.info(f"Deleted pending session {pending_session_id}, using real session {result.session_id}")
                 except Exception as e:
-                    logger.error(f"Failed to delete pending session: {e}")
+                    logger.error(f"Failed to handle session transition: {e}")
             
             # Notify completion via WebSocket
             if sio:
