@@ -346,8 +346,13 @@ class TaskExecutor:
         final_result_lines = []
         in_final_answer = False
         
+        MAX_LINE_SIZE = 16 * 1024 * 1024  # 16MB
+        
         async def read_stderr():
             async for line in process.stderr:
+                if len(line) > MAX_LINE_SIZE:
+                    logger.error(f"Stderr line too large ({len(line) / 1024 / 1024:.1f}MB), skipping")
+                    continue
                 line_str = line.decode("utf-8", errors="replace").rstrip()
                 if line_str:
                     stderr_lines.append(line_str)
@@ -355,6 +360,9 @@ class TaskExecutor:
         async def read_stdout():
             nonlocal in_final_answer
             async for line in process.stdout:
+                if len(line) > MAX_LINE_SIZE:
+                    logger.error(f"Stdout line too large ({len(line) / 1024 / 1024:.1f}MB), skipping")
+                    continue
                 line_str = line.decode("utf-8", errors="replace").rstrip()
                 if line_str:
                     stdout_lines.append(line_str)
@@ -518,8 +526,16 @@ class TaskExecutor:
         task.process = process
         
         final_result = None
+        MAX_LINE_SIZE = 16 * 1024 * 1024  # 16MB
         
         async for line in process.stdout:
+            # Check line size before processing
+            if len(line) > MAX_LINE_SIZE:
+                error_msg = f"Output line too large ({len(line) / 1024 / 1024:.1f}MB). Max allowed: {MAX_LINE_SIZE / 1024 / 1024:.0f}MB"
+                logger.error(error_msg)
+                yield {"type": "error", "error": error_msg}
+                continue
+            
             line_str = line.decode("utf-8", errors="replace").strip()
             if not line_str:
                 continue
