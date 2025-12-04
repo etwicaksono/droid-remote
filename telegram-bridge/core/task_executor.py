@@ -100,12 +100,11 @@ class TaskExecutor:
             if has_refs:
                 # Replace @N references with actual image URLs
                 for i, url in enumerate(images, 1):
-                    prompt = prompt.replace(f"@{i}", f"[image: {url}]")
+                    prompt = prompt.replace(f"@{i}", url)
                 logger.info(f"Replaced {len(images)} image reference(s) in prompt")
             else:
-                # Auto-append all images to prompt
-                image_refs = " ".join(f"[image: {url}]" for url in images)
-                prompt = f"{prompt}\n\n{image_refs}"
+                # Auto-append all images to prompt (raw URLs)
+                prompt = prompt + "\n\n" + "\n".join(images)
                 logger.info(f"Auto-appended {len(images)} image(s) to prompt")
         
         # Use stored session_id if available for this project
@@ -468,10 +467,9 @@ class TaskExecutor:
             has_refs = any(f"@{i}" in prompt for i in range(1, len(images) + 1))
             if has_refs:
                 for i, url in enumerate(images, 1):
-                    prompt = prompt.replace(f"@{i}", f"[image: {url}]")
+                    prompt = prompt.replace(f"@{i}", url)
             else:
-                image_refs = " ".join(f"[image: {url}]" for url in images)
-                prompt = f"{prompt}\n\n{image_refs}"
+                prompt = prompt + "\n\n" + "\n".join(images)
         
         if not session_id and project_dir in self._session_map:
             session_id = self._session_map[project_dir]
