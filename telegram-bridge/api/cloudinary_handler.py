@@ -101,15 +101,22 @@ def upload_to_cloudinary(content: bytes, filename: str, session_id: str) -> Dict
     
     try:
         import io
+        import time
         safe_filename = secure_filename(filename)
+        
+        # Remove extension from filename (Cloudinary adds it automatically)
+        name_without_ext = safe_filename.rsplit('.', 1)[0] if '.' in safe_filename else safe_filename
+        
+        # Add timestamp to ensure unique public_id for each upload
+        timestamp = int(time.time() * 1000)
+        unique_id = f"session-{session_id}-{name_without_ext}-{timestamp}"
         
         result = cloudinary.uploader.upload(
             io.BytesIO(content),
             folder="droid-remote",
-            public_id=f"session-{session_id}-{safe_filename}",
+            public_id=unique_id,
             resource_type="image",
-            overwrite=False,
-            unique_filename=True,
+            overwrite=True,  # Allow overwrite since we have unique timestamp
         )
         
         logger.info(f"Uploaded to Cloudinary: {result['secure_url']}")
