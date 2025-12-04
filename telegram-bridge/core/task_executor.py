@@ -103,8 +103,8 @@ class TaskExecutor:
                     prompt = prompt.replace(f"@{i}", path)
                 logger.info(f"Replaced {len(images)} image reference(s) in prompt")
             else:
-                # Auto-append all images to prompt (local paths)
-                prompt = prompt + "\n\n" + "\n".join(images)
+                # Auto-append all images inline (space-separated)
+                prompt = prompt + " " + " ".join(images)
                 logger.info(f"Auto-appended {len(images)} image(s) to prompt")
         
         # Use stored session_id if available for this project
@@ -479,7 +479,7 @@ class TaskExecutor:
                 for i, path in enumerate(images, 1):
                     prompt = prompt.replace(f"@{i}", path)
             else:
-                prompt = prompt + "\n\n" + "\n".join(images)
+                prompt = prompt + " " + " ".join(images)
         
         if not session_id and project_dir in self._session_map:
             session_id = self._session_map[project_dir]
