@@ -45,6 +45,7 @@ interface FactorySettings {
   commandAllowlist?: string[]
   commandDenylist?: string[]
   hooks?: Record<string, unknown[]>
+  _disabledHooks?: Record<string, unknown[]>
 }
 
 export function FactorySettingsTab() {
@@ -426,7 +427,11 @@ export function FactorySettingsTab() {
         <CardContent className="pt-6">
           <HooksSection
             hooks={settings.hooks as Record<string, { hooks: { type: string; command: string; timeout: number }[] }[]> || {}}
-            onChange={(hooks) => updateSetting('hooks', hooks)}
+            disabledHooks={settings._disabledHooks as Record<string, { hooks: { type: string; command: string; timeout: number }[] }[]> || {}}
+            onChange={(hooks, disabledHooks) => {
+              setSettings(prev => ({ ...prev, hooks, _disabledHooks: disabledHooks }))
+              setHasChanges(true)
+            }}
           />
         </CardContent>
       </Card>

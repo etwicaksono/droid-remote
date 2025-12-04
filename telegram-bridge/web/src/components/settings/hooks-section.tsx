@@ -1,8 +1,9 @@
 'use client'
 
 import { useState } from 'react'
-import { ChevronDown, ChevronRight, Plus, Trash2, Pencil, X, Check } from 'lucide-react'
+import { ChevronDown, ChevronRight, Plus, Trash2, Pencil, X, Check, Power } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 
 const HOOK_EVENTS = [
   'PreToolUse',
@@ -33,13 +34,14 @@ interface HooksData {
 
 interface HooksSectionProps {
   hooks: HooksData
-  onChange: (hooks: HooksData) => void
+  disabledHooks: HooksData
+  onChange: (hooks: HooksData, disabledHooks: HooksData) => void
 }
 
-export function HooksSection({ hooks, onChange }: HooksSectionProps) {
+export function HooksSection({ hooks, disabledHooks, onChange }: HooksSectionProps) {
   const [expandedEvents, setExpandedEvents] = useState<Set<string>>(new Set())
   const [showAddModal, setShowAddModal] = useState(false)
-  const [editingHook, setEditingHook] = useState<{ event: string; index: number } | null>(null)
+  const [editingHook, setEditingHook] = useState<{ event: string; index: number; disabled: boolean } | null>(null)
   const [editForm, setEditForm] = useState({ command: '', timeout: 60 })
 
   const toggleEvent = (event: string) => {
@@ -54,47 +56,105 @@ export function HooksSection({ hooks, onChange }: HooksSectionProps) {
     })
   }
 
-  const getHookCount = (event: string): number => {
-    const groups = hooks[event] || []
+  const getHookCount = (event: string, source: HooksData): number => {
+    const groups = source[event] || []
     return groups.reduce((sum, g) => sum + (g.hooks?.length || 0), 0)
+  }
+
+  const getTotalCount = (event: string): { enabled: number; disabled: number } => {
+    return {
+      enabled: getHookCount(event, hooks),
+      disabled: getHookCount(event, disabledHooks)
+    }
   }
 
   const deleteHookEvent = (event: string) => {
     const newHooks = { ...hooks }
+    const newDisabled = { ...disabledHooks }
     delete newHooks[event]
-    onChange(newHooks)
+    delete newDisabled[event]
+    onChange(newHooks, newDisabled)
   }
 
-  const deleteHook = (event: string, groupIndex: number, hookIndex: number) => {
-    const newHooks = { ...hooks }
-    const groups = [...(newHooks[event] || [])]
+  const deleteHook = (event: string, groupIndex: number, hookIndex: number, isDisabled: boolean) => {
+    const source = isDisabled ? disabledHooks : hooks
+    const newSource = { ...source }
+    const groups = [...(newSource[event] || [])]
+    
     if (groups[groupIndex]?.hooks) {
       groups[groupIndex] = {
         ...groups[groupIndex],
         hooks: groups[groupIndex].hooks.filter((_, i) => i !== hookIndex)
       }
-      // Remove empty groups
       const filteredGroups = groups.filter(g => g.hooks?.length > 0)
       if (filteredGroups.length === 0) {
-        delete newHooks[event]
+        delete newSource[event]
       } else {
-        newHooks[event] = filteredGroups
+        newSource[event] = filteredGroups
       }
-      onChange(newHooks)
+      
+      if (isDisabled) {
+        onChange(hooks, newSource)
+      } else {
+        onChange(newSource, disabledHooks)
+      }
     }
   }
 
-  const startEdit = (event: string, groupIndex: number, hookIndex: number) => {
-    const hook = hooks[event]?.[groupIndex]?.hooks?.[hookIndex]
+  const toggleHookEnabled = (event: string, groupIndex: number, hookIndex: number, currentlyDisabled: boolean) => {
+    const source = currentlyDisabled ? disabledHooks : hooks
+    const target = currentlyDisabled ? hooks : disabledHooks
+    
+    const hook = source[event]?.[groupIndex]?.hooks?.[hookIndex]
+    if (!hook) return
+
+    // Remove from source
+    const newSource = { ...source }
+    const sourceGroups = [...(newSource[event] || [])]
+    if (sourceGroups[groupIndex]?.hooks) {
+      sourceGroups[groupIndex] = {
+        ...sourceGroups[groupIndex],
+        hooks: sourceGroups[groupIndex].hooks.filter((_, i) => i !== hookIndex)
+      }
+      const filteredGroups = sourceGroups.filter(g => g.hooks?.length > 0)
+      if (filteredGroups.length === 0) {
+        delete newSource[event]
+      } else {
+        newSource[event] = filteredGroups
+      }
+    }
+
+    // Add to target
+    const newTarget = { ...target }
+    if (!newTarget[event]) {
+      newTarget[event] = [{ hooks: [] }]
+    }
+    const targetGroups = newTarget[event]
+    if (targetGroups && targetGroups[0]) {
+      targetGroups[0].hooks.push(hook)
+    }
+
+    if (currentlyDisabled) {
+      onChange(newTarget, newSource)
+    } else {
+      onChange(newSource, newTarget)
+    }
+  }
+
+  const startEdit = (event: string, groupIndex: number, hookIndex: number, isDisabled: boolean) => {
+    const source = isDisabled ? disabledHooks : hooks
+    const hook = source[event]?.[groupIndex]?.hooks?.[hookIndex]
     if (hook) {
-      setEditingHook({ event, index: hookIndex })
+      setEditingHook({ event, index: hookIndex, disabled: isDisabled })
       setEditForm({ command: hook.command, timeout: hook.timeout })
     }
   }
 
-  const saveEdit = (event: string, groupIndex: number, hookIndex: number) => {
-    const newHooks = { ...hooks }
-    const groups = [...(newHooks[event] || [])]
+  const saveEdit = (event: string, groupIndex: number, hookIndex: number, isDisabled: boolean) => {
+    const source = isDisabled ? disabledHooks : hooks
+    const newSource = { ...source }
+    const groups = [...(newSource[event] || [])]
+    
     if (groups[groupIndex]?.hooks?.[hookIndex]) {
       groups[groupIndex] = {
         ...groups[groupIndex],
@@ -102,8 +162,13 @@ export function HooksSection({ hooks, onChange }: HooksSectionProps) {
           i === hookIndex ? { ...h, command: editForm.command, timeout: editForm.timeout } : h
         )
       }
-      newHooks[event] = groups
-      onChange(newHooks)
+      newSource[event] = groups
+      
+      if (isDisabled) {
+        onChange(hooks, newSource)
+      } else {
+        onChange(newSource, disabledHooks)
+      }
     }
     setEditingHook(null)
   }
@@ -112,7 +177,12 @@ export function HooksSection({ hooks, onChange }: HooksSectionProps) {
     setEditingHook(null)
   }
 
-  const activeEvents = Object.keys(hooks).filter(e => HOOK_EVENTS.includes(e as HookEvent))
+  // Get all events (from both enabled and disabled)
+  const allEvents = new Set([
+    ...Object.keys(hooks).filter(e => HOOK_EVENTS.includes(e as HookEvent)),
+    ...Object.keys(disabledHooks).filter(e => HOOK_EVENTS.includes(e as HookEvent))
+  ])
+  const activeEvents = Array.from(allEvents)
 
   return (
     <div className="space-y-3">
@@ -132,8 +202,10 @@ export function HooksSection({ hooks, onChange }: HooksSectionProps) {
         <div className="space-y-2">
           {activeEvents.map(event => {
             const isExpanded = expandedEvents.has(event)
-            const count = getHookCount(event)
-            const groups = hooks[event] || []
+            const counts = getTotalCount(event)
+            const totalCount = counts.enabled + counts.disabled
+            const enabledGroups = hooks[event] || []
+            const disabledGroups = disabledHooks[event] || []
 
             return (
               <div key={event} className="border rounded-lg overflow-hidden">
@@ -149,7 +221,7 @@ export function HooksSection({ hooks, onChange }: HooksSectionProps) {
                     )}
                     <code className="font-medium text-sm">{event}</code>
                     <span className="text-xs text-muted-foreground">
-                      ({count} hook{count !== 1 ? 's' : ''})
+                      ({counts.enabled} active{counts.disabled > 0 && `, ${counts.disabled} disabled`})
                     </span>
                   </button>
                   <Button
@@ -164,82 +236,47 @@ export function HooksSection({ hooks, onChange }: HooksSectionProps) {
 
                 {isExpanded && (
                   <div className="border-t bg-muted/20 p-3 space-y-3">
-                    {groups.map((group, groupIndex) => (
-                      group.hooks?.map((hook, hookIndex) => {
-                        const isEditing = editingHook?.event === event && editingHook?.index === hookIndex
-
-                        return (
-                          <div key={`${groupIndex}-${hookIndex}`} className="border rounded-lg p-3 bg-background">
-                            {isEditing ? (
-                              <div className="space-y-3">
-                                <div>
-                                  <label className="text-xs text-muted-foreground">Command</label>
-                                  <input
-                                    type="text"
-                                    value={editForm.command}
-                                    onChange={(e) => setEditForm(f => ({ ...f, command: e.target.value }))}
-                                    className="w-full mt-1 h-9 px-3 rounded-md border border-input bg-background text-sm font-mono"
-                                  />
-                                </div>
-                                <div>
-                                  <label className="text-xs text-muted-foreground">Timeout (seconds)</label>
-                                  <input
-                                    type="number"
-                                    value={editForm.timeout}
-                                    onChange={(e) => setEditForm(f => ({ ...f, timeout: parseInt(e.target.value) || 60 }))}
-                                    className="w-24 mt-1 h-9 px-3 rounded-md border border-input bg-background text-sm"
-                                  />
-                                </div>
-                                <div className="flex gap-2">
-                                  <Button size="sm" onClick={() => saveEdit(event, groupIndex, hookIndex)}>
-                                    <Check className="h-4 w-4 mr-1" />
-                                    Save
-                                  </Button>
-                                  <Button size="sm" variant="outline" onClick={cancelEdit}>
-                                    <X className="h-4 w-4 mr-1" />
-                                    Cancel
-                                  </Button>
-                                </div>
-                              </div>
-                            ) : (
-                              <div className="flex items-start justify-between gap-2">
-                                <div className="min-w-0 flex-1 space-y-1">
-                                  <div className="flex items-center gap-2">
-                                    <span className="text-xs text-muted-foreground">Type:</span>
-                                    <code className="text-xs bg-muted px-1.5 py-0.5 rounded">{hook.type}</code>
-                                  </div>
-                                  <div className="flex items-start gap-2">
-                                    <span className="text-xs text-muted-foreground shrink-0">Command:</span>
-                                    <code className="text-xs bg-muted px-1.5 py-0.5 rounded break-all">{hook.command}</code>
-                                  </div>
-                                  <div className="flex items-center gap-2">
-                                    <span className="text-xs text-muted-foreground">Timeout:</span>
-                                    <span className="text-xs">{hook.timeout}s</span>
-                                  </div>
-                                </div>
-                                <div className="flex gap-1">
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-7 w-7 text-muted-foreground hover:text-foreground"
-                                    onClick={() => startEdit(event, groupIndex, hookIndex)}
-                                  >
-                                    <Pencil className="h-3.5 w-3.5" />
-                                  </Button>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                                    onClick={() => deleteHook(event, groupIndex, hookIndex)}
-                                  >
-                                    <Trash2 className="h-3.5 w-3.5" />
-                                  </Button>
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        )
-                      })
+                    {/* Enabled hooks */}
+                    {enabledGroups.map((group, groupIndex) => (
+                      group.hooks?.map((hook, hookIndex) => (
+                        <HookItem
+                          key={`enabled-${groupIndex}-${hookIndex}`}
+                          hook={hook}
+                          event={event}
+                          groupIndex={groupIndex}
+                          hookIndex={hookIndex}
+                          isDisabled={false}
+                          isEditing={editingHook?.event === event && editingHook?.index === hookIndex && !editingHook?.disabled}
+                          editForm={editForm}
+                          setEditForm={setEditForm}
+                          onToggle={() => toggleHookEnabled(event, groupIndex, hookIndex, false)}
+                          onEdit={() => startEdit(event, groupIndex, hookIndex, false)}
+                          onSave={() => saveEdit(event, groupIndex, hookIndex, false)}
+                          onCancel={cancelEdit}
+                          onDelete={() => deleteHook(event, groupIndex, hookIndex, false)}
+                        />
+                      ))
+                    ))}
+                    {/* Disabled hooks */}
+                    {disabledGroups.map((group, groupIndex) => (
+                      group.hooks?.map((hook, hookIndex) => (
+                        <HookItem
+                          key={`disabled-${groupIndex}-${hookIndex}`}
+                          hook={hook}
+                          event={event}
+                          groupIndex={groupIndex}
+                          hookIndex={hookIndex}
+                          isDisabled={true}
+                          isEditing={editingHook?.event === event && editingHook?.index === hookIndex && editingHook?.disabled}
+                          editForm={editForm}
+                          setEditForm={setEditForm}
+                          onToggle={() => toggleHookEnabled(event, groupIndex, hookIndex, true)}
+                          onEdit={() => startEdit(event, groupIndex, hookIndex, true)}
+                          onSave={() => saveEdit(event, groupIndex, hookIndex, true)}
+                          onCancel={cancelEdit}
+                          onDelete={() => deleteHook(event, groupIndex, hookIndex, true)}
+                        />
+                      ))
                     ))}
                   </div>
                 )}
@@ -251,7 +288,6 @@ export function HooksSection({ hooks, onChange }: HooksSectionProps) {
 
       {showAddModal && (
         <AddHookModal
-          existingEvents={activeEvents}
           onAdd={(event, hook) => {
             const newHooks = { ...hooks }
             if (!newHooks[event]) {
@@ -261,7 +297,7 @@ export function HooksSection({ hooks, onChange }: HooksSectionProps) {
             if (eventHooks && eventHooks[0]) {
               eventHooks[0].hooks.push(hook)
             }
-            onChange(newHooks)
+            onChange(newHooks, disabledHooks)
             setShowAddModal(false)
             setExpandedEvents(prev => new Set(prev).add(event))
           }}
@@ -272,8 +308,131 @@ export function HooksSection({ hooks, onChange }: HooksSectionProps) {
   )
 }
 
+interface HookItemProps {
+  hook: Hook
+  event: string
+  groupIndex: number
+  hookIndex: number
+  isDisabled: boolean
+  isEditing: boolean
+  editForm: { command: string; timeout: number }
+  setEditForm: (fn: (prev: { command: string; timeout: number }) => { command: string; timeout: number }) => void
+  onToggle: () => void
+  onEdit: () => void
+  onSave: () => void
+  onCancel: () => void
+  onDelete: () => void
+}
+
+function HookItem({
+  hook,
+  isDisabled,
+  isEditing,
+  editForm,
+  setEditForm,
+  onToggle,
+  onEdit,
+  onSave,
+  onCancel,
+  onDelete,
+}: HookItemProps) {
+  return (
+    <div className={cn(
+      "border rounded-lg p-3 bg-background transition-opacity",
+      isDisabled && "opacity-50"
+    )}>
+      {isEditing ? (
+        <div className="space-y-3">
+          <div>
+            <label className="text-xs text-muted-foreground">Command</label>
+            <input
+              type="text"
+              value={editForm.command}
+              onChange={(e) => setEditForm(f => ({ ...f, command: e.target.value }))}
+              className="w-full mt-1 h-9 px-3 rounded-md border border-input bg-background text-sm font-mono"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-muted-foreground">Timeout (seconds)</label>
+            <input
+              type="number"
+              value={editForm.timeout}
+              onChange={(e) => setEditForm(f => ({ ...f, timeout: parseInt(e.target.value) || 60 }))}
+              className="w-24 mt-1 h-9 px-3 rounded-md border border-input bg-background text-sm"
+            />
+          </div>
+          <div className="flex gap-2">
+            <Button size="sm" onClick={onSave}>
+              <Check className="h-4 w-4 mr-1" />
+              Save
+            </Button>
+            <Button size="sm" variant="outline" onClick={onCancel}>
+              <X className="h-4 w-4 mr-1" />
+              Cancel
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex items-start gap-3">
+            {/* Toggle button */}
+            <button
+              onClick={onToggle}
+              className={cn(
+                "mt-0.5 p-1.5 rounded-md transition-colors",
+                isDisabled 
+                  ? "bg-muted text-muted-foreground hover:bg-muted/80" 
+                  : "bg-green-500/20 text-green-500 hover:bg-green-500/30"
+              )}
+              title={isDisabled ? "Enable hook" : "Disable hook"}
+            >
+              <Power className="h-3.5 w-3.5" />
+            </button>
+            
+            <div className="min-w-0 flex-1 space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground">Type:</span>
+                <code className="text-xs bg-muted px-1.5 py-0.5 rounded">{hook.type}</code>
+                {isDisabled && (
+                  <span className="text-xs bg-yellow-500/20 text-yellow-500 px-1.5 py-0.5 rounded">disabled</span>
+                )}
+              </div>
+              <div className="flex items-start gap-2">
+                <span className="text-xs text-muted-foreground shrink-0">Command:</span>
+                <code className="text-xs bg-muted px-1.5 py-0.5 rounded break-all">{hook.command}</code>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground">Timeout:</span>
+                <span className="text-xs">{hook.timeout}s</span>
+              </div>
+            </div>
+          </div>
+          
+          <div className="flex gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-muted-foreground hover:text-foreground"
+              onClick={onEdit}
+            >
+              <Pencil className="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-muted-foreground hover:text-destructive"
+              onClick={onDelete}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 interface AddHookModalProps {
-  existingEvents: string[]
   onAdd: (event: string, hook: Hook) => void
   onClose: () => void
 }
