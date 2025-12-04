@@ -1289,6 +1289,46 @@ async def remove_allowlist_rule(rule_id: int):
         raise HTTPException(status_code=404, detail="Rule not found")
 
 
+# ============ Factory CLI Settings Endpoints ============
+
+@web_router.get("/factory-settings")
+async def get_factory_settings():
+    """Get Factory CLI settings.json"""
+    from api.settings_handler import get_settings_summary
+    try:
+        return get_settings_summary()
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Settings file not found")
+    except Exception as e:
+        logger.error(f"Failed to read factory settings: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@web_router.put("/factory-settings")
+async def update_factory_settings(request: Request):
+    """Update Factory CLI settings.json"""
+    from api.settings_handler import read_settings, write_settings, validate_settings
+    
+    try:
+        new_settings = await request.json()
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid JSON: {e}")
+    
+    # Validate settings
+    errors = validate_settings(new_settings)
+    if errors:
+        raise HTTPException(status_code=400, detail={"errors": errors})
+    
+    try:
+        write_settings(new_settings)
+        return {"success": True, "settings": new_settings}
+    except Exception as e:
+        logger.error(f"Failed to write factory settings: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @hooks_router.get("/allowlist/check")
 async def check_allowlist(tool_name: str, tool_input: str = "{}"):
     """
