@@ -329,12 +329,14 @@ class TaskExecutor:
         env = os.environ.copy()
         env["DROID_EXEC_MODE"] = "1"
         
+        # Use larger buffer limit (16MB) for subprocess streams to handle large outputs
         process = await asyncio.create_subprocess_exec(
             *cmd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             cwd=task.project_dir,
-            env=env
+            env=env,
+            limit=16 * 1024 * 1024  # 16MB limit
         )
         task.process = process
         
@@ -504,12 +506,14 @@ class TaskExecutor:
         env = os.environ.copy()
         env["DROID_EXEC_MODE"] = "1"
         
+        # Use larger buffer limit (16MB) for subprocess streams to handle large outputs
         process = await asyncio.create_subprocess_exec(
             *cmd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             cwd=task.project_dir,
-            env=env
+            env=env,
+            limit=16 * 1024 * 1024  # 16MB limit
         )
         task.process = process
         
