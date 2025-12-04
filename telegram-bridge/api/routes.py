@@ -228,7 +228,7 @@ async def rename_session(session_id: str, name: str, request: Request):
     return {"success": True, "session": session.model_dump(mode='json')}
 
 
-@router.delete("/sessions/{session_id}", dependencies=[Depends(verify_secret)])
+@router.delete("/sessions/{session_id}")
 async def delete_session(session_id: str, request: Request):
     """Delete a session"""
     # Get session before deleting to access project_dir

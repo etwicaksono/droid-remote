@@ -1,1 +1,1 @@
-{"1b165ad5-cea6-4ce4-a4b9-4617a072f93b": "no, don't supress the rule"}
+{"1b165ad5-cea6-4ce4-a4b9-4617a072f93b": "fix this\nINFO:     192.168.100.8:51465 - \"DELETE /sessions/bf55cb45-1898-42ce-b7d2-65b69adf0000 HTTP/1.1\" 401 Unauthorized"}
