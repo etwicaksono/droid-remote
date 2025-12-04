@@ -53,6 +53,7 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8765'
 export interface UploadImageResponse {
   success: boolean
   url: string
+  local_path: string | null  // Local path for droid exec
   public_id: string
   width?: number
   height?: number
@@ -65,10 +66,17 @@ function getAuthHeaders(): Record<string, string> {
   return token ? { 'Authorization': `Bearer ${token}` } : {}
 }
 
-export async function uploadImage(file: File, sessionId: string = 'unknown'): Promise<UploadImageResponse> {
+export async function uploadImage(
+  file: File, 
+  sessionId: string = 'unknown',
+  projectDir: string = ''
+): Promise<UploadImageResponse> {
   const formData = new FormData()
   formData.append('image', file)
   formData.append('session_id', sessionId)
+  if (projectDir) {
+    formData.append('project_dir', projectDir)
+  }
 
   const response = await fetch(`${API_BASE}/upload-image`, {
     method: 'POST',

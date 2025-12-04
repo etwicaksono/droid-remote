@@ -526,8 +526,13 @@ export function SessionCard({ session }: SessionCardProps) {
     setExecuting(true)
     setCurrentTaskId(taskId) // Set immediately before execution
 
-    // Get image URLs before clearing (need them for both message and task)
+    // Get image paths before clearing
+    // - local_path for droid exec (vision processing)
+    // - url for chat history display
     const imageUrls = uploadedImages.map(img => img.url)
+    const localPaths = uploadedImages
+      .map(img => img.local_path)
+      .filter((p): p is string => p !== null)
     
     // Save user message to API and add to local state immediately
     try {
@@ -565,7 +570,7 @@ export function SessionCard({ session }: SessionCardProps) {
 
     // Execute task in background - result will come via WebSocket
     try {
-      console.log(`[Submit] Sending task with ${imageUrls.length} image(s):`, imageUrls)
+      console.log(`[Submit] Sending task with ${localPaths.length} local path(s):`, localPaths)
       
       await executeTask({
         prompt,
@@ -575,7 +580,7 @@ export function SessionCard({ session }: SessionCardProps) {
         model: selectedModel,
         reasoningEffort: supportsReasoning ? reasoningEffort : undefined,
         autonomyLevel,
-        images: imageUrls.length > 0 ? imageUrls : undefined,
+        images: localPaths.length > 0 ? localPaths : undefined,
       })
       
       // Clear images after task submission
@@ -719,11 +724,12 @@ export function SessionCard({ session }: SessionCardProps) {
     setIsUploading(true)
     try {
       console.log(`[Upload] Starting upload: ${file.name} (${(file.size / 1024).toFixed(1)}KB)`)
-      const result = await uploadImage(file, session.id)
-      console.log(`[Upload] Success: ${result.url}`)
+      const result = await uploadImage(file, session.id, session.project_dir)
+      console.log(`[Upload] Success: url=${result.url}, local_path=${result.local_path}`)
       const ref = `@${uploadedImages.length + 1}`
       setUploadedImages(prev => [...prev, {
         url: result.url,
+        local_path: result.local_path,
         public_id: result.public_id,
         name: file.name,
         ref,

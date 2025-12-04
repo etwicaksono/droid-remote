@@ -9,6 +9,7 @@ import { cn } from '@/lib/utils'
 
 export interface UploadedImage {
   url: string
+  local_path: string | null  // Local path for droid exec
   public_id: string
   name: string
   ref: string // @1, @2, etc.

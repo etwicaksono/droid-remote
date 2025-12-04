@@ -93,17 +93,17 @@ class TaskExecutor:
         Returns:
             TaskResult with success status and output
         """
-        # Handle image URLs in prompt
+        # Handle image paths in prompt (local paths like ./reference/image.png)
         if images:
             # Check if prompt contains @N references
             has_refs = any(f"@{i}" in prompt for i in range(1, len(images) + 1))
             if has_refs:
-                # Replace @N references with actual image URLs
-                for i, url in enumerate(images, 1):
-                    prompt = prompt.replace(f"@{i}", url)
+                # Replace @N references with actual image paths
+                for i, path in enumerate(images, 1):
+                    prompt = prompt.replace(f"@{i}", path)
                 logger.info(f"Replaced {len(images)} image reference(s) in prompt")
             else:
-                # Auto-append all images to prompt (raw URLs)
+                # Auto-append all images to prompt (local paths)
                 prompt = prompt + "\n\n" + "\n".join(images)
                 logger.info(f"Auto-appended {len(images)} image(s) to prompt")
         
@@ -241,6 +241,16 @@ class TaskExecutor:
             except Exception:
                 pass
             return task.result
+        finally:
+            # Cleanup local reference files after task execution
+            if images:
+                try:
+                    from api.cloudinary_handler import cleanup_local_files
+                    cleaned = cleanup_local_files(images, project_dir)
+                    if cleaned > 0:
+                        logger.info(f"Cleaned up {cleaned} local reference file(s)")
+                except Exception as e:
+                    logger.warning(f"Failed to cleanup local files: {e}")
     
     def _parse_activity_line(self, line: str) -> Optional[Dict[str, Any]]:
         """Parse a stderr line to extract tool activity information."""
@@ -462,12 +472,12 @@ class TaskExecutor:
         Execute task with streaming output (stream-json format).
         Yields events as they occur.
         """
-        # Handle image URLs in prompt
+        # Handle image paths in prompt (local paths like ./reference/image.png)
         if images:
             has_refs = any(f"@{i}" in prompt for i in range(1, len(images) + 1))
             if has_refs:
-                for i, url in enumerate(images, 1):
-                    prompt = prompt.replace(f"@{i}", url)
+                for i, path in enumerate(images, 1):
+                    prompt = prompt.replace(f"@{i}", path)
             else:
                 prompt = prompt + "\n\n" + "\n".join(images)
         
@@ -565,6 +575,16 @@ class TaskExecutor:
                 duration_ms=final_result.get("durationMs", 0),
                 num_turns=final_result.get("numTurns", 0)
             )
+        
+        # Cleanup local reference files after task execution
+        if images:
+            try:
+                from api.cloudinary_handler import cleanup_local_files
+                cleaned = cleanup_local_files(images, project_dir)
+                if cleaned > 0:
+                    logger.info(f"Cleaned up {cleaned} local reference file(s)")
+            except Exception as e:
+                logger.warning(f"Failed to cleanup local files: {e}")
     
     def cancel_task(self, task_id: str) -> bool:
         """Cancel a running task."""

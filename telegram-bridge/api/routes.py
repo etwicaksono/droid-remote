@@ -1118,27 +1118,46 @@ async def update_session_settings(
 @web_router.post("/upload-image")
 async def upload_image(
     image: UploadFile = File(...),
-    session_id: str = Form("unknown")
+    session_id: str = Form("unknown"),
+    project_dir: str = Form("")
 ):
-    """Upload image to Cloudinary and return public URL"""
-    from .cloudinary_handler import upload_to_cloudinary, save_image_record
+    """
+    Upload image: save locally for droid exec + upload to Cloudinary for chat history.
+    
+    Returns:
+        local_path: Relative path for droid exec (e.g., ./reference/image.png)
+        url: Cloudinary URL for chat history display
+    """
+    from .cloudinary_handler import upload_to_cloudinary, save_image_record, save_to_local
     
     try:
         content = await image.read()
-        result = upload_to_cloudinary(content, image.filename or "image.png", session_id)
+        filename = image.filename or "image.png"
+        
+        # Upload to Cloudinary (for chat history)
+        cloudinary_result = upload_to_cloudinary(content, filename, session_id)
+        
+        # Save locally (for droid exec) if project_dir provided
+        local_path = None
+        if project_dir:
+            try:
+                local_path = save_to_local(content, filename, project_dir)
+            except Exception as e:
+                logger.warning(f"Failed to save locally: {e}")
         
         # Save image record for tracking (cleanup on session delete)
         if session_id != "unknown":
-            save_image_record(session_id, result['public_id'], result['url'])
+            save_image_record(session_id, cloudinary_result['public_id'], cloudinary_result['url'])
         
         return {
             'success': True,
-            'url': result['url'],
-            'public_id': result['public_id'],
-            'width': result.get('width'),
-            'height': result.get('height'),
-            'format': result.get('format'),
-            'size': result.get('size')
+            'url': cloudinary_result['url'],
+            'local_path': local_path,
+            'public_id': cloudinary_result['public_id'],
+            'width': cloudinary_result.get('width'),
+            'height': cloudinary_result.get('height'),
+            'format': cloudinary_result.get('format'),
+            'size': cloudinary_result.get('size')
         }
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

@@ -1,18 +1,24 @@
 """
 Cloudinary Image Upload Handler
 
-Handles image uploads to Cloudinary cloud storage.
-Returns public URLs that can be accessed by droid exec.
+Handles image uploads to Cloudinary cloud storage and local reference files.
+- Cloudinary URLs for chat history display
+- Local files for droid exec vision processing
 """
 import os
 import re
 import logging
-from typing import Dict, Any, Optional
+import time
+from pathlib import Path
+from typing import Dict, Any, Optional, List
 
 logger = logging.getLogger(__name__)
 
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'}
 MAX_FILE_SIZE = int(os.getenv('MAX_UPLOAD_SIZE_MB', '10')) * 1024 * 1024
+
+# Reference directory for local image files (relative to project_dir)
+REFERENCE_DIR = "reference"
 
 
 def configure_cloudinary() -> bool:
@@ -217,6 +223,91 @@ def delete_session_images(session_id: str) -> int:
     
     logger.info(f"Deleted {deleted_count}/{len(images)} images for session {session_id}")
     return deleted_count
+
+
+def save_to_local(content: bytes, filename: str, project_dir: str) -> str:
+    """
+    Save image to local reference directory for droid exec.
+    
+    Args:
+        content: File bytes
+        filename: Original filename
+        project_dir: Project directory path
+        
+    Returns:
+        Relative path to saved file (e.g., ./reference/image_1234567890.png)
+    """
+    error = validate_file(content, filename)
+    if error:
+        raise ValueError(error)
+    
+    safe_filename = secure_filename(filename)
+    
+    # Add timestamp to ensure unique filename
+    timestamp = int(time.time() * 1000)
+    name_parts = safe_filename.rsplit('.', 1)
+    if len(name_parts) == 2:
+        unique_filename = f"{name_parts[0]}_{timestamp}.{name_parts[1]}"
+    else:
+        unique_filename = f"{safe_filename}_{timestamp}"
+    
+    # Create reference directory in project_dir
+    ref_dir = Path(project_dir) / REFERENCE_DIR
+    ref_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Save file
+    file_path = ref_dir / unique_filename
+    file_path.write_bytes(content)
+    
+    # Return relative path for use in prompt
+    relative_path = f"./{REFERENCE_DIR}/{unique_filename}"
+    logger.info(f"Saved local reference: {relative_path}")
+    
+    return relative_path
+
+
+def cleanup_local_file(local_path: str, project_dir: str) -> bool:
+    """
+    Delete local reference file after task execution.
+    
+    Args:
+        local_path: Relative path (e.g., ./reference/image.png)
+        project_dir: Project directory path
+        
+    Returns:
+        True if deleted, False otherwise
+    """
+    try:
+        # Convert relative path to absolute
+        if local_path.startswith("./"):
+            local_path = local_path[2:]
+        
+        full_path = Path(project_dir) / local_path
+        
+        if full_path.exists():
+            full_path.unlink()
+            logger.info(f"Cleaned up local file: {full_path}")
+            return True
+        else:
+            logger.debug(f"Local file not found: {full_path}")
+            return False
+    except Exception as e:
+        logger.error(f"Failed to cleanup local file: {e}")
+        return False
+
+
+def cleanup_local_files(local_paths: List[str], project_dir: str) -> int:
+    """
+    Delete multiple local reference files.
+    
+    Returns:
+        Number of files deleted
+    """
+    deleted = 0
+    for path in local_paths:
+        if cleanup_local_file(path, project_dir):
+            deleted += 1
+    return deleted
 
 
 # Initialize on module load

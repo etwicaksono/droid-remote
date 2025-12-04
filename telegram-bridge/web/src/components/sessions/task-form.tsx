@@ -137,8 +137,10 @@ export function TaskForm() {
     setTimeout(scrollToBottom, 100)
 
     try {
-      // Get image URLs before clearing
-      const imageUrls = uploadedImages.map(img => img.url)
+      // Get local paths for droid exec (vision processing)
+      const localPaths = uploadedImages
+        .map(img => img.local_path)
+        .filter((p): p is string => p !== null)
       
       const result = await executeTask({
         prompt,
@@ -147,7 +149,7 @@ export function TaskForm() {
         model: selectedModel,
         reasoningEffort: supportsReasoning ? reasoningEffort : undefined,
         autonomyLevel,
-        images: imageUrls.length > 0 ? imageUrls : undefined,
+        images: localPaths.length > 0 ? localPaths : undefined,
       })
       
       // Clear images after submission
@@ -209,10 +211,11 @@ export function TaskForm() {
   const handleImageUpload = async (file: File) => {
     setIsUploading(true)
     try {
-      const result = await uploadImage(file, 'custom-task')
+      const result = await uploadImage(file, 'custom-task', projectDir)
       const ref = `@${uploadedImages.length + 1}`
       setUploadedImages(prev => [...prev, {
         url: result.url,
+        local_path: result.local_path,
         public_id: result.public_id,
         name: file.name,
         ref,
