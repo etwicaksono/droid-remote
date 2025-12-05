@@ -1,9 +1,12 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { X, FolderOpen, Loader2 } from 'lucide-react'
+import { X, Folder, Loader2 } from 'lucide-react'
+import CreatableSelect from 'react-select/creatable'
 import { Button } from '@/components/ui/button'
+import { DirectoryPickerModal } from '@/components/ui/directory-picker-modal'
 import { getAuthHeaders } from '@/lib/api'
+import { cn } from '@/lib/utils'
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8765'
 
@@ -12,9 +15,9 @@ interface AddSessionModalProps {
   onSuccess: () => void
 }
 
-interface DirectoryItem {
-  name: string
-  path: string
+interface DirOption {
+  value: string
+  label: string
 }
 
 export function AddSessionModal({ onClose, onSuccess }: AddSessionModalProps) {
@@ -26,17 +29,10 @@ export function AddSessionModal({ onClose, onSuccess }: AddSessionModalProps) {
   
   // Config state
   const [browserEnabled, setBrowserEnabled] = useState(true)
-  
-  // Directory browser state
-  const [showBrowser, setShowBrowser] = useState(false)
-  const [browserPath, setBrowserPath] = useState('')
-  const [browserParent, setBrowserParent] = useState<string | null>(null)
-  const [browserDirs, setBrowserDirs] = useState<DirectoryItem[]>([])
-  const [browserDrives, setBrowserDrives] = useState<string[]>([])
-  const [browserLoading, setBrowserLoading] = useState(false)
-  const [browserError, setBrowserError] = useState<string | null>(null)
+  const [dirOptions, setDirOptions] = useState<DirOption[]>([])
+  const [showPicker, setShowPicker] = useState(false)
 
-  // Fetch config to check if directory browser is enabled
+  // Fetch config on mount
   useEffect(() => {
     const fetchConfig = async () => {
       try {
@@ -44,6 +40,8 @@ export function AddSessionModal({ onClose, onSuccess }: AddSessionModalProps) {
         if (res.ok) {
           const data = await res.json()
           setBrowserEnabled(data.browser_enabled !== false)
+          const dirs = data.project_dirs || []
+          setDirOptions(dirs.map((d: string) => ({ value: d, label: d })))
         }
       } catch (err) {
         console.error('Failed to fetch config:', err)
@@ -86,42 +84,6 @@ export function AddSessionModal({ onClose, onSuccess }: AddSessionModalProps) {
     }
   }
 
-  const openBrowser = async (path?: string) => {
-    setShowBrowser(true)
-    setBrowserLoading(true)
-    setBrowserError(null)
-
-    try {
-      const params = path ? `?path=${encodeURIComponent(path)}` : ''
-      const response = await fetch(`${API_BASE}/filesystem/browse${params}`, {
-        headers: getAuthHeaders(),
-      })
-
-      if (response.ok) {
-        const data = await response.json()
-        setBrowserPath(data.current_path || '')
-        setBrowserParent(data.parent || null)
-        setBrowserDirs(data.directories || [])
-        setBrowserDrives(data.drives || [])
-      } else {
-        setBrowserError('Failed to browse directory')
-      }
-    } catch (err) {
-      setBrowserError('Failed to connect to server')
-    } finally {
-      setBrowserLoading(false)
-    }
-  }
-
-  const navigateToDir = (path: string) => {
-    openBrowser(path)
-  }
-
-  const selectDirectory = () => {
-    setProjectDir(browserPath)
-    setShowBrowser(false)
-  }
-
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
       <div className="bg-gray-900 border border-gray-700 rounded-lg w-full max-w-md">
@@ -160,22 +122,46 @@ export function AddSessionModal({ onClose, onSuccess }: AddSessionModalProps) {
               Project Directory <span className="text-red-400">*</span>
             </label>
             <div className="flex gap-2 mt-1">
-              <input
-                type="text"
-                value={projectDir}
-                onChange={(e) => setProjectDir(e.target.value)}
-                placeholder="D:\Project\my-app"
-                className="flex-1 h-10 px-3 rounded-md border border-gray-600 bg-gray-800 text-white text-sm"
-              />
+              <div className="flex-1">
+                <CreatableSelect<DirOption>
+                  isClearable
+                  options={dirOptions}
+                  value={projectDir ? { value: projectDir, label: projectDir } : null}
+                  onChange={(option) => setProjectDir(option?.value || '')}
+                  onCreateOption={(inputValue) => setProjectDir(inputValue)}
+                  placeholder="Select or type a path..."
+                  formatCreateLabel={(inputValue) => `Use "${inputValue}"`}
+                  classNames={{
+                    control: () => '!bg-gray-800 !border-gray-600 !shadow-none !min-h-[40px]',
+                    menu: () => '!bg-gray-800 !border-gray-600',
+                    option: ({ isFocused, isSelected }) => 
+                      cn('!cursor-pointer', isFocused && '!bg-gray-700', isSelected && '!bg-gray-700'),
+                    singleValue: () => '!text-white',
+                    input: () => '!text-white',
+                    placeholder: () => '!text-gray-500',
+                    indicatorSeparator: () => '!bg-gray-600',
+                    dropdownIndicator: () => '!text-gray-500',
+                    clearIndicator: () => '!text-gray-500',
+                  }}
+                  styles={{
+                    control: (base) => ({ ...base, backgroundColor: 'rgb(31 41 55)' }),
+                    menu: (base) => ({ ...base, backgroundColor: 'rgb(31 41 55)' }),
+                    option: (base) => ({ ...base, backgroundColor: 'transparent' }),
+                    singleValue: (base) => ({ ...base, color: 'white' }),
+                    input: (base) => ({ ...base, color: 'white' }),
+                  }}
+                />
+              </div>
+              
               {browserEnabled && (
                 <Button
+                  type="button"
                   variant="outline"
-                  size="icon"
-                  onClick={() => openBrowser(projectDir || undefined)}
-                  className="h-10 w-10 shrink-0"
+                  onClick={() => setShowPicker(true)}
                   title="Browse directories"
+                  className="h-10 w-10 shrink-0"
                 >
-                  <FolderOpen className="h-4 w-4" />
+                  <Folder className="h-4 w-4" />
                 </Button>
               )}
             </div>
@@ -215,95 +201,13 @@ export function AddSessionModal({ onClose, onSuccess }: AddSessionModalProps) {
         </div>
       </div>
 
-      {/* Directory Browser Modal */}
-      {showBrowser && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60] p-4">
-          <div className="bg-gray-900 border border-gray-700 rounded-lg w-full max-w-lg">
-            <div className="flex items-center justify-between p-4 border-b border-gray-700">
-              <h3 className="font-semibold text-white">Select Directory</h3>
-              <Button variant="ghost" size="icon" onClick={() => setShowBrowser(false)}>
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
-
-            <div className="p-4">
-              <div className="flex items-center gap-2 mb-3 p-2 bg-gray-800 rounded text-sm font-mono text-gray-300 overflow-x-auto">
-                <FolderOpen className="h-4 w-4 shrink-0 text-blue-400" />
-                <span className="truncate">{browserPath || '/'}</span>
-              </div>
-
-              {browserError && (
-                <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-sm text-red-400 mb-3">
-                  {browserError}
-                </div>
-              )}
-
-              {browserLoading ? (
-                <div className="flex items-center justify-center py-8 text-gray-400">
-                  <Loader2 className="h-5 w-5 animate-spin mr-2" />
-                  Loading...
-                </div>
-              ) : (
-                <div className="max-h-64 overflow-y-auto border border-gray-700 rounded-lg">
-                  {/* Windows drives */}
-                  {browserDrives.length > 0 && !browserParent && (
-                    <div className="p-2 border-b border-gray-700 bg-gray-800/50">
-                      <div className="text-xs text-gray-500 mb-1">Drives</div>
-                      <div className="flex flex-wrap gap-1">
-                        {browserDrives.map((drive) => (
-                          <button
-                            key={drive}
-                            onClick={() => navigateToDir(drive)}
-                            className="px-2 py-1 text-xs bg-gray-700 hover:bg-gray-600 rounded text-gray-200"
-                          >
-                            {drive}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  {/* Parent directory */}
-                  {browserParent && (
-                    <button
-                      onClick={() => navigateToDir(browserParent)}
-                      className="w-full flex items-center gap-2 p-3 hover:bg-gray-800 text-left text-sm border-b border-gray-700"
-                    >
-                      <FolderOpen className="h-4 w-4 text-yellow-400 shrink-0" />
-                      <span className="text-gray-200">..</span>
-                    </button>
-                  )}
-                  {/* Subdirectories */}
-                  {browserDirs.length === 0 && !browserParent ? (
-                    <div className="p-4 text-center text-gray-500 text-sm">
-                      No directories found
-                    </div>
-                  ) : (
-                    browserDirs.map((dir) => (
-                      <button
-                        key={dir.path}
-                        onClick={() => navigateToDir(dir.path)}
-                        className="w-full flex items-center gap-2 p-3 hover:bg-gray-800 text-left text-sm border-b border-gray-700 last:border-b-0"
-                      >
-                        <FolderOpen className="h-4 w-4 text-blue-400 shrink-0" />
-                        <span className="text-gray-200 truncate">{dir.name}</span>
-                      </button>
-                    ))
-                  )}
-                </div>
-              )}
-            </div>
-
-            <div className="flex justify-end gap-2 p-4 border-t border-gray-700">
-              <Button variant="outline" onClick={() => setShowBrowser(false)}>
-                Cancel
-              </Button>
-              <Button onClick={selectDirectory} disabled={!browserPath}>
-                Select
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Directory Picker Modal */}
+      <DirectoryPickerModal
+        isOpen={showPicker}
+        onClose={() => setShowPicker(false)}
+        onSelect={setProjectDir}
+        initialPath={projectDir || undefined}
+      />
     </div>
   )
 }
