@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { X, FolderOpen, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { getAuthHeaders } from '@/lib/api'
@@ -24,6 +24,9 @@ export function AddSessionModal({ onClose, onSuccess }: AddSessionModalProps) {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   
+  // Config state
+  const [browserEnabled, setBrowserEnabled] = useState(true)
+  
   // Directory browser state
   const [showBrowser, setShowBrowser] = useState(false)
   const [browserPath, setBrowserPath] = useState('')
@@ -32,6 +35,22 @@ export function AddSessionModal({ onClose, onSuccess }: AddSessionModalProps) {
   const [browserDrives, setBrowserDrives] = useState<string[]>([])
   const [browserLoading, setBrowserLoading] = useState(false)
   const [browserError, setBrowserError] = useState<string | null>(null)
+
+  // Fetch config to check if directory browser is enabled
+  useEffect(() => {
+    const fetchConfig = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/config/project-dirs`, { headers: getAuthHeaders() })
+        if (res.ok) {
+          const data = await res.json()
+          setBrowserEnabled(data.browser_enabled !== false)
+        }
+      } catch (err) {
+        console.error('Failed to fetch config:', err)
+      }
+    }
+    fetchConfig()
+  }, [])
 
   const handleSubmit = async () => {
     if (!sessionId.trim() || !projectDir.trim()) {
@@ -148,14 +167,17 @@ export function AddSessionModal({ onClose, onSuccess }: AddSessionModalProps) {
                 placeholder="D:\Project\my-app"
                 className="flex-1 h-10 px-3 rounded-md border border-gray-600 bg-gray-800 text-white text-sm"
               />
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={() => openBrowser(projectDir || undefined)}
-                className="h-10 w-10 shrink-0"
-              >
-                <FolderOpen className="h-4 w-4" />
-              </Button>
+              {browserEnabled && (
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={() => openBrowser(projectDir || undefined)}
+                  className="h-10 w-10 shrink-0"
+                  title="Browse directories"
+                >
+                  <FolderOpen className="h-4 w-4" />
+                </Button>
+              )}
             </div>
           </div>
 

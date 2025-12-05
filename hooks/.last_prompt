@@ -1,1 +1,1 @@
-{"8425828b-eabe-485e-a29b-7a783160d8ae": "update @cmd\\main.go line 1909, it should have value from @internal\\adapters\\app\\accountReceivable\\adapter.go line 16", "1b165ad5-cea6-4ce4-a4b9-4617a072f93b": "@reference\\image1.png is the directory explorer, i can't open directory list"}
+{"8425828b-eabe-485e-a29b-7a783160d8ae": "update @cmd\\main.go line 1909, it should have value from @internal\\adapters\\app\\accountReceivable\\adapter.go line 16", "1b165ad5-cea6-4ce4-a4b9-4617a072f93b": "do you ignore ENABLE_DIRECTORY_BROWSER env?"}
