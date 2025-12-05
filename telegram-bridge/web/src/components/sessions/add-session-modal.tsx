@@ -15,7 +15,6 @@ interface AddSessionModalProps {
 interface DirectoryItem {
   name: string
   path: string
-  is_dir: boolean
 }
 
 export function AddSessionModal({ onClose, onSuccess }: AddSessionModalProps) {
@@ -28,7 +27,9 @@ export function AddSessionModal({ onClose, onSuccess }: AddSessionModalProps) {
   // Directory browser state
   const [showBrowser, setShowBrowser] = useState(false)
   const [browserPath, setBrowserPath] = useState('')
-  const [browserItems, setBrowserItems] = useState<DirectoryItem[]>([])
+  const [browserParent, setBrowserParent] = useState<string | null>(null)
+  const [browserDirs, setBrowserDirs] = useState<DirectoryItem[]>([])
+  const [browserDrives, setBrowserDrives] = useState<string[]>([])
   const [browserLoading, setBrowserLoading] = useState(false)
   const [browserError, setBrowserError] = useState<string | null>(null)
 
@@ -80,7 +81,9 @@ export function AddSessionModal({ onClose, onSuccess }: AddSessionModalProps) {
       if (response.ok) {
         const data = await response.json()
         setBrowserPath(data.current_path || '')
-        setBrowserItems(data.items || [])
+        setBrowserParent(data.parent || null)
+        setBrowserDirs(data.directories || [])
+        setBrowserDrives(data.drives || [])
       } else {
         setBrowserError('Failed to browse directory')
       }
@@ -220,23 +223,49 @@ export function AddSessionModal({ onClose, onSuccess }: AddSessionModalProps) {
                 </div>
               ) : (
                 <div className="max-h-64 overflow-y-auto border border-gray-700 rounded-lg">
-                  {browserItems.length === 0 ? (
+                  {/* Windows drives */}
+                  {browserDrives.length > 0 && !browserParent && (
+                    <div className="p-2 border-b border-gray-700 bg-gray-800/50">
+                      <div className="text-xs text-gray-500 mb-1">Drives</div>
+                      <div className="flex flex-wrap gap-1">
+                        {browserDrives.map((drive) => (
+                          <button
+                            key={drive}
+                            onClick={() => navigateToDir(drive)}
+                            className="px-2 py-1 text-xs bg-gray-700 hover:bg-gray-600 rounded text-gray-200"
+                          >
+                            {drive}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {/* Parent directory */}
+                  {browserParent && (
+                    <button
+                      onClick={() => navigateToDir(browserParent)}
+                      className="w-full flex items-center gap-2 p-3 hover:bg-gray-800 text-left text-sm border-b border-gray-700"
+                    >
+                      <FolderOpen className="h-4 w-4 text-yellow-400 shrink-0" />
+                      <span className="text-gray-200">..</span>
+                    </button>
+                  )}
+                  {/* Subdirectories */}
+                  {browserDirs.length === 0 && !browserParent ? (
                     <div className="p-4 text-center text-gray-500 text-sm">
                       No directories found
                     </div>
                   ) : (
-                    browserItems
-                      .filter(item => item.is_dir)
-                      .map((item) => (
-                        <button
-                          key={item.path}
-                          onClick={() => navigateToDir(item.path)}
-                          className="w-full flex items-center gap-2 p-3 hover:bg-gray-800 text-left text-sm border-b border-gray-700 last:border-b-0"
-                        >
-                          <FolderOpen className="h-4 w-4 text-blue-400 shrink-0" />
-                          <span className="text-gray-200 truncate">{item.name}</span>
-                        </button>
-                      ))
+                    browserDirs.map((dir) => (
+                      <button
+                        key={dir.path}
+                        onClick={() => navigateToDir(dir.path)}
+                        className="w-full flex items-center gap-2 p-3 hover:bg-gray-800 text-left text-sm border-b border-gray-700 last:border-b-0"
+                      >
+                        <FolderOpen className="h-4 w-4 text-blue-400 shrink-0" />
+                        <span className="text-gray-200 truncate">{dir.name}</span>
+                      </button>
+                    ))
                   )}
                 </div>
               )}
