@@ -3,11 +3,12 @@
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Terminal, Menu, Plus, ShieldCheck, Circle, X, Trash2, Pencil, Settings, LogOut, Clock } from 'lucide-react'
+import { Terminal, Menu, Plus, ShieldCheck, X, Trash2, Pencil, Settings, LogOut, Clock } from 'lucide-react'
 import { cn, formatRelativeTime } from '@/lib/utils'
 import { getSocket } from '@/lib/socket'
 import { getAuthHeaders } from '@/lib/api'
 import { useAuth } from '@/contexts/auth-context'
+import { AddSessionModal } from '@/components/sessions/add-session-modal'
 import type { Session, ControlState } from '@/types'
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8765'
@@ -32,6 +33,7 @@ export function AppSidebar({ currentPath }: AppSidebarProps) {
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null)
   const [editingName, setEditingName] = useState('')
+  const [showAddModal, setShowAddModal] = useState(false)
   
   // Extract selected session ID from path
   const selectedSessionId = currentPath.startsWith('/session/') 
@@ -283,10 +285,17 @@ export function AppSidebar({ currentPath }: AppSidebarProps) {
 
         {/* Sessions Section */}
         {!collapsed && (
-          <div className="px-3 py-2 border-b border-gray-800">
+          <div className="px-3 py-2 border-b border-gray-800 flex items-center justify-between">
             <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
               Sessions
             </h3>
+            <button
+              onClick={() => setShowAddModal(true)}
+              className="p-1 text-gray-500 hover:text-white hover:bg-gray-800 rounded transition-colors"
+              title="Add session manually"
+            >
+              <Plus className="h-3.5 w-3.5" />
+            </button>
           </div>
         )}
 
@@ -462,6 +471,20 @@ export function AppSidebar({ currentPath }: AppSidebarProps) {
       >
         <Menu className="h-5 w-5" />
       </button>
+
+      {/* Add Session Modal */}
+      {showAddModal && (
+        <AddSessionModal
+          onClose={() => setShowAddModal(false)}
+          onSuccess={() => {
+            // Refetch sessions after adding
+            fetch(`${API_BASE}/sessions`, { headers: getAuthHeaders() })
+              .then(res => res.json())
+              .then(data => setSessions(sortSessions(data)))
+              .catch(console.error)
+          }}
+        />
+      )}
     </>
   )
 }
