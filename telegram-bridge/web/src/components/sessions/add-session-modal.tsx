@@ -159,7 +159,6 @@ export function AddSessionModal({ onClose, onSuccess }: AddSessionModalProps) {
                   variant="outline"
                   onClick={() => setShowPicker(true)}
                   title="Browse directories"
-                  className="h-10 w-10 shrink-0"
                 >
                   <Folder className="h-4 w-4" />
                 </Button>
