@@ -71,9 +71,12 @@ def main():
     trigger = input_data.get("trigger", "unknown")
     
     # Register session with bridge server
+    debug_log(f"Registering session: {session_id}, project_dir={project_dir}, name={session_name}")
     success = register_session(session_id, project_dir, session_name)
+    debug_log(f"Registration result: {success}")
     
     if not success:
+        debug_log("Failed to register session with bridge server")
         logger.warning("Failed to register session with bridge server")
     
     # Format start time
