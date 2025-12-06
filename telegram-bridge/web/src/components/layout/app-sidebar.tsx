@@ -327,10 +327,10 @@ export function AppSidebar({ currentPath }: AppSidebarProps) {
             </div>
           )}
 
-          {/* Collapsed mode - just show settings icon */}
+          {/* Collapsed mode - just show permissions icon */}
           {collapsed && (
             <Link
-              href="/settings"
+              href="/permissions"
               onClick={() => setMobileOpen(false)}
               className={cn(
                 'flex items-center justify-center p-3 rounded-md text-sm font-medium transition-colors',
@@ -338,9 +338,9 @@ export function AppSidebar({ currentPath }: AppSidebarProps) {
                   ? 'bg-gray-800 text-white'
                   : 'text-gray-400 hover:bg-gray-800/50 hover:text-white'
               )}
-              title="Settings"
+              title="Permissions"
             >
-              <Settings className="h-4 w-4" />
+              <ShieldCheck className="h-4 w-4" />
             </Link>
           )}
 
