@@ -117,6 +117,7 @@ def get_all_models() -> dict:
             "vision": False,     # Default, can be overridden
             "source": "custom",
             "base_url": cm.get("base_url", ""),
+            "api_key": cm.get("api_key", ""),
             "provider": cm.get("provider", ""),
             "max_tokens": cm.get("max_tokens", 0),
         })

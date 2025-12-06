@@ -11,6 +11,7 @@ interface CustomModel {
   id: string
   name: string
   base_url: string
+  api_key?: string
   provider: string
   max_tokens: number
 }
@@ -33,7 +34,7 @@ export function CustomModelModal({ model, onClose, onSave }: CustomModelModalPro
     model: model?.id || '',
     model_display_name: model?.name || '',
     base_url: model?.base_url || '',
-    api_key: '',
+    api_key: model?.api_key || '',
     provider: model?.provider || 'generic-chat-completion-api',
     max_tokens: model?.max_tokens || 128000,
   })
@@ -151,7 +152,7 @@ export function CustomModelModal({ model, onClose, onSave }: CustomModelModalPro
                 type={showApiKey ? 'text' : 'password'}
                 value={formData.api_key}
                 onChange={(e) => setFormData({ ...formData, api_key: e.target.value })}
-                placeholder={isEditing ? '(unchanged)' : 'sk-...'}
+                placeholder="sk-..."
                 className="w-full h-10 px-3 pr-10 rounded-md border border-input bg-background text-sm font-mono"
               />
               <button
