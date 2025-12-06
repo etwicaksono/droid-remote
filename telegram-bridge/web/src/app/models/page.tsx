@@ -1,9 +1,9 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Plus, Pencil, Trash2, Loader2, Brain, AlertCircle } from 'lucide-react'
+import { Plus, Pencil, Trash2, Loader2, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { AppSidebar } from '@/components/layout/app-sidebar'
+import { PageLayout } from '@/components/layout/page-layout'
 import { getAuthHeaders } from '@/lib/api'
 import { DefaultModelModal } from '@/components/settings/default-model-modal'
 import { CustomModelModal } from '@/components/settings/custom-model-modal'
@@ -132,36 +132,27 @@ export default function ModelsPage() {
 
   if (loading) {
     return (
-      <div className="flex h-screen bg-background">
-        <AppSidebar currentPath="/models" />
+      <PageLayout title="Models" currentPath="/models">
         <div className="flex-1 flex items-center justify-center">
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
         </div>
-      </div>
+      </PageLayout>
     )
   }
 
   return (
-    <div className="flex h-screen bg-background">
-      <AppSidebar currentPath="/models" />
-      
-      <main className="flex-1 overflow-y-auto p-6 md:ml-64">
-        <div className="max-w-4xl mx-auto">
-          <div className="flex items-center gap-3 mb-6">
-            <Brain className="h-6 w-6 text-purple-500" />
-            <h1 className="text-2xl font-bold">Models</h1>
+    <PageLayout title="Models" currentPath="/models">
+      <div className="p-4">
+        {error && (
+          <div className="mb-4 p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-sm text-red-400 flex items-center gap-2">
+            <AlertCircle className="h-4 w-4" />
+            {error}
+            <button onClick={() => setError(null)} className="ml-auto text-red-400 hover:text-red-300">×</button>
           </div>
+        )}
 
-          {error && (
-            <div className="mb-4 p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-sm text-red-400 flex items-center gap-2">
-              <AlertCircle className="h-4 w-4" />
-              {error}
-              <button onClick={() => setError(null)} className="ml-auto text-red-400 hover:text-red-300">×</button>
-            </div>
-          )}
-
-          {/* Default Models Section */}
-          <section className="mb-8">
+        {/* Default Models Section */}
+        <section className="mb-8">
             <div className="flex items-center justify-between mb-4">
               <div>
                 <h2 className="text-lg font-semibold">Default Models</h2>
@@ -338,9 +329,8 @@ export default function ModelsPage() {
             <p className="mt-2 text-xs text-muted-foreground">
               ⚠️ Changes to custom models will update Factory CLI config.json
             </p>
-          </section>
-        </div>
-      </main>
+        </section>
+      </div>
 
       {/* Delete Confirmation Modal */}
       {deleteConfirm && (
@@ -382,6 +372,6 @@ export default function ModelsPage() {
           onSave={() => { setShowCustomModal(false); setEditingCustom(null); fetchConfig(); }}
         />
       )}
-    </div>
+    </PageLayout>
   )
 }
