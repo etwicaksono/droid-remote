@@ -112,8 +112,7 @@ export function CustomModelModal({ model, onClose, onSave }: CustomModelModalPro
               value={formData.model}
               onChange={(e) => setFormData({ ...formData, model: e.target.value })}
               placeholder="gpt-5"
-              disabled={isEditing}
-              className="w-full mt-1 h-10 px-3 rounded-md border border-input bg-background text-sm font-mono disabled:opacity-50"
+              className="w-full mt-1 h-10 px-3 rounded-md border border-input bg-background text-sm font-mono"
             />
           </div>
 

@@ -93,8 +93,7 @@ export function DefaultModelModal({ model, onClose, onSave }: DefaultModelModalP
               value={formData.id}
               onChange={(e) => setFormData({ ...formData, id: e.target.value })}
               placeholder="claude-sonnet-4-5-20250929"
-              disabled={isEditing}
-              className="w-full mt-1 h-10 px-3 rounded-md border border-input bg-background text-sm font-mono disabled:opacity-50"
+              className="w-full mt-1 h-10 px-3 rounded-md border border-input bg-background text-sm font-mono"
             />
             <p className="text-xs text-muted-foreground mt-1">
               Must match Factory CLI model identifier
