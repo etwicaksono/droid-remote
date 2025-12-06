@@ -19,9 +19,9 @@ interface PageLayoutProps {
 }
 
 const STATUS_CONFIG = {
-  running: { color: 'bg-yellow-500', label: 'Running', variant: 'warning' as const },
-  waiting: { color: 'bg-green-500', label: 'Waiting', variant: 'success' as const },
-  stopped: { color: 'bg-red-500', label: 'Stopped', variant: 'destructive' as const },
+  running: { color: 'bg-yellow-500', label: 'Running', variant: 'warning' as const, description: 'Session is currently executing a task' },
+  waiting: { color: 'bg-green-500', label: 'Waiting', variant: 'success' as const, description: 'Session is idle and ready for tasks' },
+  stopped: { color: 'bg-red-500', label: 'Stopped', variant: 'destructive' as const, description: 'Session has been stopped' },
 }
 
 const CONTROL_STATE_CONFIG: Record<ControlState, { label: string }> = {
@@ -141,7 +141,10 @@ export function PageLayout({ children, title, session, currentPath }: PageLayout
                   ) : (
                     <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
                   )}
-                  <span className={cn('h-2 w-2 rounded-full shrink-0', statusConfig.color)} />
+                  <span 
+                    className={cn('h-2 w-2 rounded-full shrink-0', statusConfig.color)} 
+                    title={statusConfig.description}
+                  />
                   {isEditingName ? (
                     <input
                       type="text"

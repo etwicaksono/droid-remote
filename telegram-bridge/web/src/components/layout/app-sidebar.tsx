@@ -17,11 +17,11 @@ interface AppSidebarProps {
   currentPath: string
 }
 
-const STATUS_CONFIG: Record<ControlState, { color: string; label: string }> = {
-  remote_active: { color: 'bg-purple-500', label: 'Remote' },
-  cli_active: { color: 'bg-blue-500', label: 'CLI' },
-  cli_waiting: { color: 'bg-yellow-500', label: 'Waiting' },
-  released: { color: 'bg-gray-500', label: 'Released' },
+const STATUS_CONFIG: Record<ControlState, { color: string; label: string; description: string }> = {
+  remote_active: { color: 'bg-purple-500', label: 'Remote', description: 'Controlled by Web UI' },
+  cli_active: { color: 'bg-blue-500', label: 'CLI', description: 'Controlled by CLI directly' },
+  cli_waiting: { color: 'bg-yellow-500', label: 'Waiting', description: 'CLI waiting for user input' },
+  released: { color: 'bg-gray-500', label: 'Released', description: 'Not being controlled' },
 }
 
 export function AppSidebar({ currentPath }: AppSidebarProps) {
@@ -440,7 +440,10 @@ export function AppSidebar({ currentPath }: AppSidebarProps) {
                             </div>
                           )}
                           <div className="flex items-center gap-1 text-xs text-gray-500">
-                            <span className={cn('h-2 w-2 rounded-full', statusInfo.color)} />
+                            <span 
+                              className={cn('h-2 w-2 rounded-full', statusInfo.color)} 
+                              title={statusInfo.description}
+                            />
                             <span>{statusInfo.label}</span>
                             <span>•</span>
                             <SidebarActivityTime lastActivity={session.last_activity} />
