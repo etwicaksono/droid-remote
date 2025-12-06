@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Terminal, Menu, Plus, ShieldCheck, X, Trash2, Pencil, Settings, LogOut, Clock, ChevronDown, ChevronRight, Brain } from 'lucide-react'
+import { Terminal, Menu, Plus, ShieldCheck, X, Trash2, Pencil, Settings, LogOut, Clock, ChevronDown, ChevronRight, Brain, AlertTriangle, CheckCircle } from 'lucide-react'
 import { cn, formatRelativeTime } from '@/lib/utils'
 import { getSocket } from '@/lib/socket'
 import { getAuthHeaders } from '@/lib/api'
@@ -35,6 +35,7 @@ export function AppSidebar({ currentPath }: AppSidebarProps) {
   const [editingName, setEditingName] = useState('')
   const [showAddModal, setShowAddModal] = useState(false)
   const [settingsExpanded, setSettingsExpanded] = useState(false)
+  const [sessionNotifications, setSessionNotifications] = useState<Record<string, string[]>>({})
   
   // Auto-expand settings accordion when on settings pages
   const isSettingsPage = currentPath.startsWith('/settings') || currentPath === '/models'
@@ -72,8 +73,34 @@ export function AppSidebar({ currentPath }: AppSidebarProps) {
       }
     }
 
+    const fetchNotifications = async () => {
+      try {
+        const response = await fetch(`${API_BASE}/notifications?unread_only=true`, {
+          headers: getAuthHeaders(),
+        })
+        if (response.ok) {
+          const data = await response.json()
+          // Group notification types by session
+          const bySession: Record<string, string[]> = {}
+          for (const n of data.notifications || []) {
+            const sessionId = n.session_id as string
+            if (!bySession[sessionId]) {
+              bySession[sessionId] = []
+            }
+            if (!bySession[sessionId].includes(n.type)) {
+              bySession[sessionId].push(n.type)
+            }
+          }
+          setSessionNotifications(bySession)
+        }
+      } catch (error) {
+        console.error('Failed to fetch notifications:', error)
+      }
+    }
+
     // Initial fetch
     fetchSessions()
+    fetchNotifications()
 
     // Listen for WebSocket events to update sessions
     const socket = getSocket()
@@ -85,6 +112,7 @@ export function AppSidebar({ currentPath }: AppSidebarProps) {
     const handleTaskCompleted = () => {
       // Refetch sessions when a task completes (updates last_activity)
       fetchSessions()
+      fetchNotifications()
     }
     
     const handleChatUpdated = () => {
@@ -100,6 +128,11 @@ export function AppSidebar({ currentPath }: AppSidebarProps) {
     const handleConnect = () => {
       // Re-fetch sessions on socket connect/reconnect to catch any missed updates
       fetchSessions()
+      fetchNotifications()
+    }
+
+    const handleNotification = () => {
+      fetchNotifications()
     }
     
     socket.on('sessions_update', handleSessionsUpdate)
@@ -107,6 +140,7 @@ export function AppSidebar({ currentPath }: AppSidebarProps) {
     socket.on('chat_updated', handleChatUpdated)
     socket.on('queue_updated', handleQueueUpdated)
     socket.on('connect', handleConnect)
+    socket.on('notification', handleNotification)
     
     // Also fetch on reconnect (socket.io fires 'connect' on reconnect too, but be explicit)
     socket.io.on('reconnect', handleConnect)
@@ -117,6 +151,7 @@ export function AppSidebar({ currentPath }: AppSidebarProps) {
       socket.off('chat_updated', handleChatUpdated)
       socket.off('queue_updated', handleQueueUpdated)
       socket.off('connect', handleConnect)
+      socket.off('notification', handleNotification)
       socket.io.off('reconnect', handleConnect)
     }
   }, [sortSessions])
@@ -435,8 +470,26 @@ export function AppSidebar({ currentPath }: AppSidebarProps) {
                               autoFocus
                             />
                           ) : (
-                            <div className="font-medium text-sm truncate mb-1 pr-14">
-                              {session.name || session.project_dir?.split('/').pop() || 'Unnamed'}
+                            <div className="flex items-center gap-1 mb-1 pr-14">
+                              <span className="font-medium text-sm truncate">
+                                {session.name || session.project_dir?.split('/').pop() || 'Unnamed'}
+                              </span>
+                              {/* Notification badges */}
+                              {sessionNotifications[session.id]?.includes('permission_request') && (
+                                <span title="Permission request pending">
+                                  <ShieldCheck className="h-3.5 w-3.5 text-yellow-500 flex-shrink-0" />
+                                </span>
+                              )}
+                              {sessionNotifications[session.id]?.includes('task_completed') && (
+                                <span title="Task completed">
+                                  <CheckCircle className="h-3.5 w-3.5 text-green-500 flex-shrink-0" />
+                                </span>
+                              )}
+                              {sessionNotifications[session.id]?.includes('task_failed') && (
+                                <span title="Task failed">
+                                  <AlertTriangle className="h-3.5 w-3.5 text-red-500 flex-shrink-0" />
+                                </span>
+                              )}
                             </div>
                           )}
                           <div className="flex items-center gap-1 text-xs text-gray-500">

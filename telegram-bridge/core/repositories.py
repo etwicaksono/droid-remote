@@ -754,7 +754,121 @@ class AllowlistRepository:
         return False
 
 
+class NotificationRepository:
+    """Repository for notifications"""
+    
+    def create(self, session_id: str, notification_type: str, title: str, message: Optional[str] = None) -> dict:
+        """Create a new notification"""
+        db = get_db()
+        db.execute("""
+            INSERT INTO notifications (session_id, type, title, message)
+            VALUES (?, ?, ?, ?)
+        """, (session_id, notification_type, title, message))
+        db.commit()
+        
+        cursor = db.execute("SELECT * FROM notifications WHERE id = last_insert_rowid()")
+        row = cursor.fetchone()
+        return row_to_dict(row) if row else {}
+    
+    def get_all(self, unread_only: bool = False, limit: int = 50) -> List[dict]:
+        """Get all notifications, optionally filtered to unread only"""
+        db = get_db()
+        if unread_only:
+            cursor = db.execute(
+                "SELECT * FROM notifications WHERE read = 0 ORDER BY created_at DESC LIMIT ?",
+                (limit,)
+            )
+        else:
+            cursor = db.execute(
+                "SELECT * FROM notifications ORDER BY created_at DESC LIMIT ?",
+                (limit,)
+            )
+        return [row_to_dict(row) for row in cursor.fetchall()]
+    
+    def get_by_session(self, session_id: str) -> List[dict]:
+        """Get all notifications for a session"""
+        db = get_db()
+        cursor = db.execute(
+            "SELECT * FROM notifications WHERE session_id = ? ORDER BY created_at DESC",
+            (session_id,)
+        )
+        return [row_to_dict(row) for row in cursor.fetchall()]
+    
+    def get_unread_count(self) -> int:
+        """Get count of unread notifications"""
+        db = get_db()
+        cursor = db.execute("SELECT COUNT(*) FROM notifications WHERE read = 0")
+        return cursor.fetchone()[0]
+    
+    def get_session_unread_count(self, session_id: str) -> int:
+        """Get count of unread notifications for a session"""
+        db = get_db()
+        cursor = db.execute(
+            "SELECT COUNT(*) FROM notifications WHERE session_id = ? AND read = 0",
+            (session_id,)
+        )
+        return cursor.fetchone()[0]
+    
+    def get_session_unread_types(self, session_id: str) -> List[str]:
+        """Get list of unread notification types for a session (for badges)"""
+        db = get_db()
+        cursor = db.execute(
+            "SELECT DISTINCT type FROM notifications WHERE session_id = ? AND read = 0",
+            (session_id,)
+        )
+        return [row[0] for row in cursor.fetchall()]
+    
+    def mark_read(self, notification_id: int) -> bool:
+        """Mark a notification as read"""
+        db = get_db()
+        cursor = db.execute(
+            "UPDATE notifications SET read = 1 WHERE id = ?",
+            (notification_id,)
+        )
+        db.commit()
+        return cursor.rowcount > 0
+    
+    def mark_all_read(self) -> int:
+        """Mark all notifications as read"""
+        db = get_db()
+        cursor = db.execute("UPDATE notifications SET read = 1 WHERE read = 0")
+        db.commit()
+        return cursor.rowcount
+    
+    def mark_session_read(self, session_id: str) -> int:
+        """Mark all notifications for a session as read"""
+        db = get_db()
+        cursor = db.execute(
+            "UPDATE notifications SET read = 1 WHERE session_id = ? AND read = 0",
+            (session_id,)
+        )
+        db.commit()
+        return cursor.rowcount
+    
+    def delete(self, notification_id: int) -> bool:
+        """Delete a notification"""
+        db = get_db()
+        cursor = db.execute("DELETE FROM notifications WHERE id = ?", (notification_id,))
+        db.commit()
+        return cursor.rowcount > 0
+    
+    def clear_all(self) -> int:
+        """Clear all notifications"""
+        db = get_db()
+        cursor = db.execute("DELETE FROM notifications")
+        db.commit()
+        return cursor.rowcount
+    
+    def clear_by_session(self, session_id: str) -> int:
+        """Clear all notifications for a session"""
+        db = get_db()
+        cursor = db.execute("DELETE FROM notifications WHERE session_id = ?", (session_id,))
+        db.commit()
+        return cursor.rowcount
+
+
 # Singleton instances
+_notification_repo: Optional[NotificationRepository] = None
 _allowlist_repo: Optional[AllowlistRepository] = None
 
 
@@ -763,6 +877,13 @@ def get_allowlist_repo() -> AllowlistRepository:
     if _allowlist_repo is None:
         _allowlist_repo = AllowlistRepository()
     return _allowlist_repo
+
+
+def get_notification_repo() -> NotificationRepository:
+    global _notification_repo
+    if _notification_repo is None:
+        _notification_repo = NotificationRepository()
+    return _notification_repo
 
 
 def get_session_repo() -> SessionRepository:

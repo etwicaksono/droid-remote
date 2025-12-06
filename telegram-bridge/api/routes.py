@@ -314,16 +314,31 @@ async def notify_session(session_id: str, data: NotifyRequest, request: Request)
         )
         await bot_manager.send_notification(notification)
     
+    # Create notification in database for permission requests
+    if data.type == NotificationType.PERMISSION:
+        from core.repositories import get_notification_repo
+        notification_data = get_notification_repo().create(
+            session_id=session_id,
+            notification_type="permission_request",
+            title=data.session_name or session_id[:8],
+            message=f"{data.tool_name}: {data.message[:100]}..." if len(data.message) > 100 else f"{data.tool_name}: {data.message}"
+        )
+    else:
+        notification_data = None
+    
     # Emit Socket.IO events
     sio = getattr(request.app.state, "sio", None)
     if sio:
-        await sio.emit("notification", {
+        emit_data = {
             "session_id": session_id,
             "session_name": data.session_name,
             "message": data.message,
             "type": data.type.value if hasattr(data.type, 'value') else data.type,
             "request_id": request_id
-        })
+        }
+        if notification_data:
+            emit_data["notification_id"] = notification_data.get("id")
+        await sio.emit("notification", emit_data)
         # Also emit sessions_update so Web UI refreshes
         sessions = session_registry.get_all()
         await sio.emit("sessions_update", [s.model_dump(mode='json') for s in sessions])
@@ -530,6 +545,19 @@ async def execute_task(data: TaskExecuteRequest, request: Request):
                 except Exception as e:
                     logger.error(f"Failed to handle session transition: {e}")
             
+            # Create notification for task completion
+            if result.session_id:
+                from core.repositories import get_notification_repo
+                notification_type = "task_completed" if result.success else "task_failed"
+                session_name = data.project_dir.replace("\\", "/").split("/")[-1]
+                message = data.prompt[:80] + "..." if len(data.prompt) > 80 else data.prompt
+                get_notification_repo().create(
+                    session_id=result.session_id,
+                    notification_type=notification_type,
+                    title=session_name,
+                    message=message
+                )
+            
             # Notify completion via WebSocket
             if sio:
                 await sio.emit("task_completed", {
@@ -578,6 +606,16 @@ async def execute_task(data: TaskExecuteRequest, request: Request):
                     
         except Exception as e:
             logger.error(f"Background task failed: {e}")
+            # Create notification for task error
+            if pending_session_id:
+                from core.repositories import get_notification_repo
+                session_name = data.project_dir.replace("\\", "/").split("/")[-1]
+                get_notification_repo().create(
+                    session_id=pending_session_id,
+                    notification_type="task_failed",
+                    title=session_name,
+                    message=str(e)[:100]
+                )
             # Notify error via WebSocket
             if sio:
                 await sio.emit("task_completed", {
@@ -1495,3 +1533,69 @@ async def check_allowlist(tool_name: str, tool_input: str = "{}"):
     
     allowed = get_allowlist_repo().is_allowed(tool_name, input_dict)
     return {"allowed": allowed, "tool_name": tool_name}
+
+
+# Notification Endpoints
+
+@web_router.get("/notifications")
+async def get_notifications(unread_only: bool = False, limit: int = 50):
+    """Get all notifications, optionally filtered to unread only"""
+    from core.repositories import get_notification_repo
+    notifications = get_notification_repo().get_all(unread_only=unread_only, limit=limit)
+    unread_count = get_notification_repo().get_unread_count()
+    return {"notifications": notifications, "unread_count": unread_count}
+
+
+@web_router.get("/notifications/count")
+async def get_notification_count():
+    """Get unread notification count"""
+    from core.repositories import get_notification_repo
+    count = get_notification_repo().get_unread_count()
+    return {"unread_count": count}
+
+
+@web_router.get("/notifications/session/{session_id}")
+async def get_session_notifications(session_id: str):
+    """Get notifications for a specific session"""
+    from core.repositories import get_notification_repo
+    notifications = get_notification_repo().get_by_session(session_id)
+    unread_count = get_notification_repo().get_session_unread_count(session_id)
+    return {"notifications": notifications, "unread_count": unread_count}
+
+
+@web_router.put("/notifications/{notification_id}/read")
+async def mark_notification_read(notification_id: int):
+    """Mark a notification as read"""
+    from core.repositories import get_notification_repo
+    success = get_notification_repo().mark_read(notification_id)
+    if success:
+        return {"success": True}
+    else:
+        raise HTTPException(status_code=404, detail="Notification not found")
+
+
+@web_router.put("/notifications/read-all")
+async def mark_all_notifications_read():
+    """Mark all notifications as read"""
+    from core.repositories import get_notification_repo
+    count = get_notification_repo().mark_all_read()
+    return {"success": True, "count": count}
+
+
+@web_router.delete("/notifications/{notification_id}")
+async def delete_notification(notification_id: int):
+    """Delete a notification"""
+    from core.repositories import get_notification_repo
+    success = get_notification_repo().delete(notification_id)
+    if success:
+        return {"success": True}
+    else:
+        raise HTTPException(status_code=404, detail="Notification not found")
+
+
+@web_router.delete("/notifications")
+async def clear_all_notifications():
+    """Clear all notifications"""
+    from core.repositories import get_notification_repo
+    count = get_notification_repo().clear_all()
+    return {"success": True, "count": count}

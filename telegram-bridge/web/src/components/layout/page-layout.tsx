@@ -4,6 +4,7 @@ import { ReactNode, useState, useEffect } from 'react'
 import { ChevronRight, ChevronDown, Clock, Folder, Radio, Copy, Check, Pencil } from 'lucide-react'
 import { AppSidebar } from '@/components/layout/app-sidebar'
 import { ConnectionStatus } from '@/components/connection-status'
+import { NotificationBell } from '@/components/notification-bell'
 import { Badge } from '@/components/ui/badge'
 import { cn, formatRelativeTime } from '@/lib/utils'
 import { getSocket } from '@/lib/socket'
@@ -182,6 +183,7 @@ export function PageLayout({ children, title, session, currentPath }: PageLayout
                     {controlConfig.label}
                   </Badge>
                   <Badge variant={statusConfig.variant} className="hidden sm:flex">{statusConfig.label}</Badge>
+                  <NotificationBell />
                   <ConnectionStatus />
                 </div>
               </div>
@@ -233,7 +235,10 @@ export function PageLayout({ children, title, session, currentPath }: PageLayout
             // Simple title header
             <div className="flex items-center justify-between p-4 pl-16 md:pl-4">
               <h1 className="text-lg font-semibold">{title}</h1>
-              <ConnectionStatus />
+              <div className="flex items-center gap-2">
+                <NotificationBell />
+                <ConnectionStatus />
+              </div>
             </div>
           )}
         </header>

@@ -125,6 +125,18 @@ CREATE TABLE IF NOT EXISTS session_images (
     FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
 );
 
+-- Notifications (for web UI notification bell)
+CREATE TABLE IF NOT EXISTS notifications (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id TEXT NOT NULL,
+    type TEXT NOT NULL,  -- 'permission_request', 'task_completed', 'task_failed', 'cli_waiting'
+    title TEXT NOT NULL,
+    message TEXT,
+    read INTEGER DEFAULT 0,  -- SQLite uses INTEGER for boolean
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+);
+
 -- Indexes for common queries
 CREATE INDEX IF NOT EXISTS idx_session_events_session ON session_events(session_id);
 CREATE INDEX IF NOT EXISTS idx_session_events_created ON session_events(created_at);
@@ -137,6 +149,9 @@ CREATE INDEX IF NOT EXISTS idx_chat_messages_session ON chat_messages(session_id
 CREATE INDEX IF NOT EXISTS idx_chat_messages_created ON chat_messages(created_at);
 CREATE INDEX IF NOT EXISTS idx_permission_allowlist_tool ON permission_allowlist(tool_name);
 CREATE INDEX IF NOT EXISTS idx_session_images_session ON session_images(session_id);
+CREATE INDEX IF NOT EXISTS idx_notifications_session ON notifications(session_id);
+CREATE INDEX IF NOT EXISTS idx_notifications_read ON notifications(read);
+CREATE INDEX IF NOT EXISTS idx_notifications_created ON notifications(created_at);
 """
 
 
