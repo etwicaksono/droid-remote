@@ -7,16 +7,46 @@ import { Textarea } from '@/components/ui/textarea'
 import { ImageUploadArea, ImagePreview, VisionWarning, type UploadedImage } from '@/components/ui/image-upload'
 import { cn } from '@/lib/utils'
 import type { ReasoningEffort } from '@/types'
-import modelsConfig from '@/config/models.json'
 
-// Load models from JSON config file
-const AVAILABLE_MODELS = modelsConfig.models as { id: string; name: string; reasoning: boolean; vision: boolean }[]
-const REASONING_LEVELS = modelsConfig.reasoningLevels as { id: ReasoningEffort; name: string }[]
-const AUTONOMY_LEVELS = modelsConfig.autonomyLevels as { id: string; name: string; description: string }[]
+// Model types
+interface ModelConfig {
+  id: string
+  name: string
+  reasoning: boolean
+  vision: boolean
+}
 
-export const DEFAULT_MODEL = modelsConfig.defaultModel
-export const DEFAULT_REASONING = modelsConfig.defaultReasoningLevel as ReasoningEffort
-export const DEFAULT_AUTONOMY = modelsConfig.defaultAutonomyLevel as string
+interface ReasoningLevelConfig {
+  id: string
+  name: string
+}
+
+interface AutonomyLevelConfig {
+  id: string
+  name: string
+  description: string
+}
+
+// Fallback defaults (used if not passed via props)
+const FALLBACK_MODELS: ModelConfig[] = [
+  { id: 'claude-opus-4-5-20251101', name: 'Claude Opus 4.5', reasoning: true, vision: true },
+]
+const FALLBACK_REASONING_LEVELS: ReasoningLevelConfig[] = [
+  { id: 'off', name: 'Off' },
+  { id: 'low', name: 'Low' },
+  { id: 'medium', name: 'Medium' },
+  { id: 'high', name: 'High' },
+]
+const FALLBACK_AUTONOMY_LEVELS: AutonomyLevelConfig[] = [
+  { id: 'off', name: 'Spec', description: 'Research and plan only' },
+  { id: 'low', name: 'Low', description: 'Edits and read-only commands' },
+  { id: 'medium', name: 'Medium', description: 'Allow reversible commands' },
+  { id: 'high', name: 'High', description: 'Allow all commands' },
+]
+
+export const DEFAULT_MODEL = 'claude-opus-4-5-20251101'
+export const DEFAULT_REASONING = 'off' as ReasoningEffort
+export const DEFAULT_AUTONOMY = 'high'
 
 const MAX_MESSAGE_INPUT_HEIGHT = 240
 
@@ -53,6 +83,11 @@ export interface InputBoxProps {
   onImageRemove?: (index: number) => void
   onInsertRef?: (ref: string) => void
   isUploading?: boolean
+  
+  // Models config (optional - uses fallbacks if not provided)
+  availableModels?: ModelConfig[]
+  reasoningLevels?: ReasoningLevelConfig[]
+  autonomyLevels?: AutonomyLevelConfig[]
 }
 
 export { type UploadedImage }
@@ -81,8 +116,11 @@ export function InputBox({
   onImageRemove,
   onInsertRef,
   isUploading = false,
+  availableModels = FALLBACK_MODELS,
+  reasoningLevels = FALLBACK_REASONING_LEVELS,
+  autonomyLevels = FALLBACK_AUTONOMY_LEVELS,
 }: InputBoxProps) {
-  const currentModel = AVAILABLE_MODELS.find(m => m.id === selectedModel)
+  const currentModel = availableModels.find(m => m.id === selectedModel)
   const supportsReasoning = currentModel?.reasoning ?? false
   const supportsVision = currentModel?.vision ?? false
   const hasImages = images.length > 0
@@ -196,7 +234,7 @@ export function InputBox({
                   disabled && "cursor-not-allowed"
                 )}
               >
-                {AVAILABLE_MODELS.map((model) => (
+                {availableModels.map((model) => (
                   <option key={model.id} value={model.id}>
                     {model.name}
                   </option>
@@ -220,7 +258,7 @@ export function InputBox({
                   )}
                   title="Thinking mode"
                 >
-                  {REASONING_LEVELS.map((level) => (
+                  {reasoningLevels.map((level) => (
                     <option key={level.id} value={level.id}>
                       {level.name}
                     </option>
@@ -244,7 +282,7 @@ export function InputBox({
                 )}
                 title="Autonomy level"
               >
-                {AUTONOMY_LEVELS.map((level) => (
+                {autonomyLevels.map((level) => (
                   <option key={level.id} value={level.id} title={level.description}>
                     {level.name}
                   </option>

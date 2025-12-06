@@ -1329,6 +1329,155 @@ async def update_factory_settings(request: Request):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ============ Models Configuration Endpoints ============
+
+@web_router.get("/config/models")
+async def get_models_config():
+    """Get all models (default + custom)"""
+    from api.models_handler import get_all_models
+    try:
+        return get_all_models()
+    except Exception as e:
+        logger.error(f"Failed to get models config: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@web_router.post("/config/models/default")
+async def add_default_model_endpoint(request: Request):
+    """Add a new default model"""
+    from api.models_handler import add_default_model
+    try:
+        data = await request.json()
+        if not data.get("id") or not data.get("name"):
+            raise HTTPException(status_code=400, detail="Model ID and name are required")
+        
+        if add_default_model(data):
+            return {"success": True}
+        else:
+            raise HTTPException(status_code=409, detail="Model already exists")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to add default model: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@web_router.put("/config/models/default/{model_id}")
+async def update_default_model_endpoint(model_id: str, request: Request):
+    """Update a default model"""
+    from api.models_handler import update_default_model
+    try:
+        data = await request.json()
+        if update_default_model(model_id, data):
+            return {"success": True}
+        else:
+            raise HTTPException(status_code=404, detail="Model not found")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to update default model: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@web_router.delete("/config/models/default/{model_id}")
+async def delete_default_model_endpoint(model_id: str):
+    """Delete a default model"""
+    from api.models_handler import delete_default_model
+    try:
+        if delete_default_model(model_id):
+            return {"success": True}
+        else:
+            raise HTTPException(status_code=404, detail="Model not found")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to delete default model: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@web_router.put("/config/models/default-selection")
+async def set_default_model_endpoint(request: Request):
+    """Set the default model selection"""
+    from api.models_handler import set_default_model_selection
+    try:
+        data = await request.json()
+        model_id = data.get("modelId")
+        if not model_id:
+            raise HTTPException(status_code=400, detail="modelId is required")
+        
+        if set_default_model_selection(model_id):
+            return {"success": True}
+        else:
+            raise HTTPException(status_code=500, detail="Failed to update default model")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to set default model: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@web_router.post("/config/models/custom")
+async def add_custom_model_endpoint(request: Request):
+    """Add a new custom model (writes to Factory CLI config)"""
+    from api.models_handler import add_custom_model, get_factory_config_path
+    try:
+        if not get_factory_config_path():
+            raise HTTPException(status_code=400, detail="FACTORY_CUSTOM_MODEL_CONFIG_PATH not configured")
+        
+        data = await request.json()
+        if not data.get("model") or not data.get("base_url") or not data.get("api_key"):
+            raise HTTPException(status_code=400, detail="Model ID, base_url, and api_key are required")
+        
+        if add_custom_model(data):
+            return {"success": True}
+        else:
+            raise HTTPException(status_code=409, detail="Model already exists")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to add custom model: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@web_router.put("/config/models/custom/{model_id}")
+async def update_custom_model_endpoint(model_id: str, request: Request):
+    """Update a custom model"""
+    from api.models_handler import update_custom_model, get_factory_config_path
+    try:
+        if not get_factory_config_path():
+            raise HTTPException(status_code=400, detail="FACTORY_CUSTOM_MODEL_CONFIG_PATH not configured")
+        
+        data = await request.json()
+        if update_custom_model(model_id, data):
+            return {"success": True}
+        else:
+            raise HTTPException(status_code=404, detail="Model not found")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to update custom model: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@web_router.delete("/config/models/custom/{model_id}")
+async def delete_custom_model_endpoint(model_id: str):
+    """Delete a custom model"""
+    from api.models_handler import delete_custom_model, get_factory_config_path
+    try:
+        if not get_factory_config_path():
+            raise HTTPException(status_code=400, detail="FACTORY_CUSTOM_MODEL_CONFIG_PATH not configured")
+        
+        if delete_custom_model(model_id):
+            return {"success": True}
+        else:
+            raise HTTPException(status_code=404, detail="Model not found")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to delete custom model: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @hooks_router.get("/allowlist/check")
 async def check_allowlist(tool_name: str, tool_input: str = "{}"):
     """

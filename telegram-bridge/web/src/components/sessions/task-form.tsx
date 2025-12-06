@@ -10,11 +10,10 @@ import { DirectoryPickerModal } from '@/components/ui/directory-picker-modal'
 import { uploadImage, deleteImage } from '@/lib/api-client'
 import { cn } from '@/lib/utils'
 import type { ReasoningEffort } from '@/types'
-import modelsConfig from '@/config/models.json'
+import { useModels } from '@/hooks/use-models'
 import { getAuthHeaders } from '@/lib/api'
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8765'
-const AVAILABLE_MODELS = modelsConfig.models as { id: string; name: string; reasoning: boolean; vision: boolean }[]
 
 interface DirOption {
   value: string
@@ -88,8 +87,11 @@ export function TaskForm() {
   const { executeTask, cancelTask } = useSessionActions()
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const chatContainerRef = useRef<HTMLDivElement | null>(null)
+  
+  // Fetch models from API
+  const { models, reasoningLevels, autonomyLevels, loading: modelsLoading } = useModels()
 
-  const currentModel = AVAILABLE_MODELS.find(m => m.id === selectedModel)
+  const currentModel = models.find(m => m.id === selectedModel)
   const supportsReasoning = currentModel?.reasoning ?? false
   
   // Fetch config on mount
@@ -342,6 +344,9 @@ export function TaskForm() {
                 onImageRemove={handleImageRemove}
                 onInsertRef={handleInsertRef}
                 isUploading={isUploading}
+                availableModels={models}
+                reasoningLevels={reasoningLevels}
+                autonomyLevels={autonomyLevels}
               />
             </div>
           </div>
@@ -384,6 +389,9 @@ export function TaskForm() {
                 onImageRemove={handleImageRemove}
                 onInsertRef={handleInsertRef}
                 isUploading={isUploading}
+                availableModels={models}
+                reasoningLevels={reasoningLevels}
+                autonomyLevels={autonomyLevels}
               />
             </div>
           </>

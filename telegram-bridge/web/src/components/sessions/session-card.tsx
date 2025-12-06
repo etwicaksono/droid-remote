@@ -12,10 +12,8 @@ import { cn } from '@/lib/utils'
 import { InputBox, DEFAULT_MODEL, DEFAULT_REASONING, DEFAULT_AUTONOMY, type UploadedImage } from '@/components/chat/input-box'
 import { uploadImage, deleteImage } from '@/lib/api-client'
 import type { Session, ControlState, ReasoningEffort, QueuedMessage } from '@/types'
-import modelsConfig from '@/config/models.json'
+import { useModels } from '@/hooks/use-models'
 
-// Load models from JSON config file
-const AVAILABLE_MODELS = modelsConfig.models as { id: string; name: string; reasoning: boolean; vision: boolean }[]
 const MAX_MESSAGE_INPUT_HEIGHT = 240
 
 // Generate UUID that works in all browsers (crypto.randomUUID requires HTTPS)
@@ -126,8 +124,11 @@ export function SessionCard({ session }: SessionCardProps) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const chatContainerRef = useRef<HTMLDivElement | null>(null)
   const isLoadingOlderRef = useRef(false)
+  
+  // Fetch models from API
+  const { models, reasoningLevels, autonomyLevels } = useModels()
 
-  const currentModel = AVAILABLE_MODELS.find(m => m.id === selectedModel)
+  const currentModel = models.find(m => m.id === selectedModel)
   const supportsReasoning = currentModel?.reasoning ?? false
 
   // Scroll chat to bottom
@@ -901,6 +902,9 @@ export function SessionCard({ session }: SessionCardProps) {
                   onImageRemove={handleImageRemove}
                   onInsertRef={handleInsertRef}
                   isUploading={isUploading}
+                  availableModels={models}
+                  reasoningLevels={reasoningLevels}
+                  autonomyLevels={autonomyLevels}
                 />
               </div>
             </div>
@@ -1009,6 +1013,9 @@ export function SessionCard({ session }: SessionCardProps) {
                   onImageRemove={handleImageRemove}
                   onInsertRef={handleInsertRef}
                   isUploading={isUploading}
+                  availableModels={models}
+                  reasoningLevels={reasoningLevels}
+                  autonomyLevels={autonomyLevels}
                 />
               </div>
             </>

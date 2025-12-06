@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Terminal, Menu, Plus, ShieldCheck, X, Trash2, Pencil, Settings, LogOut, Clock } from 'lucide-react'
+import { Terminal, Menu, Plus, ShieldCheck, X, Trash2, Pencil, Settings, LogOut, Clock, ChevronDown, ChevronRight, Brain } from 'lucide-react'
 import { cn, formatRelativeTime } from '@/lib/utils'
 import { getSocket } from '@/lib/socket'
 import { getAuthHeaders } from '@/lib/api'
@@ -34,6 +34,10 @@ export function AppSidebar({ currentPath }: AppSidebarProps) {
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null)
   const [editingName, setEditingName] = useState('')
   const [showAddModal, setShowAddModal] = useState(false)
+  const [settingsExpanded, setSettingsExpanded] = useState(false)
+  
+  // Auto-expand settings accordion when on settings pages
+  const isSettingsPage = currentPath === '/permissions' || currentPath === '/settings' || currentPath === '/models'
   
   // Extract selected session ID from path
   const selectedSessionId = currentPath.startsWith('/session/') 
@@ -251,35 +255,94 @@ export function AppSidebar({ currentPath }: AppSidebarProps) {
             {!collapsed && <span>Custom Task</span>}
           </Link>
 
-          {/* Permissions */}
-          <Link
-            href="/permissions"
-            onClick={() => setMobileOpen(false)}
-            className={cn(
-              'flex items-center gap-2 p-3 rounded-md text-sm font-medium transition-colors',
-              currentPath === '/permissions'
-                ? 'bg-gray-800 text-white'
-                : 'text-gray-400 hover:bg-gray-800/50 hover:text-white'
-            )}
-          >
-            <ShieldCheck className="h-4 w-4 flex-shrink-0" />
-            {!collapsed && <span>Permissions</span>}
-          </Link>
+          {/* Settings Accordion */}
+          {!collapsed && (
+            <div>
+              <button
+                onClick={() => setSettingsExpanded(!settingsExpanded)}
+                className={cn(
+                  'w-full flex items-center gap-2 p-3 rounded-md text-sm font-medium transition-colors',
+                  isSettingsPage
+                    ? 'text-white'
+                    : 'text-gray-400 hover:bg-gray-800/50 hover:text-white'
+                )}
+              >
+                <Settings className="h-4 w-4 flex-shrink-0" />
+                <span className="flex-1 text-left">Settings</span>
+                {settingsExpanded || isSettingsPage ? (
+                  <ChevronDown className="h-4 w-4" />
+                ) : (
+                  <ChevronRight className="h-4 w-4" />
+                )}
+              </button>
+              
+              {(settingsExpanded || isSettingsPage) && (
+                <div className="ml-4 border-l border-gray-700 pl-2">
+                  {/* Permissions */}
+                  <Link
+                    href="/permissions"
+                    onClick={() => setMobileOpen(false)}
+                    className={cn(
+                      'flex items-center gap-2 p-2 rounded-md text-sm transition-colors',
+                      currentPath === '/permissions'
+                        ? 'bg-gray-800 text-white'
+                        : 'text-gray-400 hover:bg-gray-800/50 hover:text-white'
+                    )}
+                  >
+                    <ShieldCheck className="h-4 w-4 flex-shrink-0" />
+                    <span>Permissions</span>
+                  </Link>
 
-          {/* Settings */}
-          <Link
-            href="/settings"
-            onClick={() => setMobileOpen(false)}
-            className={cn(
-              'flex items-center gap-2 p-3 rounded-md text-sm font-medium transition-colors',
-              currentPath === '/settings'
-                ? 'bg-gray-800 text-white'
-                : 'text-gray-400 hover:bg-gray-800/50 hover:text-white'
-            )}
-          >
-            <Settings className="h-4 w-4 flex-shrink-0" />
-            {!collapsed && <span>Settings</span>}
-          </Link>
+                  {/* Factory CLI */}
+                  <Link
+                    href="/settings"
+                    onClick={() => setMobileOpen(false)}
+                    className={cn(
+                      'flex items-center gap-2 p-2 rounded-md text-sm transition-colors',
+                      currentPath === '/settings'
+                        ? 'bg-gray-800 text-white'
+                        : 'text-gray-400 hover:bg-gray-800/50 hover:text-white'
+                    )}
+                  >
+                    <Terminal className="h-4 w-4 flex-shrink-0" />
+                    <span>Factory CLI</span>
+                  </Link>
+
+                  {/* Models */}
+                  <Link
+                    href="/models"
+                    onClick={() => setMobileOpen(false)}
+                    className={cn(
+                      'flex items-center gap-2 p-2 rounded-md text-sm transition-colors',
+                      currentPath === '/models'
+                        ? 'bg-gray-800 text-white'
+                        : 'text-gray-400 hover:bg-gray-800/50 hover:text-white'
+                    )}
+                  >
+                    <Brain className="h-4 w-4 flex-shrink-0" />
+                    <span>Models</span>
+                  </Link>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Collapsed mode - just show settings icon */}
+          {collapsed && (
+            <Link
+              href="/settings"
+              onClick={() => setMobileOpen(false)}
+              className={cn(
+                'flex items-center justify-center p-3 rounded-md text-sm font-medium transition-colors',
+                isSettingsPage
+                  ? 'bg-gray-800 text-white'
+                  : 'text-gray-400 hover:bg-gray-800/50 hover:text-white'
+              )}
+              title="Settings"
+            >
+              <Settings className="h-4 w-4" />
+            </Link>
+          )}
 
         </div>
 

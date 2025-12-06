@@ -28,6 +28,8 @@ services:
       # Directory browser (disabled in Docker since it can't access host filesystem)
       - ENABLE_DIRECTORY_BROWSER=false
       - PROJECT_DIRS=${PROJECT_DIRS:-}
+      # Factory CLI config for custom models (mount volume if using)
+      - FACTORY_CUSTOM_MODEL_CONFIG_PATH=${FACTORY_CUSTOM_MODEL_CONFIG_PATH:-}
       # Cloudinary (for image upload)
       - CLOUDINARY_CLOUD_NAME=${CLOUDINARY_CLOUD_NAME:-}
       - CLOUDINARY_API_KEY=${CLOUDINARY_API_KEY:-}
@@ -37,6 +39,7 @@ services:
       - ./data:/app/data
       - ./logs:/app/logs
       - ./hooks:/app/hooks:ro
+      - ./telegram-bridge/config:/app/config
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8765/health"]
       interval: 30s
