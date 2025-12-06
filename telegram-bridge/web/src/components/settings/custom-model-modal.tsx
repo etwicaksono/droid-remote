@@ -88,8 +88,8 @@ export function CustomModelModal({ model, onClose, onSave }: CustomModelModalPro
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-      <div className="bg-card border rounded-lg w-full max-w-md max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between p-4 border-b sticky top-0 bg-card">
+      <div className="bg-gray-900 border border-gray-700 rounded-lg w-full max-w-md max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between p-4 border-b border-gray-700 sticky top-0 bg-gray-900">
           <h3 className="font-semibold">{isEditing ? 'Edit Custom Model' : 'Add Custom Model'}</h3>
           <Button variant="ghost" size="icon" onClick={onClose}>
             <X className="h-4 w-4" />
@@ -195,7 +195,7 @@ export function CustomModelModal({ model, onClose, onSave }: CustomModelModalPro
           </div>
         </div>
 
-        <div className="flex justify-end gap-2 p-4 border-t sticky bottom-0 bg-card">
+        <div className="flex justify-end gap-2 p-4 border-t border-gray-700 sticky bottom-0 bg-gray-900">
           <Button variant="outline" onClick={onClose}>
             Cancel
           </Button>
