@@ -37,7 +37,10 @@ export function AppSidebar({ currentPath }: AppSidebarProps) {
   const [settingsExpanded, setSettingsExpanded] = useState(false)
   
   // Auto-expand settings accordion when on settings pages
-  const isSettingsPage = currentPath === '/permissions' || currentPath === '/settings' || currentPath === '/models'
+  const isSettingsPage = currentPath.startsWith('/settings') || currentPath === '/models'
+  
+  // Check if on permissions history page (standalone, not settings)
+  const isPermissionsHistoryPage = currentPath === '/permissions'
   
   // Extract selected session ID from path
   const selectedSessionId = currentPath.startsWith('/session/') 
@@ -278,13 +281,13 @@ export function AppSidebar({ currentPath }: AppSidebarProps) {
               
               {(settingsExpanded || isSettingsPage) && (
                 <div className="ml-4 border-l border-gray-700 pl-2">
-                  {/* Permissions */}
+                  {/* Permissions Settings */}
                   <Link
-                    href="/permissions"
+                    href="/settings/permissions"
                     onClick={() => setMobileOpen(false)}
                     className={cn(
                       'flex items-center gap-2 p-2 rounded-md text-sm transition-colors',
-                      currentPath === '/permissions'
+                      currentPath === '/settings/permissions'
                         ? 'bg-gray-800 text-white'
                         : 'text-gray-400 hover:bg-gray-800/50 hover:text-white'
                     )}
@@ -295,11 +298,11 @@ export function AppSidebar({ currentPath }: AppSidebarProps) {
 
                   {/* Factory CLI */}
                   <Link
-                    href="/settings"
+                    href="/settings/cli"
                     onClick={() => setMobileOpen(false)}
                     className={cn(
                       'flex items-center gap-2 p-2 rounded-md text-sm transition-colors',
-                      currentPath === '/settings'
+                      currentPath === '/settings/cli'
                         ? 'bg-gray-800 text-white'
                         : 'text-gray-400 hover:bg-gray-800/50 hover:text-white'
                     )}
@@ -327,10 +330,25 @@ export function AppSidebar({ currentPath }: AppSidebarProps) {
             </div>
           )}
 
-          {/* Collapsed mode - just show permissions icon */}
+          {/* Permissions History (standalone, below Settings) */}
+          <Link
+            href="/permissions"
+            onClick={() => setMobileOpen(false)}
+            className={cn(
+              'flex items-center gap-2 p-3 rounded-md text-sm font-medium transition-colors',
+              isPermissionsHistoryPage
+                ? 'bg-gray-800 text-white'
+                : 'text-gray-400 hover:bg-gray-800/50 hover:text-white'
+            )}
+          >
+            <ShieldCheck className="h-4 w-4 flex-shrink-0" />
+            {!collapsed && <span>Permissions</span>}
+          </Link>
+
+          {/* Collapsed mode - just show settings icon */}
           {collapsed && (
             <Link
-              href="/permissions"
+              href="/settings/permissions"
               onClick={() => setMobileOpen(false)}
               className={cn(
                 'flex items-center justify-center p-3 rounded-md text-sm font-medium transition-colors',
@@ -338,9 +356,9 @@ export function AppSidebar({ currentPath }: AppSidebarProps) {
                   ? 'bg-gray-800 text-white'
                   : 'text-gray-400 hover:bg-gray-800/50 hover:text-white'
               )}
-              title="Permissions"
+              title="Settings"
             >
-              <ShieldCheck className="h-4 w-4" />
+              <Settings className="h-4 w-4" />
             </Link>
           )}
 
