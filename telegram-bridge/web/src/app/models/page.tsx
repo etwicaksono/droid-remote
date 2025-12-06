@@ -335,7 +335,7 @@ export default function ModelsPage() {
       {/* Delete Confirmation Modal */}
       {deleteConfirm && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-          <div className="bg-card border rounded-lg p-6 max-w-sm w-full">
+          <div className="bg-gray-900 border border-gray-700 rounded-lg p-6 max-w-sm w-full">
             <h3 className="text-lg font-semibold mb-2">Delete Model</h3>
             <p className="text-sm text-muted-foreground mb-4">
               Are you sure you want to delete this model? This action cannot be undone.
