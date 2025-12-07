@@ -1599,3 +1599,60 @@ async def clear_all_notifications():
     from core.repositories import get_notification_repo
     count = get_notification_repo().clear_all()
     return {"success": True, "count": count}
+
+
+# Environment Settings Endpoints
+
+@web_router.get("/config/env")
+async def get_environment_settings():
+    """Get managed environment variables"""
+    from api.env_handler import get_managed_env, get_env_defaults, get_env_dirty, MANAGED_VARS, SENSITIVE_VARS
+    
+    current = get_managed_env()
+    defaults = get_env_defaults()
+    
+    return {
+        "variables": current,
+        "defaults": defaults,
+        "managed_vars": MANAGED_VARS,
+        "sensitive_vars": SENSITIVE_VARS,
+        "dirty": get_env_dirty()
+    }
+
+
+@web_router.put("/config/env")
+async def update_environment_settings(request: Request):
+    """Update managed environment variables"""
+    from api.env_handler import update_env_file, MANAGED_VARS
+    
+    try:
+        data = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON")
+    
+    # Filter to only managed variables
+    updates = {k: v for k, v in data.items() if k in MANAGED_VARS}
+    
+    if not updates:
+        raise HTTPException(status_code=400, detail="No valid variables to update")
+    
+    success = update_env_file(updates)
+    if success:
+        return {"success": True, "updated": list(updates.keys())}
+    else:
+        raise HTTPException(status_code=500, detail="Failed to update .env file")
+
+
+@web_router.get("/config/env/dirty")
+async def check_env_dirty():
+    """Check if environment has been modified since server start"""
+    from api.env_handler import get_env_dirty
+    return {"dirty": get_env_dirty()}
+
+
+@web_router.post("/config/env/dismiss")
+async def dismiss_env_dirty():
+    """Dismiss the restart notification (clears dirty flag)"""
+    from api.env_handler import set_env_dirty
+    set_env_dirty(False)
+    return {"success": True}

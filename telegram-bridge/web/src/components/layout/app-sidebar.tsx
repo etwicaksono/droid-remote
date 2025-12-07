@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Terminal, Menu, Plus, ShieldCheck, X, Trash2, Pencil, Settings, LogOut, Clock, ChevronDown, ChevronRight, Brain, AlertTriangle, CheckCircle } from 'lucide-react'
+import { Terminal, Menu, Plus, ShieldCheck, X, Trash2, Pencil, Settings, LogOut, Clock, ChevronDown, ChevronRight, Brain, AlertTriangle, CheckCircle, Cog } from 'lucide-react'
 import { cn, formatRelativeTime } from '@/lib/utils'
 import { getSocket } from '@/lib/socket'
 import { getAuthHeaders } from '@/lib/api'
@@ -359,6 +359,21 @@ export function AppSidebar({ currentPath }: AppSidebarProps) {
                   >
                     <Brain className="h-4 w-4 flex-shrink-0" />
                     <span>Models</span>
+                  </Link>
+
+                  {/* Environment */}
+                  <Link
+                    href="/settings/environment"
+                    onClick={() => setMobileOpen(false)}
+                    className={cn(
+                      'flex items-center gap-2 p-2 rounded-md text-sm transition-colors',
+                      currentPath === '/settings/environment'
+                        ? 'bg-gray-800 text-white'
+                        : 'text-gray-400 hover:bg-gray-800/50 hover:text-white'
+                    )}
+                  >
+                    <Cog className="h-4 w-4 flex-shrink-0" />
+                    <span>Environment</span>
                   </Link>
                 </div>
               )}

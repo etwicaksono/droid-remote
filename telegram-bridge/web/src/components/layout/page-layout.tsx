@@ -1,13 +1,15 @@
 'use client'
 
 import { ReactNode, useState, useEffect } from 'react'
-import { ChevronRight, ChevronDown, Clock, Folder, Radio, Copy, Check, Pencil } from 'lucide-react'
+import { ChevronRight, ChevronDown, Clock, Folder, Radio, Copy, Check, Pencil, AlertTriangle, X } from 'lucide-react'
 import { AppSidebar } from '@/components/layout/app-sidebar'
 import { ConnectionStatus } from '@/components/connection-status'
 import { NotificationBell } from '@/components/notification-bell'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { cn, formatRelativeTime } from '@/lib/utils'
 import { getSocket } from '@/lib/socket'
+import { getAuthHeaders } from '@/lib/api'
 import type { Session, ControlState } from '@/types'
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8765'
@@ -39,6 +41,38 @@ export function PageLayout({ children, title, session, currentPath }: PageLayout
   const [sessionName, setSessionName] = useState(session?.name || '')
   const [copiedSessionId, setCopiedSessionId] = useState(false)
   const [localControlState, setLocalControlState] = useState(session?.control_state)
+  const [envDirty, setEnvDirty] = useState(false)
+  const [envDirtyDismissed, setEnvDirtyDismissed] = useState(false)
+
+  // Check if env is dirty on mount
+  useEffect(() => {
+    const checkEnvDirty = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/config/env/dirty`, { headers: getAuthHeaders() })
+        if (res.ok) {
+          const data = await res.json()
+          setEnvDirty(data.dirty)
+        }
+      } catch {
+        // Ignore errors
+      }
+    }
+    checkEnvDirty()
+  }, [])
+
+  const handleDismissEnvBanner = async () => {
+    try {
+      await fetch(`${API_BASE}/config/env/dismiss`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+      })
+      setEnvDirty(false)
+      setEnvDirtyDismissed(true)
+    } catch {
+      // Just hide it locally
+      setEnvDirtyDismissed(true)
+    }
+  }
 
   // Sync state when session prop changes
   useEffect(() => {
@@ -242,6 +276,24 @@ export function PageLayout({ children, title, session, currentPath }: PageLayout
             </div>
           )}
         </header>
+
+        {/* Environment Restart Banner */}
+        {envDirty && !envDirtyDismissed && (
+          <div className="bg-yellow-500/10 border-b border-yellow-500/30 px-4 py-2 flex items-center gap-3">
+            <AlertTriangle className="h-4 w-4 text-yellow-500 flex-shrink-0" />
+            <p className="text-sm text-yellow-500 flex-1">
+              Environment changed. Restart server to apply changes.
+            </p>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleDismissEnvBanner}
+              className="text-yellow-500 hover:text-yellow-400 h-7 px-2"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+        )}
 
         {/* Content Area */}
         <div className="flex-1 flex flex-col overflow-y-auto">
