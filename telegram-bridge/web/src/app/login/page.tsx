@@ -81,6 +81,7 @@ export default function LoginPage() {
                 placeholder="Enter username"
                 required
                 autoFocus
+                autoComplete="username"
               />
             </div>
 
@@ -97,6 +98,7 @@ export default function LoginPage() {
                   className="w-full h-10 px-3 pr-10 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="Enter password"
                   required
+                  autoComplete="current-password"
                 />
                 <button
                   type="button"
