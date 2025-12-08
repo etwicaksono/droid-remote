@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback, type FormEvent } from 'react'
 import Image from 'next/image'
-import { Terminal, Loader2, Clock, ChevronDown, ChevronRight, X, Trash2 } from 'lucide-react'
+import { Terminal, Loader2, Clock, ChevronDown, ChevronRight, X, Trash2, Check, Ban } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { useSessionActions } from '@/hooks/use-session-actions'
@@ -675,23 +675,21 @@ export function SessionCard({ session }: SessionCardProps) {
     }
   }
 
-  const handleApprove = () => {
+  const handleApprove = (scope?: 'session' | 'global') => {
     if (pendingRequest) {
-      approve({ sessionId: session.id })
+      approve({ sessionId: session.id, scope })
     }
   }
 
-  const handleDeny = () => {
+  const handleDeny = (scope?: 'session' | 'global') => {
     if (pendingRequest) {
-      deny({ sessionId: session.id })
+      deny({ sessionId: session.id, scope })
     }
   }
 
-  const handleAlwaysAllow = () => {
-    if (pendingRequest) {
-      alwaysAllow({ sessionId: session.id })
-    }
-  }
+  // State for showing dropdown menus
+  const [showApproveMenu, setShowApproveMenu] = useState(false)
+  const [showDenyMenu, setShowDenyMenu] = useState(false)
 
   const handleCancelQueueItem = async (messageId: number) => {
     try {
@@ -794,15 +792,76 @@ export function SessionCard({ session }: SessionCardProps) {
 
             {pendingRequest.type === 'permission' && (
               <div className="mt-3 flex flex-wrap gap-2">
-                <Button size="sm" onClick={handleApprove}>
-                  Approve
-                </Button>
-                <Button size="sm" variant="destructive" onClick={handleDeny}>
-                  Deny
-                </Button>
-                <Button size="sm" variant="outline" onClick={handleAlwaysAllow} title="Approve and add to allowlist">
-                  Always Allow
-                </Button>
+                {/* Approve Dropdown */}
+                <div className="relative">
+                  <Button 
+                    size="sm" 
+                    className="gap-1"
+                    onClick={() => setShowApproveMenu(!showApproveMenu)}
+                  >
+                    <Check className="h-3 w-3" />
+                    Approve
+                    <ChevronDown className="h-3 w-3 ml-1" />
+                  </Button>
+                  {showApproveMenu && (
+                    <div className="absolute left-0 mt-1 w-40 bg-gray-900 border border-gray-700 rounded-md shadow-lg z-50">
+                      <button
+                        className="w-full px-3 py-2 text-left text-sm hover:bg-gray-800 rounded-t-md"
+                        onClick={() => { handleApprove(); setShowApproveMenu(false) }}
+                      >
+                        Once
+                      </button>
+                      <button
+                        className="w-full px-3 py-2 text-left text-sm hover:bg-gray-800"
+                        onClick={() => { handleApprove('session'); setShowApproveMenu(false) }}
+                      >
+                        For this session
+                      </button>
+                      <button
+                        className="w-full px-3 py-2 text-left text-sm hover:bg-gray-800 rounded-b-md"
+                        onClick={() => { handleApprove('global'); setShowApproveMenu(false) }}
+                      >
+                        For all sessions
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Deny Dropdown */}
+                <div className="relative">
+                  <Button 
+                    size="sm" 
+                    variant="destructive"
+                    className="gap-1"
+                    onClick={() => setShowDenyMenu(!showDenyMenu)}
+                  >
+                    <Ban className="h-3 w-3" />
+                    Deny
+                    <ChevronDown className="h-3 w-3 ml-1" />
+                  </Button>
+                  {showDenyMenu && (
+                    <div className="absolute left-0 mt-1 w-40 bg-gray-900 border border-gray-700 rounded-md shadow-lg z-50">
+                      <button
+                        className="w-full px-3 py-2 text-left text-sm hover:bg-gray-800 rounded-t-md"
+                        onClick={() => { handleDeny(); setShowDenyMenu(false) }}
+                      >
+                        Once
+                      </button>
+                      <button
+                        className="w-full px-3 py-2 text-left text-sm hover:bg-gray-800"
+                        onClick={() => { handleDeny('session'); setShowDenyMenu(false) }}
+                      >
+                        For this session
+                      </button>
+                      <button
+                        className="w-full px-3 py-2 text-left text-sm hover:bg-gray-800 rounded-b-md"
+                        onClick={() => { handleDeny('global'); setShowDenyMenu(false) }}
+                      >
+                        For all sessions
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </div>

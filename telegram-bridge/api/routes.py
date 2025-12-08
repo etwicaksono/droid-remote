@@ -944,15 +944,64 @@ async def get_all_permissions(limit: int = 50):
 
 
 @web_router.post("/sessions/{session_id}/permissions/{request_id}/resolve")
-async def resolve_permission(session_id: str, request_id: str, decision: str, request: Request):
-    """Resolve a permission request from Web UI"""
+async def resolve_permission(
+    session_id: str, 
+    request_id: str, 
+    decision: str, 
+    request: Request,
+    scope: Optional[str] = None
+):
+    """
+    Resolve a permission request from Web UI.
+    
+    Args:
+        decision: "approved" or "denied"
+        scope: Optional - "session" or "global" to also create a rule for future requests
+    """
     if decision not in ["approved", "denied"]:
         raise HTTPException(status_code=400, detail="Decision must be 'approved' or 'denied'")
+    
+    if scope and scope not in ["session", "global"]:
+        raise HTTPException(status_code=400, detail="scope must be 'session' or 'global'")
+    
+    # Get the permission request to extract tool info
+    perm_request = get_permission_repo().get_pending(session_id)
     
     # Resolve in database
     perm = get_permission_repo().resolve(request_id, decision, "web")
     if not perm:
         raise HTTPException(status_code=404, detail="Permission request not found")
+    
+    # If scope provided, create a rule for future requests
+    rule = None
+    if scope and perm_request and perm_request.get('id') == request_id:
+        from core.repositories import get_permission_rules_repo
+        import json
+        
+        tool_name = perm_request.get('tool_name', '')
+        tool_input = perm_request.get('tool_input', '{}')
+        
+        try:
+            input_dict = json.loads(tool_input) if isinstance(tool_input, str) else tool_input
+        except:
+            input_dict = {}
+        
+        # Determine pattern based on tool type
+        if tool_name == 'Execute':
+            pattern = input_dict.get('command', '*')
+        elif tool_name in ('Read', 'Edit', 'Create', 'MultiEdit'):
+            pattern = input_dict.get('file_path', '*')
+        else:
+            pattern = '*'
+        
+        rule_type = 'allow' if decision == 'approved' else 'deny'
+        rule = get_permission_rules_repo().add(
+            tool_name=tool_name,
+            pattern=pattern,
+            rule_type=rule_type,
+            scope=scope,
+            session_id=session_id if scope == 'session' else None
+        )
     
     # Deliver response to waiting session
     response = "approve" if decision == "approved" else "deny"
@@ -967,7 +1016,7 @@ async def resolve_permission(session_id: str, request_id: str, decision: str, re
             "decision": decision
         })
     
-    return {"success": True, "permission": perm}
+    return {"success": True, "permission": perm, "rule": rule}
 
 
 @web_router.get("/sessions/{session_id}/events")
@@ -1295,21 +1344,102 @@ async def browse_filesystem(path: Optional[str] = None):
     return result
 
 
-# Permission Allowlist Endpoints
+# Permission Rules Endpoints
+
+@web_router.get("/permissions/rules")
+async def get_permission_rules(scope: Optional[str] = None, session_id: Optional[str] = None):
+    """Get permission rules, optionally filtered by scope or session"""
+    from core.repositories import get_permission_rules_repo
+    repo = get_permission_rules_repo()
+    
+    if session_id:
+        # Get merged rules for a session (global + session-specific)
+        rules = repo.get_merged_rules(session_id)
+    elif scope == 'global':
+        rules = repo.get_global_rules()
+    elif scope == 'session' and session_id:
+        rules = repo.get_session_rules(session_id)
+    else:
+        rules = repo.get_all(scope)
+    
+    return {"rules": rules}
+
+
+@web_router.post("/permissions/rules")
+async def add_permission_rule(
+    tool_name: str, 
+    pattern: str, 
+    rule_type: str = 'allow',
+    scope: str = 'global',
+    session_id: Optional[str] = None,
+    description: Optional[str] = None
+):
+    """Add a permission rule"""
+    from core.repositories import get_permission_rules_repo
+    
+    if rule_type not in ['allow', 'deny']:
+        raise HTTPException(status_code=400, detail="rule_type must be 'allow' or 'deny'")
+    if scope not in ['global', 'session']:
+        raise HTTPException(status_code=400, detail="scope must be 'global' or 'session'")
+    if scope == 'session' and not session_id:
+        raise HTTPException(status_code=400, detail="session_id required for session scope")
+    
+    rule = get_permission_rules_repo().add(
+        tool_name=tool_name,
+        pattern=pattern,
+        rule_type=rule_type,
+        scope=scope,
+        session_id=session_id if scope == 'session' else None,
+        description=description
+    )
+    if rule:
+        return {"success": True, "rule": rule}
+    else:
+        raise HTTPException(status_code=400, detail="Failed to add rule (may already exist)")
+
+
+@web_router.delete("/permissions/rules/{rule_id}")
+async def remove_permission_rule(rule_id: int):
+    """Remove a permission rule"""
+    from core.repositories import get_permission_rules_repo
+    success = get_permission_rules_repo().remove(rule_id)
+    if success:
+        return {"success": True}
+    else:
+        raise HTTPException(status_code=404, detail="Rule not found")
+
+
+@web_router.get("/sessions/{session_id}/permissions/rules")
+async def get_session_permission_rules(session_id: str):
+    """Get all permission rules for a session (merged global + session)"""
+    from core.repositories import get_permission_rules_repo
+    rules = get_permission_rules_repo().get_merged_rules(session_id)
+    return {"session_id": session_id, "rules": rules}
+
+
+@web_router.delete("/sessions/{session_id}/permissions/rules")
+async def clear_session_permission_rules(session_id: str):
+    """Clear all session-specific permission rules for a session"""
+    from core.repositories import get_permission_rules_repo
+    count = get_permission_rules_repo().clear_session_rules(session_id)
+    return {"success": True, "deleted": count}
+
+
+# Legacy Allowlist Endpoints (backward compatibility)
 
 @web_router.get("/allowlist")
 async def get_allowlist():
-    """Get all permission allowlist rules"""
-    from core.repositories import get_allowlist_repo
-    rules = get_allowlist_repo().get_all()
+    """Get all permission rules (legacy endpoint)"""
+    from core.repositories import get_permission_rules_repo
+    rules = get_permission_rules_repo().get_global_rules()
     return {"rules": rules}
 
 
 @web_router.post("/allowlist")
 async def add_allowlist_rule(tool_name: str, pattern: str, description: Optional[str] = None):
-    """Add a permission allowlist rule"""
-    from core.repositories import get_allowlist_repo
-    rule = get_allowlist_repo().add(tool_name, pattern, description)
+    """Add a global allow rule (legacy endpoint)"""
+    from core.repositories import get_permission_rules_repo
+    rule = get_permission_rules_repo().add(tool_name, pattern, 'allow', 'global', None, description)
     if rule:
         return {"success": True, "rule": rule}
     else:
@@ -1318,9 +1448,9 @@ async def add_allowlist_rule(tool_name: str, pattern: str, description: Optional
 
 @web_router.delete("/allowlist/{rule_id}")
 async def remove_allowlist_rule(rule_id: int):
-    """Remove a permission allowlist rule"""
-    from core.repositories import get_allowlist_repo
-    success = get_allowlist_repo().remove(rule_id)
+    """Remove a permission rule (legacy endpoint)"""
+    from core.repositories import get_permission_rules_repo
+    success = get_permission_rules_repo().remove(rule_id)
     if success:
         return {"success": True}
     else:
@@ -1517,22 +1647,33 @@ async def delete_custom_model_endpoint(model_id: str):
 
 
 @hooks_router.get("/allowlist/check")
-async def check_allowlist(tool_name: str, tool_input: str = "{}"):
+async def check_allowlist(tool_name: str, tool_input: str = "{}", session_id: Optional[str] = None):
     """
-    Check if a tool call is allowed by the allowlist.
+    Check if a tool call is allowed/denied by permission rules.
     tool_input should be JSON-encoded.
+    session_id is optional - if provided, also checks session-specific rules.
     Used by PreToolUse hook for quick check.
+    
+    Returns:
+        - decision: "allow", "deny", or "ask" (no matching rule)
+        - allowed: boolean for backward compatibility
     """
     import json
-    from core.repositories import get_allowlist_repo
+    from core.repositories import get_permission_rules_repo
     
     try:
         input_dict = json.loads(tool_input)
     except json.JSONDecodeError:
         input_dict = {"raw": tool_input}
     
-    allowed = get_allowlist_repo().is_allowed(tool_name, input_dict)
-    return {"allowed": allowed, "tool_name": tool_name}
+    result = get_permission_rules_repo().check_permission(tool_name, input_dict, session_id)
+    
+    return {
+        "decision": result or "ask",
+        "allowed": result == "allow",  # Backward compatibility
+        "tool_name": tool_name,
+        "session_id": session_id
+    }
 
 
 # Notification Endpoints

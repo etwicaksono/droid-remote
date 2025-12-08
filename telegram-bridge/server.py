@@ -31,7 +31,7 @@ from api.routes import web_router, hooks_router
 from api.socketio_handlers import create_socketio_server, create_socketio_app
 from api.auth import verify_token, verify_api_key, PUBLIC_ROUTES, log_auth_config
 from core.session_registry import session_registry
-from core.database import get_db, migrate_tasks_cascade_delete, migrate_chat_messages_source, migrate_session_settings_autonomy, migrate_chat_messages_images
+from core.database import get_db, migrate_tasks_cascade_delete, migrate_chat_messages_source, migrate_session_settings_autonomy, migrate_chat_messages_images, migrate_permission_rules
 from utils.logging_config import setup_logging
 
 # Setup logging
@@ -63,6 +63,7 @@ async def lifespan(app: FastAPI):
         migrate_chat_messages_source()
         migrate_session_settings_autonomy()
         migrate_chat_messages_images()
+        migrate_permission_rules()
     except Exception as e:
         logger.error(f"Failed to initialize database: {e}")
         raise

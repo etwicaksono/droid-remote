@@ -15,6 +15,7 @@ interface RespondParams {
 interface ApproveParams {
   sessionId: string
   requestId?: string
+  scope?: 'session' | 'global'  // If provided, creates a rule
 }
 
 interface SessionIdParam {
@@ -33,22 +34,26 @@ export function useSessionActions() {
   )
 
   const approve = useCallback(
-    ({ sessionId }: ApproveParams) => {
-      socket.emit('approve', { sessionId })
+    ({ sessionId, scope }: ApproveParams) => {
+      // @ts-expect-error socket emit allows any data
+      socket.emit('approve', { sessionId, scope })
     },
     [socket]
   )
 
   const deny = useCallback(
-    ({ sessionId }: ApproveParams) => {
-      socket.emit('deny', { sessionId })
+    ({ sessionId, scope }: ApproveParams) => {
+      // @ts-expect-error socket emit allows any data
+      socket.emit('deny', { sessionId, scope })
     },
     [socket]
   )
 
+  // Legacy - use approve/deny with scope='global' instead
   const alwaysAllow = useCallback(
     ({ sessionId }: ApproveParams) => {
-      socket.emit('always_allow', { sessionId })
+      // @ts-expect-error socket emit allows any data
+      socket.emit('approve', { sessionId, scope: 'global' })
     },
     [socket]
   )

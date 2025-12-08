@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Trash2, Plus, RefreshCw, ChevronDown, ChevronRight, Terminal, Clock } from 'lucide-react'
+import { Trash2, Plus, RefreshCw, ChevronDown, ChevronRight, Terminal, Clock, Check, Ban } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { formatRelativeTime } from '@/lib/utils'
@@ -22,36 +22,40 @@ const TOOLS = [
   'FetchUrl',
 ]
 
-interface AllowlistRule {
+interface PermissionRule {
   id: number
   tool_name: string
   pattern: string
+  rule_type: 'allow' | 'deny'
+  scope: 'global' | 'session'
+  session_id?: string
   description?: string
   created_at: string
 }
 
 interface GroupedRules {
-  [toolName: string]: AllowlistRule[]
+  [toolName: string]: PermissionRule[]
 }
 
 export function PermissionsTab() {
-  const [rules, setRules] = useState<AllowlistRule[]>([])
+  const [rules, setRules] = useState<PermissionRule[]>([])
   const [loading, setLoading] = useState(true)
   const [expandedTools, setExpandedTools] = useState<Set<string>>(new Set())
-  const [newTool, setNewTool] = useState('Edit')
+  const [newTool, setNewTool] = useState('Execute')
   const [newPattern, setNewPattern] = useState('*')
+  const [newRuleType, setNewRuleType] = useState<'allow' | 'deny'>('allow')
   const [adding, setAdding] = useState(false)
 
   const fetchRules = async () => {
     setLoading(true)
     try {
-      const res = await fetch(`${API_BASE}/allowlist`, { headers: getAuthHeaders() })
+      const res = await fetch(`${API_BASE}/permissions/rules?scope=global`, { headers: getAuthHeaders() })
       if (res.ok) {
         const data = await res.json()
         setRules(data.rules || [])
       }
     } catch (err) {
-      console.error('Failed to fetch allowlist:', err)
+      console.error('Failed to fetch rules:', err)
     } finally {
       setLoading(false)
     }
@@ -96,8 +100,10 @@ export function PermissionsTab() {
       const params = new URLSearchParams({
         tool_name: newTool,
         pattern: newPattern.trim(),
+        rule_type: newRuleType,
+        scope: 'global',
       })
-      const res = await fetch(`${API_BASE}/allowlist?${params}`, {
+      const res = await fetch(`${API_BASE}/permissions/rules?${params}`, {
         method: 'POST',
         headers: getAuthHeaders(),
       })
@@ -115,7 +121,7 @@ export function PermissionsTab() {
 
   const deleteRule = async (ruleId: number) => {
     try {
-      const res = await fetch(`${API_BASE}/allowlist/${ruleId}`, {
+      const res = await fetch(`${API_BASE}/permissions/rules/${ruleId}`, {
         method: 'DELETE',
         headers: getAuthHeaders(),
       })
@@ -131,11 +137,14 @@ export function PermissionsTab() {
     <Card>
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
-          <CardTitle className="text-base sm:text-lg">Permission Allowlist</CardTitle>
+          <CardTitle className="text-base sm:text-lg">Global Permission Rules</CardTitle>
           <Button size="sm" variant="ghost" onClick={fetchRules}>
             <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
           </Button>
         </div>
+        <p className="text-xs text-muted-foreground">
+          Rules that apply to all sessions. Deny rules take priority over allow rules.
+        </p>
       </CardHeader>
       <CardContent>
         {loading && rules.length === 0 ? (
@@ -187,7 +196,15 @@ export function PermissionsTab() {
                         >
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-2">
-                              <span className="text-sm text-muted-foreground">Pattern:</span>
+                              {rule.rule_type === 'allow' ? (
+                                <span className="flex items-center gap-1 text-xs bg-green-500/20 text-green-400 px-1.5 py-0.5 rounded">
+                                  <Check className="h-3 w-3" /> Allow
+                                </span>
+                              ) : (
+                                <span className="flex items-center gap-1 text-xs bg-red-500/20 text-red-400 px-1.5 py-0.5 rounded">
+                                  <Ban className="h-3 w-3" /> Deny
+                                </span>
+                              )}
                               <code className="text-sm bg-muted px-1.5 py-0.5 rounded">
                                 {rule.pattern}
                               </code>
@@ -221,6 +238,14 @@ export function PermissionsTab() {
         <div className="mt-6 pt-4 border-t">
           <h3 className="text-sm font-medium mb-3">Add New Rule</h3>
           <div className="flex flex-col sm:flex-row gap-3">
+            <select
+              value={newRuleType}
+              onChange={(e) => setNewRuleType(e.target.value as 'allow' | 'deny')}
+              className="h-10 px-3 rounded-md border border-input bg-background text-sm [&>option]:bg-background [&>option]:text-foreground"
+            >
+              <option value="allow">✓ Allow</option>
+              <option value="deny">✗ Deny</option>
+            </select>
             <select
               value={newTool}
               onChange={(e) => setNewTool(e.target.value)}

@@ -105,14 +105,17 @@ CREATE TABLE IF NOT EXISTS session_settings (
     FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
 );
 
--- Permission allowlist (auto-approve rules)
-CREATE TABLE IF NOT EXISTS permission_allowlist (
+-- Permission rules (allow/deny, global/session)
+CREATE TABLE IF NOT EXISTS permission_rules (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     tool_name TEXT NOT NULL,
     pattern TEXT NOT NULL,  -- "*" for all, "npm *" for prefix match, exact string for exact match
+    rule_type TEXT NOT NULL DEFAULT 'allow',  -- 'allow' or 'deny'
+    scope TEXT NOT NULL DEFAULT 'global',  -- 'global' or 'session'
+    session_id TEXT DEFAULT NULL,  -- NULL for global, session_id for session-specific
     description TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(tool_name, pattern)
+    UNIQUE(tool_name, pattern, scope, session_id)
 );
 
 -- Session images (for Cloudinary cleanup on session delete)
@@ -147,7 +150,9 @@ CREATE INDEX IF NOT EXISTS idx_tasks_session ON tasks(session_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_created ON tasks(created_at);
 CREATE INDEX IF NOT EXISTS idx_chat_messages_session ON chat_messages(session_id);
 CREATE INDEX IF NOT EXISTS idx_chat_messages_created ON chat_messages(created_at);
-CREATE INDEX IF NOT EXISTS idx_permission_allowlist_tool ON permission_allowlist(tool_name);
+CREATE INDEX IF NOT EXISTS idx_permission_rules_tool ON permission_rules(tool_name);
+CREATE INDEX IF NOT EXISTS idx_permission_rules_session ON permission_rules(session_id);
+CREATE INDEX IF NOT EXISTS idx_permission_rules_scope ON permission_rules(scope);
 CREATE INDEX IF NOT EXISTS idx_session_images_session ON session_images(session_id);
 CREATE INDEX IF NOT EXISTS idx_notifications_session ON notifications(session_id);
 CREATE INDEX IF NOT EXISTS idx_notifications_read ON notifications(read);
@@ -416,6 +421,83 @@ def migrate_chat_messages_images():
             logger.info("Migration completed: Added images column")
         else:
             logger.info("chat_messages.images column already exists, skipping migration")
+            
+    except Exception as e:
+        logger.error(f"Migration failed: {e}")
+        conn.rollback()
+
+
+def migrate_permission_rules():
+    """
+    Migration: Convert permission_allowlist to permission_rules with rule_type and scope
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    db = Database.get_instance()
+    conn = db._get_connection()
+    
+    try:
+        # Check if old table exists
+        cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='permission_allowlist'")
+        old_table_exists = cursor.fetchone() is not None
+        
+        # Check if new table exists
+        cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='permission_rules'")
+        new_table_exists = cursor.fetchone() is not None
+        
+        if old_table_exists and new_table_exists:
+            logger.info("Migrating permission_allowlist to permission_rules...")
+            
+            # Copy data from old table to new table
+            conn.execute("""
+                INSERT OR IGNORE INTO permission_rules (tool_name, pattern, rule_type, scope, session_id, description, created_at)
+                SELECT tool_name, pattern, 'allow', 'global', NULL, description, created_at
+                FROM permission_allowlist
+            """)
+            
+            # Drop old table
+            conn.execute("DROP TABLE permission_allowlist")
+            
+            conn.commit()
+            logger.info("Migration completed: permission_allowlist -> permission_rules")
+        elif old_table_exists and not new_table_exists:
+            logger.info("Creating permission_rules table from permission_allowlist...")
+            
+            # Create new table
+            conn.execute("""
+                CREATE TABLE permission_rules (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    tool_name TEXT NOT NULL,
+                    pattern TEXT NOT NULL,
+                    rule_type TEXT NOT NULL DEFAULT 'allow',
+                    scope TEXT NOT NULL DEFAULT 'global',
+                    session_id TEXT DEFAULT NULL,
+                    description TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(tool_name, pattern, scope, session_id)
+                )
+            """)
+            
+            # Copy data
+            conn.execute("""
+                INSERT INTO permission_rules (tool_name, pattern, rule_type, scope, session_id, description, created_at)
+                SELECT tool_name, pattern, 'allow', 'global', NULL, description, created_at
+                FROM permission_allowlist
+            """)
+            
+            # Drop old table
+            conn.execute("DROP TABLE permission_allowlist")
+            
+            # Create indexes
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_permission_rules_tool ON permission_rules(tool_name)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_permission_rules_session ON permission_rules(session_id)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_permission_rules_scope ON permission_rules(scope)")
+            
+            conn.commit()
+            logger.info("Migration completed: created permission_rules and migrated data")
+        else:
+            logger.info("permission_rules table exists, no migration needed")
             
     except Exception as e:
         logger.error(f"Migration failed: {e}")
