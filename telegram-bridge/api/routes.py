@@ -546,12 +546,13 @@ async def execute_task(data: TaskExecuteRequest, request: Request):
                     logger.error(f"Failed to handle session transition: {e}")
             
             # Create notification for task completion
+            notification_data = None
             if result.session_id:
                 from core.repositories import get_notification_repo
                 notification_type = "task_completed" if result.success else "task_failed"
                 session_name = data.project_dir.replace("\\", "/").split("/")[-1]
                 message = data.prompt[:80] + "..." if len(data.prompt) > 80 else data.prompt
-                get_notification_repo().create(
+                notification_data = get_notification_repo().create(
                     session_id=result.session_id,
                     notification_type=notification_type,
                     title=session_name,
@@ -569,6 +570,10 @@ async def execute_task(data: TaskExecuteRequest, request: Request):
                     "num_turns": result.num_turns,
                     "error": result.error
                 })
+                
+                # Emit notification event for the notification bell
+                if notification_data:
+                    await sio.emit("notification", notification_data)
                 
                 # Update sidebar with correct sessions
                 all_sessions = session_registry.get_all()
@@ -607,10 +612,11 @@ async def execute_task(data: TaskExecuteRequest, request: Request):
         except Exception as e:
             logger.error(f"Background task failed: {e}")
             # Create notification for task error
+            error_notification = None
             if pending_session_id:
                 from core.repositories import get_notification_repo
                 session_name = data.project_dir.replace("\\", "/").split("/")[-1]
-                get_notification_repo().create(
+                error_notification = get_notification_repo().create(
                     session_id=pending_session_id,
                     notification_type="task_failed",
                     title=session_name,
@@ -625,6 +631,8 @@ async def execute_task(data: TaskExecuteRequest, request: Request):
                     "session_id": pending_session_id,
                     "error": str(e)
                 })
+                if error_notification:
+                    await sio.emit("notification", error_notification)
     
     # Start background task and return immediately
     asyncio.create_task(run_task_in_background())
