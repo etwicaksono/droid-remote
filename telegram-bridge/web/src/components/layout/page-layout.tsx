@@ -314,8 +314,8 @@ export function PageLayout({ children, title, session, currentPath }: PageLayout
                 </div>
               )}
 
-              {/* Permission Rules - collapsible row */}
-              {permissionRules.length > 0 && (
+              {/* Permission Rules - collapsible row (only when header expanded) */}
+              {headerExpanded && permissionRules.length > 0 && (
                 <div className="border-t border-gray-700/50 mt-2">
                   <button
                     onClick={(e) => {
