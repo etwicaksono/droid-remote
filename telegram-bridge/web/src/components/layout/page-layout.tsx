@@ -1,7 +1,7 @@
 'use client'
 
 import { ReactNode, useState, useEffect } from 'react'
-import { ChevronRight, ChevronDown, Clock, Folder, Radio, Copy, Check, Pencil, AlertTriangle, X } from 'lucide-react'
+import { ChevronRight, ChevronDown, Clock, Folder, Radio, Copy, Check, Pencil, AlertTriangle, X, ShieldCheck, Globe, User, Ban } from 'lucide-react'
 import { AppSidebar } from '@/components/layout/app-sidebar'
 import { ConnectionStatus } from '@/components/connection-status'
 import { NotificationBell } from '@/components/notification-bell'
@@ -43,6 +43,17 @@ export function PageLayout({ children, title, session, currentPath }: PageLayout
   const [localControlState, setLocalControlState] = useState(session?.control_state)
   const [envDirty, setEnvDirty] = useState(false)
   const [envDirtyDismissed, setEnvDirtyDismissed] = useState(false)
+  
+  // Permission rules state
+  const [permissionRules, setPermissionRules] = useState<Array<{
+    id: number
+    tool_name: string
+    pattern: string
+    rule_type: 'allow' | 'deny'
+    scope: 'global' | 'session'
+    session_id?: string
+  }>>([])
+  const [rulesExpanded, setRulesExpanded] = useState(false)
 
   // Check if env is dirty on mount
   useEffect(() => {
@@ -71,6 +82,44 @@ export function PageLayout({ children, title, session, currentPath }: PageLayout
     } catch {
       // Just hide it locally
       setEnvDirtyDismissed(true)
+    }
+  }
+
+  // Load permission rules for session
+  useEffect(() => {
+    if (!session) {
+      setPermissionRules([])
+      return
+    }
+    
+    const loadRules = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/sessions/${session.id}/permissions/rules`, {
+          headers: getAuthHeaders()
+        })
+        if (res.ok) {
+          const data = await res.json()
+          setPermissionRules(data.rules || [])
+        }
+      } catch (error) {
+        console.error('Failed to load permission rules:', error)
+      }
+    }
+    loadRules()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.id])
+
+  const handleDeleteRule = async (ruleId: number) => {
+    try {
+      const res = await fetch(`${API_BASE}/permissions/rules/${ruleId}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders()
+      })
+      if (res.ok) {
+        setPermissionRules(prev => prev.filter(r => r.id !== ruleId))
+      }
+    } catch (error) {
+      console.error('Failed to delete rule:', error)
     }
   }
 
@@ -262,6 +311,76 @@ export function PageLayout({ children, title, session, currentPath }: PageLayout
                     <span className="truncate" title={session.project_dir}>{session.project_dir}</span>
                   </div>
                   <LastActivityTime lastActivity={session.last_activity} />
+                </div>
+              )}
+
+              {/* Permission Rules - collapsible row */}
+              {permissionRules.length > 0 && (
+                <div className="border-t border-gray-700/50 mt-2">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setRulesExpanded(!rulesExpanded)
+                    }}
+                    className="w-full flex items-center gap-2 px-4 py-2 text-sm hover:bg-gray-800/50 transition-colors"
+                  >
+                    {rulesExpanded ? (
+                      <ChevronDown className="h-4 w-4" />
+                    ) : (
+                      <ChevronRight className="h-4 w-4" />
+                    )}
+                    <ShieldCheck className="h-4 w-4 text-blue-500" />
+                    <span className="text-muted-foreground">Permission Rules ({permissionRules.length})</span>
+                  </button>
+                  {rulesExpanded && (
+                    <div className="px-4 pb-3 space-y-1 max-h-[200px] overflow-y-auto">
+                      {permissionRules.map((rule) => (
+                        <div
+                          key={rule.id}
+                          className="flex items-center gap-2 p-2 rounded bg-gray-800/50 group"
+                        >
+                          {rule.rule_type === 'allow' ? (
+                            <span className="flex items-center text-xs bg-green-500/20 text-green-400 px-1.5 py-0.5 rounded shrink-0">
+                              <Check className="h-3 w-3" />
+                            </span>
+                          ) : (
+                            <span className="flex items-center text-xs bg-red-500/20 text-red-400 px-1.5 py-0.5 rounded shrink-0">
+                              <Ban className="h-3 w-3" />
+                            </span>
+                          )}
+                          <code className="text-xs bg-blue-500/20 text-blue-400 px-1.5 py-0.5 rounded shrink-0">
+                            {rule.tool_name}
+                          </code>
+                          <code className="flex-1 text-xs bg-gray-700/50 px-1.5 py-0.5 rounded truncate" title={rule.pattern}>
+                            {rule.pattern}
+                          </code>
+                          <span title={rule.scope === 'global' ? 'Global rule' : 'Session rule'} className="shrink-0">
+                            {rule.scope === 'global' ? (
+                              <Globe className="h-3.5 w-3.5 text-muted-foreground" />
+                            ) : (
+                              <User className="h-3.5 w-3.5 text-blue-400" />
+                            )}
+                          </span>
+                          {rule.scope === 'session' && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleDeleteRule(rule.id)
+                              }}
+                              className="p-1 rounded hover:bg-red-500/20 text-muted-foreground hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+                              title="Delete rule"
+                            >
+                              <X className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                      <p className="text-xs text-muted-foreground pt-2">
+                        <Globe className="h-3 w-3 inline mr-1" />Global
+                        <User className="h-3 w-3 inline ml-3 mr-1" />Session
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
