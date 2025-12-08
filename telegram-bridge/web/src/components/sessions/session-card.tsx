@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback, type FormEvent } from 'react'
 import Image from 'next/image'
-import { Terminal, Loader2, Clock, ChevronDown, ChevronRight, X, Trash2, Check, Ban } from 'lucide-react'
+import { Terminal, Loader2, Clock, ChevronDown, ChevronRight, X, Trash2, Check, Ban, ShieldCheck, Globe, User } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { useSessionActions } from '@/hooks/use-session-actions'
@@ -117,6 +117,16 @@ export function SessionCard({ session }: SessionCardProps) {
   // Queue state
   const [queuedMessages, setQueuedMessages] = useState<QueuedMessage[]>([])
   const [queueExpanded, setQueueExpanded] = useState(false)
+  // Permission rules state
+  const [permissionRules, setPermissionRules] = useState<Array<{
+    id: number
+    tool_name: string
+    pattern: string
+    rule_type: 'allow' | 'deny'
+    scope: 'global' | 'session'
+    session_id?: string
+  }>>([])
+  const [rulesExpanded, setRulesExpanded] = useState(false)
   // Image upload state
   const [uploadedImages, setUploadedImages] = useState<UploadedImage[]>([])
   const [isUploading, setIsUploading] = useState(false)
@@ -213,6 +223,24 @@ export function SessionCard({ session }: SessionCardProps) {
       socket.off('queue_updated', handleQueueUpdated)
     }
   }, [session.id, getQueue])
+
+  // Load permission rules for session
+  useEffect(() => {
+    const loadRules = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/sessions/${session.id}/permissions/rules`, {
+          headers: getAuthHeaders()
+        })
+        if (res.ok) {
+          const data = await res.json()
+          setPermissionRules(data.rules || [])
+        }
+      } catch (error) {
+        console.error('Failed to load permission rules:', error)
+      }
+    }
+    loadRules()
+  }, [session.id])
 
   // Load chat history and settings from API on mount
   useEffect(() => {
@@ -707,6 +735,20 @@ export function SessionCard({ session }: SessionCardProps) {
     }
   }
 
+  const handleDeleteRule = async (ruleId: number) => {
+    try {
+      const res = await fetch(`${API_BASE}/permissions/rules/${ruleId}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders()
+      })
+      if (res.ok) {
+        setPermissionRules(prev => prev.filter(r => r.id !== ruleId))
+      }
+    } catch (error) {
+      console.error('Failed to delete rule:', error)
+    }
+  }
+
   const handleAddToQueue = async () => {
     if (!taskPrompt.trim()) return
     
@@ -920,6 +962,81 @@ export function SessionCard({ session }: SessionCardProps) {
                     </button>
                   </div>
                 ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Permission Rules Panel */}
+        {permissionRules.length > 0 && (
+          <div className="rounded-md bg-muted/50 border border-border shrink-0">
+            <button
+              onClick={() => setRulesExpanded(!rulesExpanded)}
+              className="w-full flex items-center justify-between p-3 hover:bg-muted/80 transition-colors"
+            >
+              <div className="flex items-center gap-2 text-sm font-medium">
+                {rulesExpanded ? (
+                  <ChevronDown className="h-4 w-4" />
+                ) : (
+                  <ChevronRight className="h-4 w-4" />
+                )}
+                <ShieldCheck className="h-4 w-4 text-blue-500" />
+                <span>Permission Rules ({permissionRules.length})</span>
+              </div>
+            </button>
+            {rulesExpanded && (
+              <div className="border-t border-border p-2 space-y-1 max-h-[200px] overflow-y-auto">
+                {permissionRules.map((rule) => (
+                  <div
+                    key={rule.id}
+                    className="flex items-center gap-2 p-2 rounded bg-background/50 group"
+                  >
+                    {/* Rule type badge */}
+                    {rule.rule_type === 'allow' ? (
+                      <span className="flex items-center gap-1 text-xs bg-green-500/20 text-green-400 px-1.5 py-0.5 rounded shrink-0">
+                        <Check className="h-3 w-3" />
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-1 text-xs bg-red-500/20 text-red-400 px-1.5 py-0.5 rounded shrink-0">
+                        <Ban className="h-3 w-3" />
+                      </span>
+                    )}
+                    
+                    {/* Tool name */}
+                    <code className="text-xs bg-blue-500/20 text-blue-400 px-1.5 py-0.5 rounded shrink-0">
+                      {rule.tool_name}
+                    </code>
+                    
+                    {/* Pattern */}
+                    <code className="flex-1 text-xs bg-muted px-1.5 py-0.5 rounded truncate" title={rule.pattern}>
+                      {rule.pattern}
+                    </code>
+                    
+                    {/* Scope indicator */}
+                    <span title={rule.scope === 'global' ? 'Global rule' : 'Session rule'} className="shrink-0">
+                      {rule.scope === 'global' ? (
+                        <Globe className="h-3.5 w-3.5 text-muted-foreground" />
+                      ) : (
+                        <User className="h-3.5 w-3.5 text-blue-400" />
+                      )}
+                    </span>
+                    
+                    {/* Delete button - only for session rules */}
+                    {rule.scope === 'session' && (
+                      <button
+                        onClick={() => handleDeleteRule(rule.id)}
+                        className="p-1 rounded hover:bg-destructive/20 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+                        title="Delete rule"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+                <p className="text-xs text-muted-foreground pt-2 px-2">
+                  <Globe className="h-3 w-3 inline mr-1" />Global rules apply to all sessions.
+                  <User className="h-3 w-3 inline ml-2 mr-1" />Session rules apply only here.
+                </p>
               </div>
             )}
           </div>
