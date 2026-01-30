@@ -120,7 +120,12 @@ export function InputBox({
   reasoningLevels = FALLBACK_REASONING_LEVELS,
   autonomyLevels = FALLBACK_AUTONOMY_LEVELS,
 }: InputBoxProps) {
-  const currentModel = availableModels.find(m => m.id === selectedModel)
+  // Use fallback models if the passed array is empty
+  const effectiveModels = availableModels.length > 0 ? availableModels : FALLBACK_MODELS
+  const effectiveReasoningLevels = reasoningLevels.length > 0 ? reasoningLevels : FALLBACK_REASONING_LEVELS
+  const effectiveAutonomyLevels = autonomyLevels.length > 0 ? autonomyLevels : FALLBACK_AUTONOMY_LEVELS
+  
+  const currentModel = effectiveModels.find(m => m.id === selectedModel)
   const supportsReasoning = currentModel?.reasoning ?? false
   const supportsVision = currentModel?.vision ?? false
   const hasImages = images.length > 0
@@ -234,7 +239,7 @@ export function InputBox({
                   disabled && "cursor-not-allowed"
                 )}
               >
-                {availableModels.map((model) => (
+                {effectiveModels.map((model) => (
                   <option key={model.id} value={model.id}>
                     {model.name}
                   </option>
@@ -258,7 +263,7 @@ export function InputBox({
                   )}
                   title="Thinking mode"
                 >
-                  {reasoningLevels.map((level) => (
+                  {effectiveReasoningLevels.map((level) => (
                     <option key={level.id} value={level.id}>
                       {level.name}
                     </option>
@@ -282,7 +287,7 @@ export function InputBox({
                 )}
                 title="Autonomy level"
               >
-                {autonomyLevels.map((level) => (
+                {effectiveAutonomyLevels.map((level) => (
                   <option key={level.id} value={level.id} title={level.description}>
                     {level.name}
                   </option>
