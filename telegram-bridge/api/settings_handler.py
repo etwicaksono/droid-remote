@@ -22,11 +22,59 @@ def get_settings_path() -> Path:
 
 
 def strip_json_comments(json_str: str) -> str:
-    """Remove JavaScript-style comments from JSON string."""
-    # Remove single-line comments (// ...)
-    json_str = re.sub(r'//.*?$', '', json_str, flags=re.MULTILINE)
+    """Remove JavaScript-style comments from JSON string.
+    
+    Handles comments carefully to avoid breaking URLs (http://, https://)
+    and other valid JSON content containing //.
+    """
+    # Remove single-line comments, but not // inside strings
+    # Match // that's not inside a string value
+    # This regex matches:
+    # 1. Strings (to skip them): "(?:[^"\\]|\\.)*"
+    # 2. Or actual comments: //.*?(?=\n|$)
+    # We keep strings and remove comments
+    
+    # Simple approach: Only remove // comments that are NOT inside quoted strings
+    # Split by lines and process each line
+    lines = json_str.split('\n')
+    cleaned_lines = []
+    
+    for line in lines:
+        # Skip if line is inside a string (basic check)
+        # Look for // that's not inside quotes
+        in_string = False
+        escape_next = False
+        comment_start = -1
+        
+        for i, char in enumerate(line):
+            if escape_next:
+                escape_next = False
+                continue
+            
+            if char == '\\':
+                escape_next = True
+                continue
+            
+            if char == '"' and not escape_next:
+                in_string = not in_string
+            
+            # Check for // outside of strings
+            if not in_string and i < len(line) - 1:
+                if char == '/' and line[i + 1] == '/':
+                    comment_start = i
+                    break
+        
+        # Remove comment if found
+        if comment_start >= 0:
+            line = line[:comment_start].rstrip()
+        
+        cleaned_lines.append(line)
+    
+    json_str = '\n'.join(cleaned_lines)
+    
     # Remove trailing commas before } or ]
     json_str = re.sub(r',\s*([}\]])', r'\1', json_str)
+    
     return json_str
 
 
