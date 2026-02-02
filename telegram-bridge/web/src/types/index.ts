@@ -20,6 +20,7 @@ export interface Session {
   last_activity: string
   pending_request: PendingRequest | null
   transcript_path?: string
+  queue_count?: number
 }
 
 export interface QueuedMessage {

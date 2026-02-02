@@ -139,3 +139,39 @@ async def require_auth(
             return "anonymous"
         raise HTTPException(status_code=401, detail="Not authenticated")
     return user
+
+
+async def require_bearer(
+    request: Request,
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)
+) -> str:
+    """
+    Dependency that requires Bearer token authentication (Web UI).
+    Raises 401 if not authenticated with valid JWT.
+    """
+    # Check for Bearer token
+    if credentials:
+        payload = verify_token(credentials.credentials)
+        if payload:
+            return payload.get("sub")
+    
+    # Check for token in query params (for WebSocket)
+    token = request.query_params.get("token")
+    if token:
+        payload = verify_token(token)
+        if payload:
+            return payload.get("sub")
+    
+    raise HTTPException(status_code=401, detail="Bearer token required")
+
+
+async def require_api_key(request: Request) -> str:
+    """
+    Dependency that requires API key authentication (Hooks).
+    Raises 401 if not authenticated with valid API key.
+    """
+    api_key = request.headers.get("X-API-Key") or request.headers.get("X-Bridge-Secret")
+    if api_key and verify_api_key(api_key):
+        return "hook_client"
+    
+    raise HTTPException(status_code=401, detail="API key required")

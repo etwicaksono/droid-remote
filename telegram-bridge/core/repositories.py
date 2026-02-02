@@ -516,14 +516,16 @@ class ChatMessageRepository:
         status: Optional[str] = None,
         duration_ms: Optional[int] = None,
         num_turns: Optional[int] = None,
-        source: str = 'web'  # 'web' or 'cli'
+        source: str = 'web',  # 'web' or 'cli'
+        images: Optional[List[str]] = None  # List of image URLs
     ) -> dict:
         """Create a new chat message"""
         db = get_db()
+        images_json = json_serialize(images) if images else None
         cursor = db.execute("""
-            INSERT INTO chat_messages (session_id, type, content, status, duration_ms, num_turns, source)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, (session_id, msg_type, content, status, duration_ms, num_turns, source))
+            INSERT INTO chat_messages (session_id, type, content, status, duration_ms, num_turns, source, images)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (session_id, msg_type, content, status, duration_ms, num_turns, source, images_json))
         db.commit()
         
         return {
@@ -535,8 +537,16 @@ class ChatMessageRepository:
             "duration_ms": duration_ms,
             "num_turns": num_turns,
             "source": source,
+            "images": images,
             "created_at": datetime.utcnow().isoformat()
         }
+    
+    def _parse_message(self, row: dict) -> dict:
+        """Parse a message row, deserializing images JSON"""
+        msg = row_to_dict(row) if hasattr(row, 'keys') else row
+        if msg.get('images'):
+            msg['images'] = json_deserialize(msg['images'])
+        return msg
     
     def get_by_session(self, session_id: str, limit: int = 100) -> List[dict]:
         """Get chat messages for a session (oldest first)"""
@@ -547,7 +557,7 @@ class ChatMessageRepository:
             ORDER BY created_at ASC
             LIMIT ?
         """, (session_id, limit))
-        return [row_to_dict(row) for row in cursor.fetchall()]
+        return [self._parse_message(row) for row in cursor.fetchall()]
     
     def get_by_session_paginated(self, session_id: str, limit: int = 30, offset: int = 0) -> List[dict]:
         """Get chat messages for a session with pagination (newest first, then reversed for display)"""
@@ -559,7 +569,7 @@ class ChatMessageRepository:
             ORDER BY created_at DESC
             LIMIT ? OFFSET ?
         """, (session_id, limit, offset))
-        messages = [row_to_dict(row) for row in cursor.fetchall()]
+        messages = [self._parse_message(row) for row in cursor.fetchall()]
         # Reverse to get chronological order (oldest first for display)
         return list(reversed(messages))
     
@@ -649,22 +659,24 @@ _chat_repo: Optional[ChatMessageRepository] = None
 _settings_repo: Optional[SessionSettingsRepository] = None
 
 
-class AllowlistRepository:
-    """Repository for permission allowlist"""
+class PermissionRulesRepository:
+    """Repository for permission rules (allow/deny, global/session)"""
     
-    def add(self, tool_name: str, pattern: str, description: Optional[str] = None) -> Optional[dict]:
-        """Add a new allowlist rule"""
+    def add(self, tool_name: str, pattern: str, rule_type: str = 'allow', 
+            scope: str = 'global', session_id: Optional[str] = None,
+            description: Optional[str] = None) -> Optional[dict]:
+        """Add a new permission rule"""
         db = get_db()
         try:
             db.execute("""
-                INSERT INTO permission_allowlist (tool_name, pattern, description)
-                VALUES (?, ?, ?)
-            """, (tool_name, pattern, description))
+                INSERT INTO permission_rules (tool_name, pattern, rule_type, scope, session_id, description)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (tool_name, pattern, rule_type, scope, session_id, description))
             db.commit()
             
             cursor = db.execute(
-                "SELECT * FROM permission_allowlist WHERE tool_name = ? AND pattern = ?",
-                (tool_name, pattern)
+                "SELECT * FROM permission_rules WHERE tool_name = ? AND pattern = ? AND scope = ? AND (session_id = ? OR (session_id IS NULL AND ? IS NULL))",
+                (tool_name, pattern, scope, session_id, session_id)
             )
             row = cursor.fetchone()
             return row_to_dict(row) if row else None
@@ -673,86 +685,311 @@ class AllowlistRepository:
             return None
     
     def remove(self, rule_id: int) -> bool:
-        """Remove an allowlist rule by ID"""
+        """Remove a permission rule by ID"""
         db = get_db()
-        cursor = db.execute("DELETE FROM permission_allowlist WHERE id = ?", (rule_id,))
+        cursor = db.execute("DELETE FROM permission_rules WHERE id = ?", (rule_id,))
         db.commit()
         return cursor.rowcount > 0
     
-    def get_all(self) -> List[dict]:
-        """Get all allowlist rules"""
+    def get_all(self, scope: Optional[str] = None) -> List[dict]:
+        """Get all permission rules, optionally filtered by scope"""
         db = get_db()
-        cursor = db.execute("SELECT * FROM permission_allowlist ORDER BY tool_name, pattern")
+        if scope:
+            cursor = db.execute(
+                "SELECT * FROM permission_rules WHERE scope = ? ORDER BY rule_type DESC, tool_name, pattern",
+                (scope,)
+            )
+        else:
+            cursor = db.execute("SELECT * FROM permission_rules ORDER BY scope, rule_type DESC, tool_name, pattern")
         return [row_to_dict(row) for row in cursor.fetchall()]
     
-    def get_by_tool(self, tool_name: str) -> List[dict]:
-        """Get all rules for a specific tool"""
+    def get_global_rules(self) -> List[dict]:
+        """Get all global rules"""
         db = get_db()
         cursor = db.execute(
-            "SELECT * FROM permission_allowlist WHERE tool_name = ?",
-            (tool_name,)
+            "SELECT * FROM permission_rules WHERE scope = 'global' ORDER BY rule_type DESC, tool_name, pattern"
         )
         return [row_to_dict(row) for row in cursor.fetchall()]
     
-    def is_allowed(self, tool_name: str, tool_input: Dict[str, Any]) -> bool:
+    def get_session_rules(self, session_id: str) -> List[dict]:
+        """Get all rules for a specific session"""
+        db = get_db()
+        cursor = db.execute(
+            "SELECT * FROM permission_rules WHERE scope = 'session' AND session_id = ? ORDER BY rule_type DESC, tool_name, pattern",
+            (session_id,)
+        )
+        return [row_to_dict(row) for row in cursor.fetchall()]
+    
+    def get_merged_rules(self, session_id: str) -> List[dict]:
+        """Get all rules applicable to a session (global + session-specific)"""
+        db = get_db()
+        cursor = db.execute("""
+            SELECT *, 
+                CASE WHEN scope = 'session' THEN 'session' ELSE 'global' END as source
+            FROM permission_rules 
+            WHERE scope = 'global' OR (scope = 'session' AND session_id = ?)
+            ORDER BY rule_type DESC, scope DESC, tool_name, pattern
+        """, (session_id,))
+        return [row_to_dict(row) for row in cursor.fetchall()]
+    
+    def get_by_tool(self, tool_name: str, session_id: Optional[str] = None) -> List[dict]:
+        """Get all rules for a specific tool"""
+        db = get_db()
+        if session_id:
+            cursor = db.execute("""
+                SELECT * FROM permission_rules 
+                WHERE tool_name = ? AND (scope = 'global' OR (scope = 'session' AND session_id = ?))
+                ORDER BY rule_type DESC, scope DESC
+            """, (tool_name, session_id))
+        else:
+            cursor = db.execute(
+                "SELECT * FROM permission_rules WHERE tool_name = ? AND scope = 'global'",
+                (tool_name,)
+            )
+        return [row_to_dict(row) for row in cursor.fetchall()]
+    
+    def clear_session_rules(self, session_id: str) -> int:
+        """Clear all rules for a specific session"""
+        db = get_db()
+        cursor = db.execute(
+            "DELETE FROM permission_rules WHERE scope = 'session' AND session_id = ?",
+            (session_id,)
+        )
+        db.commit()
+        return cursor.rowcount
+    
+    def _get_match_value(self, tool_name: str, tool_input: Dict[str, Any]) -> str:
+        """Get the relevant value to match against based on tool type"""
+        if tool_name == 'Execute':
+            return tool_input.get('command', '')
+        elif tool_name in ('Read', 'Edit', 'Create', 'MultiEdit'):
+            return tool_input.get('file_path', '')
+        elif tool_name == 'Grep':
+            return tool_input.get('pattern', '')
+        elif tool_name == 'Glob':
+            return '*'  # Glob is generally safe
+        elif tool_name == 'LS':
+            return tool_input.get('directory_path', '*')
+        else:
+            return str(tool_input)
+    
+    def _matches_pattern(self, pattern: str, value: str) -> bool:
+        """Check if value matches pattern"""
+        if pattern == '*':
+            return True
+        if pattern.endswith(' *'):
+            prefix = pattern[:-2]
+            return value.startswith(prefix)
+        return value == pattern
+    
+    def check_permission(self, tool_name: str, tool_input: Dict[str, Any], 
+                         session_id: Optional[str] = None) -> Optional[str]:
         """
-        Check if a tool call is allowed based on allowlist rules.
+        Check if a tool call is allowed/denied based on permission rules.
         
-        Pattern matching:
-        - "*" matches everything
-        - "prefix *" matches if the relevant input starts with prefix
-        - exact string matches exactly
+        Returns:
+        - 'allow' if explicitly allowed
+        - 'deny' if explicitly denied
+        - None if no matching rule (should ask user)
         
-        For Execute tool, checks 'command' parameter.
-        For Read/Edit/Create, checks 'file_path' parameter.
-        For other tools, "*" pattern allows all.
+        Priority order:
+        1. Global deny rules (most restrictive)
+        2. Session deny rules
+        3. Session allow rules (session-specific first)
+        4. Global allow rules
         """
-        rules = self.get_by_tool(tool_name)
+        value = self._get_match_value(tool_name, tool_input)
+        
+        # Get all applicable rules
+        db = get_db()
+        if session_id:
+            cursor = db.execute("""
+                SELECT * FROM permission_rules 
+                WHERE tool_name = ? AND (scope = 'global' OR (scope = 'session' AND session_id = ?))
+            """, (tool_name, session_id))
+        else:
+            cursor = db.execute(
+                "SELECT * FROM permission_rules WHERE tool_name = ? AND scope = 'global'",
+                (tool_name,)
+            )
+        rules = [row_to_dict(row) for row in cursor.fetchall()]
+        
         if not rules:
-            return False
+            return None
         
+        # Check in priority order
+        # 1. Global deny
         for rule in rules:
-            pattern = rule['pattern']
-            
-            # Wildcard matches everything
-            if pattern == '*':
-                return True
-            
-            # Get the relevant value to match against
-            if tool_name == 'Execute':
-                value = tool_input.get('command', '')
-            elif tool_name in ('Read', 'Edit', 'Create', 'MultiEdit'):
-                value = tool_input.get('file_path', '')
-            elif tool_name == 'Grep':
-                value = tool_input.get('pattern', '')
-            elif tool_name == 'Glob':
-                value = '*'  # Glob is generally safe
-            elif tool_name == 'LS':
-                value = tool_input.get('directory_path', '*')
-            else:
-                value = str(tool_input)
-            
-            # Prefix match (e.g., "npm *" matches "npm install")
-            if pattern.endswith(' *'):
-                prefix = pattern[:-2]
-                if value.startswith(prefix):
-                    return True
-            # Exact match
-            elif value == pattern:
-                return True
+            if rule['rule_type'] == 'deny' and rule['scope'] == 'global':
+                if self._matches_pattern(rule['pattern'], value):
+                    return 'deny'
         
-        return False
+        # 2. Session deny
+        for rule in rules:
+            if rule['rule_type'] == 'deny' and rule['scope'] == 'session':
+                if self._matches_pattern(rule['pattern'], value):
+                    return 'deny'
+        
+        # 3. Session allow
+        for rule in rules:
+            if rule['rule_type'] == 'allow' and rule['scope'] == 'session':
+                if self._matches_pattern(rule['pattern'], value):
+                    return 'allow'
+        
+        # 4. Global allow
+        for rule in rules:
+            if rule['rule_type'] == 'allow' and rule['scope'] == 'global':
+                if self._matches_pattern(rule['pattern'], value):
+                    return 'allow'
+        
+        return None
+    
+    def is_allowed(self, tool_name: str, tool_input: Dict[str, Any], 
+                   session_id: Optional[str] = None) -> bool:
+        """Legacy method for backward compatibility"""
+        result = self.check_permission(tool_name, tool_input, session_id)
+        return result == 'allow'
+
+
+# Keep old name for backward compatibility
+AllowlistRepository = PermissionRulesRepository
+
+
+class NotificationRepository:
+    """Repository for notifications"""
+    
+    def create(self, session_id: str, notification_type: str, title: str, message: Optional[str] = None) -> dict:
+        """Create a new notification"""
+        db = get_db()
+        db.execute("""
+            INSERT INTO notifications (session_id, type, title, message)
+            VALUES (?, ?, ?, ?)
+        """, (session_id, notification_type, title, message))
+        db.commit()
+        
+        cursor = db.execute("SELECT * FROM notifications WHERE id = last_insert_rowid()")
+        row = cursor.fetchone()
+        return row_to_dict(row) if row else {}
+    
+    def get_all(self, unread_only: bool = False, limit: int = 50) -> List[dict]:
+        """Get all notifications, optionally filtered to unread only"""
+        db = get_db()
+        if unread_only:
+            cursor = db.execute(
+                "SELECT * FROM notifications WHERE read = 0 ORDER BY created_at DESC LIMIT ?",
+                (limit,)
+            )
+        else:
+            cursor = db.execute(
+                "SELECT * FROM notifications ORDER BY created_at DESC LIMIT ?",
+                (limit,)
+            )
+        return [row_to_dict(row) for row in cursor.fetchall()]
+    
+    def get_by_session(self, session_id: str) -> List[dict]:
+        """Get all notifications for a session"""
+        db = get_db()
+        cursor = db.execute(
+            "SELECT * FROM notifications WHERE session_id = ? ORDER BY created_at DESC",
+            (session_id,)
+        )
+        return [row_to_dict(row) for row in cursor.fetchall()]
+    
+    def get_unread_count(self) -> int:
+        """Get count of unread notifications"""
+        db = get_db()
+        cursor = db.execute("SELECT COUNT(*) FROM notifications WHERE read = 0")
+        return cursor.fetchone()[0]
+    
+    def get_session_unread_count(self, session_id: str) -> int:
+        """Get count of unread notifications for a session"""
+        db = get_db()
+        cursor = db.execute(
+            "SELECT COUNT(*) FROM notifications WHERE session_id = ? AND read = 0",
+            (session_id,)
+        )
+        return cursor.fetchone()[0]
+    
+    def get_session_unread_types(self, session_id: str) -> List[str]:
+        """Get list of unread notification types for a session (for badges)"""
+        db = get_db()
+        cursor = db.execute(
+            "SELECT DISTINCT type FROM notifications WHERE session_id = ? AND read = 0",
+            (session_id,)
+        )
+        return [row[0] for row in cursor.fetchall()]
+    
+    def mark_read(self, notification_id: int) -> bool:
+        """Mark a notification as read"""
+        db = get_db()
+        cursor = db.execute(
+            "UPDATE notifications SET read = 1 WHERE id = ?",
+            (notification_id,)
+        )
+        db.commit()
+        return cursor.rowcount > 0
+    
+    def mark_all_read(self) -> int:
+        """Mark all notifications as read"""
+        db = get_db()
+        cursor = db.execute("UPDATE notifications SET read = 1 WHERE read = 0")
+        db.commit()
+        return cursor.rowcount
+    
+    def mark_session_read(self, session_id: str) -> int:
+        """Mark all notifications for a session as read"""
+        db = get_db()
+        cursor = db.execute(
+            "UPDATE notifications SET read = 1 WHERE session_id = ? AND read = 0",
+            (session_id,)
+        )
+        db.commit()
+        return cursor.rowcount
+    
+    def delete(self, notification_id: int) -> bool:
+        """Delete a notification"""
+        db = get_db()
+        cursor = db.execute("DELETE FROM notifications WHERE id = ?", (notification_id,))
+        db.commit()
+        return cursor.rowcount > 0
+    
+    def clear_all(self) -> int:
+        """Clear all notifications"""
+        db = get_db()
+        cursor = db.execute("DELETE FROM notifications")
+        db.commit()
+        return cursor.rowcount
+    
+    def clear_by_session(self, session_id: str) -> int:
+        """Clear all notifications for a session"""
+        db = get_db()
+        cursor = db.execute("DELETE FROM notifications WHERE session_id = ?", (session_id,))
+        db.commit()
+        return cursor.rowcount
 
 
 # Singleton instances
+_notification_repo: Optional[NotificationRepository] = None
 _allowlist_repo: Optional[AllowlistRepository] = None
 
 
-def get_allowlist_repo() -> AllowlistRepository:
+def get_allowlist_repo() -> PermissionRulesRepository:
     global _allowlist_repo
     if _allowlist_repo is None:
-        _allowlist_repo = AllowlistRepository()
+        _allowlist_repo = PermissionRulesRepository()
     return _allowlist_repo
+
+
+def get_permission_rules_repo() -> PermissionRulesRepository:
+    """Alias for get_allowlist_repo()"""
+    return get_allowlist_repo()
+
+
+def get_notification_repo() -> NotificationRepository:
+    global _notification_repo
+    if _notification_repo is None:
+        _notification_repo = NotificationRepository()
+    return _notification_repo
 
 
 def get_session_repo() -> SessionRepository:

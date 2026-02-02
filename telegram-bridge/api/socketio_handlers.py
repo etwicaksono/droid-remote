@@ -78,11 +78,46 @@ def create_socketio_server() -> socketio.AsyncServer:
         logger.info(f"Response delivered via WebSocket: session={session_id}")
         return {"success": True}
     
+    def _create_permission_rule(session_id: str, rule_type: str, scope: str):
+        """Helper to create a permission rule from pending request"""
+        import json
+        from core.repositories import get_permission_rules_repo
+        
+        session = session_registry.get(session_id)
+        if not session or not session.pending_request:
+            return None
+        
+        pending = session.pending_request
+        tool_name = pending.tool_name or ''
+        tool_input = pending.tool_input or '{}'
+        
+        try:
+            input_dict = json.loads(tool_input) if isinstance(tool_input, str) else tool_input
+        except:
+            input_dict = {}
+        
+        # Determine pattern based on tool type
+        if tool_name == 'Execute':
+            pattern = input_dict.get('command', '*')
+        elif tool_name in ('Read', 'Edit', 'Create', 'MultiEdit'):
+            pattern = input_dict.get('file_path', '*')
+        else:
+            pattern = '*'
+        
+        return get_permission_rules_repo().add(
+            tool_name=tool_name,
+            pattern=pattern,
+            rule_type=rule_type,
+            scope=scope,
+            session_id=session_id if scope == 'session' else None
+        )
+    
     @sio.event
     async def approve(sid, data):
         """Handle approve action from Web UI"""
         session_id = data.get("sessionId")
         request_id = data.get("requestId")
+        scope = data.get("scope")  # Optional: 'session' or 'global'
         
         if not session_id:
             return {"error": "Missing sessionId"}
@@ -92,11 +127,17 @@ def create_socketio_server() -> socketio.AsyncServer:
         if not request_id and session and session.pending_request:
             request_id = session.pending_request.id
         
+        # Create permission rule if scope provided
+        rule = None
+        if scope in ('session', 'global'):
+            rule = _create_permission_rule(session_id, 'allow', scope)
+        
         message_queue.deliver_response(session_id, request_id, "approve")
         
         # Update permission in database
         if request_id:
-            get_permission_repo().resolve(request_id, "approved", "web")
+            decision = f"approved_{scope}" if scope else "approved"
+            get_permission_repo().resolve(request_id, decision, "web")
         
         session_registry.update_status(session_id, SessionStatus.RUNNING)
         session_registry.set_pending_request(session_id, None)
@@ -105,14 +146,15 @@ def create_socketio_server() -> socketio.AsyncServer:
         sessions = session_registry.get_all()
         await sio.emit("sessions_update", [s.model_dump(mode='json') for s in sessions])
         
-        logger.info(f"Approved via WebSocket: session={session_id}, request={request_id}")
-        return {"success": True}
+        logger.info(f"Approved via WebSocket: session={session_id}, request={request_id}, scope={scope}")
+        return {"success": True, "rule": rule}
     
     @sio.event
     async def deny(sid, data):
         """Handle deny action from Web UI"""
         session_id = data.get("sessionId")
         request_id = data.get("requestId")
+        scope = data.get("scope")  # Optional: 'session' or 'global'
         
         if not session_id:
             return {"error": "Missing sessionId"}
@@ -122,11 +164,17 @@ def create_socketio_server() -> socketio.AsyncServer:
         if not request_id and session and session.pending_request:
             request_id = session.pending_request.id
         
+        # Create permission rule if scope provided
+        rule = None
+        if scope in ('session', 'global'):
+            rule = _create_permission_rule(session_id, 'deny', scope)
+        
         message_queue.deliver_response(session_id, request_id, "deny")
         
         # Update permission in database
         if request_id:
-            get_permission_repo().resolve(request_id, "denied", "web")
+            decision = f"denied_{scope}" if scope else "denied"
+            get_permission_repo().resolve(request_id, decision, "web")
         
         session_registry.update_status(session_id, SessionStatus.RUNNING)
         session_registry.set_pending_request(session_id, None)
@@ -135,40 +183,14 @@ def create_socketio_server() -> socketio.AsyncServer:
         sessions = session_registry.get_all()
         await sio.emit("sessions_update", [s.model_dump(mode='json') for s in sessions])
         
-        logger.info(f"Denied via WebSocket: session={session_id}, request={request_id}")
-        return {"success": True}
+        logger.info(f"Denied via WebSocket: session={session_id}, request={request_id}, scope={scope}")
+        return {"success": True, "rule": rule}
     
     @sio.event
     async def always_allow(sid, data):
-        """Handle always_allow action from Web UI - approves and adds to allowlist"""
-        session_id = data.get("sessionId")
-        request_id = data.get("requestId")
-        
-        if not session_id:
-            return {"error": "Missing sessionId"}
-        
-        # Get request_id and tool info from session if not provided
-        session = session_registry.get(session_id)
-        if session and session.pending_request:
-            if not request_id:
-                request_id = session.pending_request.id
-        
-        # Deliver "always_allow" response to the hook
-        message_queue.deliver_response(session_id, request_id, "always_allow")
-        
-        # Update permission in database
-        if request_id:
-            get_permission_repo().resolve(request_id, "always_allowed", "web")
-        
-        session_registry.update_status(session_id, SessionStatus.RUNNING)
-        session_registry.set_pending_request(session_id, None)
-        
-        # Broadcast update
-        sessions = session_registry.get_all()
-        await sio.emit("sessions_update", [s.model_dump(mode='json') for s in sessions])
-        
-        logger.info(f"Always allowed via WebSocket: session={session_id}, request={request_id}")
-        return {"success": True}
+        """Handle always_allow action from Web UI - legacy, use approve with scope='global'"""
+        data['scope'] = 'global'
+        return await approve(sid, data)
     
     @sio.event
     async def get_sessions(sid):

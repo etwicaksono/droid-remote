@@ -6,7 +6,7 @@ import re
 import json
 import asyncio
 import logging
-from typing import Optional, Dict, Any, Callable, AsyncIterator
+from typing import Optional, Dict, Any, Callable, AsyncIterator, List
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
@@ -71,6 +71,7 @@ class TaskExecutor:
         autonomy_level: str = "high",
         model: Optional[str] = None,
         reasoning_effort: Optional[str] = None,
+        images: Optional[List[str]] = None,
         source: str = "api",
         on_progress: Optional[Callable[[str], None]] = None
     ) -> TaskResult:
@@ -85,12 +86,27 @@ class TaskExecutor:
             autonomy_level: low, medium, or high
             model: Optional model ID (e.g., claude-sonnet-4-20250514)
             reasoning_effort: Optional reasoning effort (off, low, medium, high)
+            images: Optional list of image URLs (referenced as @1, @2, etc. in prompt)
             source: Source of the task (telegram, web, api)
             on_progress: Optional callback for progress updates
         
         Returns:
             TaskResult with success status and output
         """
+        # Handle image paths in prompt (local paths like ./reference/image.png)
+        if images:
+            # Check if prompt contains @N references
+            has_refs = any(f"@{i}" in prompt for i in range(1, len(images) + 1))
+            if has_refs:
+                # Replace @N references with actual image paths
+                for i, path in enumerate(images, 1):
+                    prompt = prompt.replace(f"@{i}", path)
+                logger.info(f"Replaced {len(images)} image reference(s) in prompt")
+            else:
+                # Auto-append all images inline (space-separated)
+                prompt = prompt + " " + " ".join(images)
+                logger.info(f"Auto-appended {len(images)} image(s) to prompt")
+        
         # Use stored session_id if available for this project
         if not session_id and project_dir in self._session_map:
             session_id = self._session_map[project_dir]
@@ -225,6 +241,16 @@ class TaskExecutor:
             except Exception:
                 pass
             return task.result
+        finally:
+            # Cleanup local reference files after task execution
+            if images:
+                try:
+                    from api.cloudinary_handler import cleanup_local_files
+                    cleaned = cleanup_local_files(images, project_dir)
+                    if cleaned > 0:
+                        logger.info(f"Cleaned up {cleaned} local reference file(s)")
+                except Exception as e:
+                    logger.warning(f"Failed to cleanup local files: {e}")
     
     def _parse_activity_line(self, line: str) -> Optional[Dict[str, Any]]:
         """Parse a stderr line to extract tool activity information."""
@@ -303,8 +329,8 @@ class TaskExecutor:
         # JSON format suppresses activity output
         cmd.extend(["--output-format", "text"])
         
-        # Add the prompt
-        cmd.append(task.prompt)
+        # Add the prompt (quoted for Windows compatibility)
+        cmd.append(f'"{task.prompt}"')
         
         logger.info(f"Executing: {' '.join(cmd)}")
         
@@ -312,12 +338,14 @@ class TaskExecutor:
         env = os.environ.copy()
         env["DROID_EXEC_MODE"] = "1"
         
+        # Use larger buffer limit (16MB) for subprocess streams to handle large outputs
         process = await asyncio.create_subprocess_exec(
             *cmd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             cwd=task.project_dir,
-            env=env
+            env=env,
+            limit=16 * 1024 * 1024  # 16MB limit
         )
         task.process = process
         
@@ -327,8 +355,13 @@ class TaskExecutor:
         final_result_lines = []
         in_final_answer = False
         
+        MAX_LINE_SIZE = 16 * 1024 * 1024  # 16MB
+        
         async def read_stderr():
             async for line in process.stderr:
+                if len(line) > MAX_LINE_SIZE:
+                    logger.error(f"Stderr line too large ({len(line) / 1024 / 1024:.1f}MB), skipping")
+                    continue
                 line_str = line.decode("utf-8", errors="replace").rstrip()
                 if line_str:
                     stderr_lines.append(line_str)
@@ -336,6 +369,9 @@ class TaskExecutor:
         async def read_stdout():
             nonlocal in_final_answer
             async for line in process.stdout:
+                if len(line) > MAX_LINE_SIZE:
+                    logger.error(f"Stdout line too large ({len(line) / 1024 / 1024:.1f}MB), skipping")
+                    continue
                 line_str = line.decode("utf-8", errors="replace").rstrip()
                 if line_str:
                     stdout_lines.append(line_str)
@@ -429,12 +465,22 @@ class TaskExecutor:
         session_id: Optional[str] = None,
         autonomy_level: str = "high",
         model: Optional[str] = None,
-        reasoning_effort: Optional[str] = None
+        reasoning_effort: Optional[str] = None,
+        images: Optional[List[str]] = None
     ) -> AsyncIterator[Dict[str, Any]]:
         """
         Execute task with streaming output (stream-json format).
         Yields events as they occur.
         """
+        # Handle image paths in prompt (local paths like ./reference/image.png)
+        if images:
+            has_refs = any(f"@{i}" in prompt for i in range(1, len(images) + 1))
+            if has_refs:
+                for i, path in enumerate(images, 1):
+                    prompt = prompt.replace(f"@{i}", path)
+            else:
+                prompt = prompt + " " + " ".join(images)
+        
         if not session_id and project_dir in self._session_map:
             session_id = self._session_map[project_dir]
         
@@ -465,7 +511,7 @@ class TaskExecutor:
         
         cmd.extend(["--cwd", task.project_dir])
         cmd.extend(["--output-format", "stream-json"])
-        cmd.append(task.prompt)
+        cmd.append(f'"{task.prompt}"')
         
         logger.info(f"Executing (streaming): {' '.join(cmd)}")
         
@@ -476,18 +522,28 @@ class TaskExecutor:
         env = os.environ.copy()
         env["DROID_EXEC_MODE"] = "1"
         
+        # Use larger buffer limit (16MB) for subprocess streams to handle large outputs
         process = await asyncio.create_subprocess_exec(
             *cmd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             cwd=task.project_dir,
-            env=env
+            env=env,
+            limit=16 * 1024 * 1024  # 16MB limit
         )
         task.process = process
         
         final_result = None
+        MAX_LINE_SIZE = 16 * 1024 * 1024  # 16MB
         
         async for line in process.stdout:
+            # Check line size before processing
+            if len(line) > MAX_LINE_SIZE:
+                error_msg = f"Output line too large ({len(line) / 1024 / 1024:.1f}MB). Max allowed: {MAX_LINE_SIZE / 1024 / 1024:.0f}MB"
+                logger.error(error_msg)
+                yield {"type": "error", "error": error_msg}
+                continue
+            
             line_str = line.decode("utf-8", errors="replace").strip()
             if not line_str:
                 continue
@@ -519,6 +575,16 @@ class TaskExecutor:
                 duration_ms=final_result.get("durationMs", 0),
                 num_turns=final_result.get("numTurns", 0)
             )
+        
+        # Cleanup local reference files after task execution
+        if images:
+            try:
+                from api.cloudinary_handler import cleanup_local_files
+                cleaned = cleanup_local_files(images, project_dir)
+                if cleaned > 0:
+                    logger.info(f"Cleaned up {cleaned} local reference file(s)")
+            except Exception as e:
+                logger.warning(f"Failed to cleanup local files: {e}")
     
     def cancel_task(self, task_id: str) -> bool:
         """Cancel a running task."""

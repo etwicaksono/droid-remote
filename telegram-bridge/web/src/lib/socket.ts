@@ -1,7 +1,7 @@
 'use client'
 
 import { io, type Socket } from 'socket.io-client'
-import type { Session, Notification } from '@/types'
+import type { Session, Notification, QueuedMessage } from '@/types'
 import { getAuthToken } from './api'
 
 interface ActivityEvent {
@@ -26,6 +26,7 @@ interface ServerToClientEvents {
   chat_updated: (data: { session_id: string; message: any }) => void
   cli_thinking: (data: { session_id: string; prompt: string }) => void
   cli_thinking_done: (data: { session_id: string }) => void
+  queue_updated: (data: { session_id: string; queue: QueuedMessage[] }) => void
 }
 
 interface ClientToServerEvents {

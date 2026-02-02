@@ -19,18 +19,19 @@ PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 # Load environment variables from project root first, then fallback to local
+# Use override=True to ensure .env values take precedence over system env vars
 env_file = PROJECT_ROOT / ".env"
 if env_file.exists():
-    load_dotenv(env_file)
+    load_dotenv(env_file, override=True)
 else:
-    load_dotenv()  # Fallback to telegram-bridge/.env
+    load_dotenv(override=True)  # Fallback to telegram-bridge/.env
 
 from bot.telegram_bot import TelegramBotManager
-from api.routes import router
+from api.routes import web_router, hooks_router
 from api.socketio_handlers import create_socketio_server, create_socketio_app
 from api.auth import verify_token, verify_api_key, PUBLIC_ROUTES, log_auth_config
 from core.session_registry import session_registry
-from core.database import get_db, migrate_tasks_cascade_delete, migrate_chat_messages_source, migrate_session_settings_autonomy
+from core.database import get_db, migrate_tasks_cascade_delete, migrate_chat_messages_source, migrate_session_settings_autonomy, migrate_chat_messages_images, migrate_permission_rules
 from utils.logging_config import setup_logging
 
 # Setup logging
@@ -61,6 +62,8 @@ async def lifespan(app: FastAPI):
         migrate_tasks_cascade_delete()
         migrate_chat_messages_source()
         migrate_session_settings_autonomy()
+        migrate_chat_messages_images()
+        migrate_permission_rules()
     except Exception as e:
         logger.error(f"Failed to initialize database: {e}")
         raise
@@ -112,7 +115,8 @@ app.add_middleware(
 )
 
 
-# Auth middleware
+# Auth middleware - handles public routes and authentication
+# Accepts both Bearer tokens (Web UI) and API keys (CLI hooks)
 @app.middleware("http")
 async def auth_middleware(request: Request, call_next):
     """Check authentication for protected routes"""
@@ -123,7 +127,7 @@ async def auth_middleware(request: Request, call_next):
     if method == "OPTIONS":
         return await call_next(request)
     
-    # Allow public routes
+    # Allow public routes (login, health, etc.)
     if any(path.startswith(route) for route in PUBLIC_ROUTES):
         return await call_next(request)
     
@@ -135,12 +139,12 @@ async def auth_middleware(request: Request, call_next):
     if path.startswith("/socket.io"):
         return await call_next(request)
     
-    # Check for API key (used by hooks)
+    # Check for API key (used by CLI hooks)
     api_key = request.headers.get("X-API-Key") or request.headers.get("X-Bridge-Secret")
     if api_key and verify_api_key(api_key):
         return await call_next(request)
     
-    # Check for Bearer token
+    # Check for Bearer token (used by Web UI)
     auth_header = request.headers.get("Authorization", "")
     if auth_header.startswith("Bearer "):
         token = auth_header[7:]
@@ -160,7 +164,10 @@ async def auth_middleware(request: Request, call_next):
 
 
 # Include API routes
-app.include_router(router)
+# web_router: Bearer token auth for Web UI
+# hooks_router: API key auth for CLI hooks (mounted at /hooks)
+app.include_router(web_router)
+app.include_router(hooks_router)
 
 # Create Socket.IO server
 sio = create_socketio_server()
@@ -198,11 +205,35 @@ def main():
     
     logger.info(f"Starting server on {host}:{port}")
     
+    # Custom uvicorn log config with timestamps
+    log_config = {
+        "version": 1,
+        "disable_existing_loggers": False,
+        "formatters": {
+            "default": {
+                "format": "%(asctime)s,%(msecs)03d - %(name)s - %(levelname)s - %(message)s",
+                "datefmt": "%Y-%m-%d %H:%M:%S",
+            },
+        },
+        "handlers": {
+            "default": {
+                "formatter": "default",
+                "class": "logging.StreamHandler",
+                "stream": "ext://sys.stderr",
+            },
+        },
+        "loggers": {
+            "uvicorn": {"handlers": ["default"], "level": "INFO", "propagate": False},
+            "uvicorn.error": {"handlers": ["default"], "level": "INFO", "propagate": False},
+            "uvicorn.access": {"handlers": ["default"], "level": "INFO", "propagate": False},
+        },
+    }
+    
     uvicorn.run(
         combined_app,
         host=host,
         port=port,
-        log_level="info"
+        log_config=log_config,
     )
 
 

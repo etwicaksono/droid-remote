@@ -8,9 +8,6 @@ import logging
 import asyncio
 from typing import Optional, Set
 
-# Add hooks lib to path for config
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'hooks'))
-
 from telegram import Update
 from telegram.ext import (
     Application,
@@ -26,7 +23,9 @@ from core.message_queue import message_queue
 from core.task_executor import task_executor
 from core.models import Session, Notification, NotificationType, PendingRequest, SessionStatus
 from core.repositories import get_permission_repo, get_task_repo
-from lib.config import WEB_UI_URL
+
+# Get config from environment
+WEB_UI_URL = os.getenv("WEB_UI_URL", "http://localhost:3000")
 from .commands import (
     setup_commands,
     start_command,

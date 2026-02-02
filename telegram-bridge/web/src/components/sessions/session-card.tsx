@@ -1,19 +1,19 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback, type FormEvent } from 'react'
-import { Terminal, Loader2 } from 'lucide-react'
+import Image from 'next/image'
+import { Terminal, Loader2, Clock, ChevronDown, ChevronRight, X, Trash2, Check, Ban } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { useSessionActions } from '@/hooks/use-session-actions'
 import { getSocket } from '@/lib/socket'
 import { getAuthHeaders } from '@/lib/api'
 import { cn } from '@/lib/utils'
-import { InputBox, DEFAULT_MODEL, DEFAULT_REASONING, DEFAULT_AUTONOMY } from '@/components/chat/input-box'
-import type { Session, ControlState, ReasoningEffort } from '@/types'
-import modelsConfig from '@/config/models.json'
+import { InputBox, DEFAULT_MODEL, DEFAULT_REASONING, DEFAULT_AUTONOMY, type UploadedImage } from '@/components/chat/input-box'
+import { uploadImage, deleteImage } from '@/lib/api-client'
+import type { Session, ControlState, ReasoningEffort, QueuedMessage } from '@/types'
+import { useModels } from '@/hooks/use-models'
 
-// Load models from JSON config file
-const AVAILABLE_MODELS = modelsConfig.models as { id: string; name: string; reasoning: boolean }[]
 const MAX_MESSAGE_INPUT_HEIGHT = 240
 
 // Generate UUID that works in all browsers (crypto.randomUUID requires HTTPS)
@@ -82,6 +82,7 @@ interface ChatMessage {
   status?: 'success' | 'error'
   meta?: { duration?: number; turns?: number }
   source?: 'web' | 'cli'
+  images?: string[]  // Array of image URLs
 }
 
 // Activity event from stream-json
@@ -111,12 +112,24 @@ export function SessionCard({ session }: SessionCardProps) {
   const [pendingRequest, setPendingRequest] = useState(session.pending_request)
   // Real-time activity from droid exec streaming
   const [activityLogs, setActivityLogs] = useState<ActivityEvent[]>([])
-  const { approve, deny, alwaysAllow, executeTask, cancelTask, addChatMessage } = useSessionActions()
+  // CLI thinking state (separate from Web UI executing)
+  const [cliThinking, setCliThinking] = useState(false)
+  // Queue state
+  const [queuedMessages, setQueuedMessages] = useState<QueuedMessage[]>([])
+  const [queueExpanded, setQueueExpanded] = useState(false)
+
+  // Image upload state
+  const [uploadedImages, setUploadedImages] = useState<UploadedImage[]>([])
+  const [isUploading, setIsUploading] = useState(false)
+  const { approve, deny, alwaysAllow, executeTask, cancelTask, addChatMessage, getQueue, clearQueue, cancelQueuedMessage, addToQueue } = useSessionActions()
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const chatContainerRef = useRef<HTMLDivElement | null>(null)
   const isLoadingOlderRef = useRef(false)
+  
+  // Fetch models from API
+  const { models, reasoningLevels, autonomyLevels } = useModels()
 
-  const currentModel = AVAILABLE_MODELS.find(m => m.id === selectedModel)
+  const currentModel = models.find(m => m.id === selectedModel)
   const supportsReasoning = currentModel?.reasoning ?? false
 
   // Scroll chat to bottom
@@ -150,7 +163,8 @@ export function SessionCard({ session }: SessionCardProps) {
     meta: msg.duration_ms || msg.num_turns ? {
       duration: msg.duration_ms,
       turns: msg.num_turns
-    } : undefined
+    } : undefined,
+    images: msg.images || undefined
   })
 
   // Sync local state with session prop changes
@@ -174,6 +188,32 @@ export function SessionCard({ session }: SessionCardProps) {
       socket.off('sessions_update', handleSessionsUpdate)
     }
   }, [session.id])
+
+  // Load queue and listen for updates
+  useEffect(() => {
+    const loadQueue = async () => {
+      try {
+        const data = await getQueue({ sessionId: session.id })
+        setQueuedMessages(data.messages || [])
+      } catch (error) {
+        console.error('Failed to load queue:', error)
+      }
+    }
+    
+    loadQueue()
+    
+    const socket = getSocket()
+    const handleQueueUpdated = (data: { session_id: string; queue: QueuedMessage[] }) => {
+      if (data.session_id === session.id) {
+        setQueuedMessages(data.queue || [])
+      }
+    }
+    
+    socket.on('queue_updated', handleQueueUpdated)
+    return () => {
+      socket.off('queue_updated', handleQueueUpdated)
+    }
+  }, [session.id, getQueue])
 
   // Load chat history and settings from API on mount
   useEffect(() => {
@@ -235,7 +275,7 @@ export function SessionCard({ session }: SessionCardProps) {
         clearTimeout(timeoutId)
         if (res.ok) {
           const data = await res.json()
-          if (data.thinking) setExecuting(true)
+          if (data.thinking) setCliThinking(true)
         }
       } catch {
         // Ignore - non-critical
@@ -427,24 +467,22 @@ export function SessionCard({ session }: SessionCardProps) {
           return [...prev, newMessage]
         })
         
-        // If assistant message from CLI, clear thinking state
+        // If assistant message from CLI, clear CLI thinking state
         if (newMessage.type === 'assistant' && newMessage.source === 'cli') {
-          setExecuting(false)
-          setCurrentTaskId(null)
+          setCliThinking(false)
         }
       }
     }
     
     const handleCliThinking = (data: { session_id: string; prompt: string }) => {
       if (data.session_id === session.id) {
-        setExecuting(true)
+        setCliThinking(true)
       }
     }
     
     const handleCliThinkingDone = (data: { session_id: string }) => {
       if (data.session_id === session.id) {
-        setExecuting(false)
-        setCurrentTaskId(null)
+        setCliThinking(false)
       }
     }
     
@@ -473,7 +511,7 @@ export function SessionCard({ session }: SessionCardProps) {
       // Small delay to ensure DOM has updated
       setTimeout(scrollToBottom, 50)
     }
-  }, [chatHistory, executing, scrollToBottom])
+  }, [chatHistory, executing, cliThinking, scrollToBottom])
 
   const hasPendingRequest = pendingRequest !== null
 
@@ -490,12 +528,21 @@ export function SessionCard({ session }: SessionCardProps) {
     setExecuting(true)
     setCurrentTaskId(taskId) // Set immediately before execution
 
+    // Get image paths before clearing
+    // - local_path for droid exec (vision processing)
+    // - url for chat history display
+    const imageUrls = uploadedImages.map(img => img.url)
+    const localPaths = uploadedImages
+      .map(img => img.local_path)
+      .filter((p): p is string => p !== null)
+    
     // Save user message to API and add to local state immediately
     try {
       const response = await addChatMessage({
         sessionId: session.id,
         type: 'user',
         content: prompt,
+        images: imageUrls.length > 0 ? imageUrls : undefined,
       })
       // Add user message with DB-assigned ID immediately
       if (response?.message) {
@@ -504,6 +551,7 @@ export function SessionCard({ session }: SessionCardProps) {
           type: 'user',
           content: prompt,
           timestamp: new Date(response.message.created_at || Date.now()),
+          images: imageUrls.length > 0 ? imageUrls : undefined,
         }
         setChatHistory(prev => {
           if (prev.some(msg => msg.id === userMessage.id)) return prev
@@ -517,12 +565,15 @@ export function SessionCard({ session }: SessionCardProps) {
         type: 'user',
         content: prompt,
         timestamp: new Date(),
+        images: imageUrls.length > 0 ? imageUrls : undefined,
       }
       setChatHistory(prev => [...prev, userMessage])
     }
 
     // Execute task in background - result will come via WebSocket
     try {
+      console.log(`[Submit] Sending task with ${localPaths.length} local path(s):`, localPaths)
+      
       await executeTask({
         prompt,
         projectDir: session.project_dir,
@@ -531,7 +582,12 @@ export function SessionCard({ session }: SessionCardProps) {
         model: selectedModel,
         reasoningEffort: supportsReasoning ? reasoningEffort : undefined,
         autonomyLevel,
+        images: localPaths.length > 0 ? localPaths : undefined,
       })
+      
+      // Clear images after task submission
+      setUploadedImages([])
+      
       // Task started successfully - WebSocket 'task_completed' will handle the result
     } catch (error) {
       // Network error or immediate failure - show error
@@ -620,23 +676,101 @@ export function SessionCard({ session }: SessionCardProps) {
     }
   }
 
-  const handleApprove = () => {
+  const handleApprove = (scope?: 'session' | 'global') => {
     if (pendingRequest) {
-      approve({ sessionId: session.id })
+      approve({ sessionId: session.id, scope })
     }
   }
 
-  const handleDeny = () => {
+  const handleDeny = (scope?: 'session' | 'global') => {
     if (pendingRequest) {
-      deny({ sessionId: session.id })
+      deny({ sessionId: session.id, scope })
     }
   }
 
-  const handleAlwaysAllow = () => {
-    if (pendingRequest) {
-      alwaysAllow({ sessionId: session.id })
+  // State for showing dropdown menus
+  const [showApproveMenu, setShowApproveMenu] = useState(false)
+  const [showDenyMenu, setShowDenyMenu] = useState(false)
+
+  const handleCancelQueueItem = async (messageId: number) => {
+    try {
+      await cancelQueuedMessage({ sessionId: session.id, messageId })
+    } catch (error) {
+      console.error('Failed to cancel queued message:', error)
     }
   }
+
+  const handleClearQueue = async () => {
+    try {
+      await clearQueue({ sessionId: session.id })
+    } catch (error) {
+      console.error('Failed to clear queue:', error)
+    }
+  }
+
+  const handleAddToQueue = async () => {
+    if (!taskPrompt.trim()) return
+    
+    try {
+      await addToQueue({ sessionId: session.id, content: taskPrompt.trim() })
+      setTaskPrompt('')
+    } catch (error) {
+      console.error('Failed to add to queue:', error)
+    }
+  }
+
+  // Image upload handlers
+  const handleImageUpload = async (file: File) => {
+    setIsUploading(true)
+    try {
+      console.log(`[Upload] Starting upload: ${file.name} (${(file.size / 1024).toFixed(1)}KB)`)
+      const result = await uploadImage(file, session.id, session.project_dir)
+      console.log(`[Upload] Success: url=${result.url}, local_path=${result.local_path}`)
+      const ref = `@${uploadedImages.length + 1}`
+      setUploadedImages(prev => [...prev, {
+        url: result.url,
+        local_path: result.local_path,
+        public_id: result.public_id,
+        name: file.name,
+        ref,
+      }])
+    } catch (error) {
+      console.error('[Upload] Failed:', error)
+      alert(`Failed to upload image: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    } finally {
+      setIsUploading(false)
+    }
+  }
+
+  const handleImageRemove = async (index: number) => {
+    const imageToRemove = uploadedImages[index]
+    
+    // Remove from local state immediately
+    setUploadedImages(prev => {
+      const newImages = prev.filter((_, i) => i !== index)
+      // Re-number refs
+      return newImages.map((img, i) => ({ ...img, ref: `@${i + 1}` }))
+    })
+    
+    // Delete from Cloudinary in background
+    if (imageToRemove?.public_id) {
+      try {
+        await deleteImage(imageToRemove.public_id)
+      } catch (error) {
+        console.error('Failed to delete image from Cloudinary:', error)
+        // Don't show error to user - image is already removed from UI
+      }
+    }
+  }
+
+  const handleInsertRef = (ref: string) => {
+    // This is handled in InputBox via the render prop
+    // Just log for debugging if needed
+  }
+
+  // Check if busy (should show queue mode)
+  const isBusy = executing || cliThinking
+  const busySource = executing ? 'web' : cliThinking ? 'cli' : null
 
   useEffect(() => {
     adjustTextareaHeight()
@@ -659,15 +793,134 @@ export function SessionCard({ session }: SessionCardProps) {
 
             {pendingRequest.type === 'permission' && (
               <div className="mt-3 flex flex-wrap gap-2">
-                <Button size="sm" onClick={handleApprove}>
-                  Approve
+                {/* Approve Dropdown */}
+                <div className="relative">
+                  <Button 
+                    size="sm" 
+                    className="gap-1"
+                    onClick={() => setShowApproveMenu(!showApproveMenu)}
+                  >
+                    <Check className="h-3 w-3" />
+                    Approve
+                    <ChevronDown className="h-3 w-3 ml-1" />
+                  </Button>
+                  {showApproveMenu && (
+                    <div className="absolute left-0 mt-1 w-40 bg-gray-900 border border-gray-700 rounded-md shadow-lg z-50">
+                      <button
+                        className="w-full px-3 py-2 text-left text-sm hover:bg-gray-800 rounded-t-md"
+                        onClick={() => { handleApprove(); setShowApproveMenu(false) }}
+                      >
+                        Once
+                      </button>
+                      <button
+                        className="w-full px-3 py-2 text-left text-sm hover:bg-gray-800"
+                        onClick={() => { handleApprove('session'); setShowApproveMenu(false) }}
+                      >
+                        For this session
+                      </button>
+                      <button
+                        className="w-full px-3 py-2 text-left text-sm hover:bg-gray-800 rounded-b-md"
+                        onClick={() => { handleApprove('global'); setShowApproveMenu(false) }}
+                      >
+                        For all sessions
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Deny Dropdown */}
+                <div className="relative">
+                  <Button 
+                    size="sm" 
+                    variant="destructive"
+                    className="gap-1"
+                    onClick={() => setShowDenyMenu(!showDenyMenu)}
+                  >
+                    <Ban className="h-3 w-3" />
+                    Deny
+                    <ChevronDown className="h-3 w-3 ml-1" />
+                  </Button>
+                  {showDenyMenu && (
+                    <div className="absolute left-0 mt-1 w-40 bg-gray-900 border border-gray-700 rounded-md shadow-lg z-50">
+                      <button
+                        className="w-full px-3 py-2 text-left text-sm hover:bg-gray-800 rounded-t-md"
+                        onClick={() => { handleDeny(); setShowDenyMenu(false) }}
+                      >
+                        Once
+                      </button>
+                      <button
+                        className="w-full px-3 py-2 text-left text-sm hover:bg-gray-800"
+                        onClick={() => { handleDeny('session'); setShowDenyMenu(false) }}
+                      >
+                        For this session
+                      </button>
+                      <button
+                        className="w-full px-3 py-2 text-left text-sm hover:bg-gray-800 rounded-b-md"
+                        onClick={() => { handleDeny('global'); setShowDenyMenu(false) }}
+                      >
+                        For all sessions
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Queue Panel */}
+        {queuedMessages.length > 0 && (
+          <div className="rounded-md bg-muted/50 border border-border shrink-0">
+            <button
+              onClick={() => setQueueExpanded(!queueExpanded)}
+              className="w-full flex items-center justify-between p-3 hover:bg-muted/80 transition-colors"
+            >
+              <div className="flex items-center gap-2 text-sm font-medium">
+                {queueExpanded ? (
+                  <ChevronDown className="h-4 w-4" />
+                ) : (
+                  <ChevronRight className="h-4 w-4" />
+                )}
+                <Clock className="h-4 w-4 text-yellow-500" />
+                <span>Queued Tasks ({queuedMessages.length})</span>
+              </div>
+              {queueExpanded && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    handleClearQueue()
+                  }}
+                  className="h-7 text-xs text-muted-foreground hover:text-destructive"
+                >
+                  <Trash2 className="h-3 w-3 mr-1" />
+                  Clear All
                 </Button>
-                <Button size="sm" variant="destructive" onClick={handleDeny}>
-                  Deny
-                </Button>
-                <Button size="sm" variant="outline" onClick={handleAlwaysAllow} title="Approve and add to allowlist">
-                  Always Allow
-                </Button>
+              )}
+            </button>
+            {queueExpanded && (
+              <div className="border-t border-border p-2 space-y-1 max-h-[200px] overflow-y-auto">
+                {queuedMessages.map((msg, index) => (
+                  <div
+                    key={msg.id}
+                    className="flex items-start gap-2 p-2 rounded bg-background/50 group"
+                  >
+                    <span className="text-xs text-muted-foreground font-mono w-5 shrink-0">
+                      {index + 1}.
+                    </span>
+                    <p className="flex-1 text-sm truncate" title={msg.content}>
+                      {msg.content}
+                    </p>
+                    <button
+                      onClick={() => handleCancelQueueItem(msg.id)}
+                      className="p-1 rounded hover:bg-destructive/20 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
+                      title="Cancel"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                ))}
               </div>
             )}
           </div>
@@ -701,6 +954,17 @@ export function SessionCard({ session }: SessionCardProps) {
                   onSubmit={handleTaskSubmit}
                   onCancel={handleCancelTask}
                   textareaRef={textareaRef}
+                  queueMode={isBusy}
+                  onQueue={handleAddToQueue}
+                  showCancel={executing && !cliThinking}
+                  images={uploadedImages}
+                  onImageUpload={handleImageUpload}
+                  onImageRemove={handleImageRemove}
+                  onInsertRef={handleInsertRef}
+                  isUploading={isUploading}
+                  availableModels={models}
+                  reasoningLevels={reasoningLevels}
+                  autonomyLevels={autonomyLevels}
                 />
               </div>
             </div>
@@ -730,13 +994,18 @@ export function SessionCard({ session }: SessionCardProps) {
                 {chatHistory.map((msg) => (
                   <ChatBubble key={msg.id} message={msg} />
                 ))}
-                {executing && (
+                {isBusy && (
                   <div className="flex justify-start ms-2">
                     <div className="bg-muted rounded-lg px-3 py-2 max-w-[90%] sm:max-w-[85%]">
                       <div className="flex items-center gap-2 text-sm text-muted-foreground">
                         <Loader2 className="h-4 w-4 animate-spin shrink-0" />
                         <span>Droid is thinking...</span>
                       </div>
+                      <p className="text-xs text-yellow-500 mt-1">
+                        {busySource === 'cli' 
+                          ? 'CLI is processing. New tasks will be queued.'
+                          : 'Droid is processing. New tasks will be queued.'}
+                      </p>
                       {/* Real-time activity logs */}
                       {activityLogs.length > 0 && (
                         <div className="mt-2 pt-2 border-t border-border/50 space-y-1 text-xs">
@@ -796,6 +1065,17 @@ export function SessionCard({ session }: SessionCardProps) {
                   onCancel={handleCancelTask}
                   textareaRef={textareaRef}
                   compact
+                  queueMode={isBusy}
+                  onQueue={handleAddToQueue}
+                  showCancel={executing && !cliThinking}
+                  images={uploadedImages}
+                  onImageUpload={handleImageUpload}
+                  onImageRemove={handleImageRemove}
+                  onInsertRef={handleInsertRef}
+                  isUploading={isUploading}
+                  availableModels={models}
+                  reasoningLevels={reasoningLevels}
+                  autonomyLevels={autonomyLevels}
                 />
               </div>
             </>
@@ -809,8 +1089,10 @@ export function SessionCard({ session }: SessionCardProps) {
 function ChatBubble({ message }: { message: ChatMessage }) {
   const [expanded, setExpanded] = useState(false)
   const [showTimestamp, setShowTimestamp] = useState(false)
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null)
   const isUser = message.type === 'user'
   const isLong = message.content.length > 300
+  const hasImages = message.images && message.images.length > 0
 
   const formattedTime = message.timestamp.toLocaleString(undefined, {
     month: 'short',
@@ -820,70 +1102,141 @@ function ChatBubble({ message }: { message: ChatMessage }) {
     minute: '2-digit',
   })
 
+  // Handle escape key to close lightbox
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setLightboxUrl(null)
+    }
+    if (lightboxUrl) {
+      document.addEventListener('keydown', handleEscape)
+      return () => document.removeEventListener('keydown', handleEscape)
+    }
+  }, [lightboxUrl])
+
   return (
-    <div className={cn('flex', isUser ? 'justify-end me-2' : 'justify-start ms-2')}>
-      <div
-        className={cn(
-          'max-w-[90%] sm:max-w-[85%] rounded-lg px-3 py-2 group relative',
-          isUser
-            ? 'bg-blue-600 text-white'
-            : message.status === 'error'
-            ? 'bg-red-500/20 border border-red-500/30'
-            : 'bg-muted'
-        )}
-        onClick={() => setShowTimestamp(prev => !prev)}
-        title={formattedTime}
-      >
-        {/* Message Content */}
-        <div className="text-sm whitespace-pre-wrap break-words">
-          {isLong && !expanded
-            ? message.content.substring(0, 300) + '...'
-            : message.content}
-        </div>
-
-        {/* Show more/less for long messages */}
-        {isLong && (
-          <button
-            className="text-xs mt-1 opacity-70 hover:opacity-100"
-            onClick={() => setExpanded(!expanded)}
-          >
-            {expanded ? 'Show less' : 'Show more'}
-          </button>
-        )}
-
-        {/* Meta info for assistant messages */}
-        {!isUser && (message.meta || message.source) && (
-          <div className="flex items-center gap-2 mt-1 text-xs opacity-60">
-            {message.source === 'cli' && (
-              <span className="px-1 py-0.5 bg-blue-500/20 text-blue-400 rounded text-[10px]">CLI</span>
-            )}
-            {message.meta?.duration && message.meta.duration > 0 && (
-              <span>{(message.meta.duration / 1000).toFixed(1)}s</span>
-            )}
-            {message.meta?.turns && message.meta.turns > 0 && (
-              <span>{message.meta.turns} turns</span>
-            )}
+    <>
+      <div className={cn('flex', isUser ? 'justify-end me-2' : 'justify-start ms-2')}>
+        <div
+          className={cn(
+            'max-w-[90%] sm:max-w-[85%] rounded-lg px-3 py-2 group relative',
+            isUser
+              ? 'bg-blue-600 text-white'
+              : message.status === 'error'
+              ? 'bg-red-500/20 border border-red-500/30'
+              : 'bg-muted'
+          )}
+          onClick={() => setShowTimestamp(prev => !prev)}
+          title={formattedTime}
+        >
+          {/* Images */}
+          {hasImages && (
+            <div className="flex flex-wrap gap-2 mb-2">
+              {message.images!.map((url, idx) => (
+                <div
+                  key={idx}
+                  className="relative h-20 w-20 rounded border border-white/20 overflow-hidden cursor-pointer hover:ring-2 hover:ring-white/50 transition-all"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setLightboxUrl(url)
+                  }}
+                >
+                  <Image
+                    src={url}
+                    alt={`Image ${idx + 1}`}
+                    fill
+                    className="object-cover"
+                    sizes="80px"
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+          
+          {/* Message Content */}
+          <div className="text-sm whitespace-pre-wrap break-words">
+            {isLong && !expanded
+              ? message.content.substring(0, 300) + '...'
+              : message.content}
           </div>
-        )}
-        
-        {/* Source indicator for user messages */}
-        {isUser && message.source === 'cli' && (
-          <div className="flex justify-end mt-1">
-            <span className="px-1 py-0.5 bg-white/20 rounded text-[10px]">CLI</span>
-          </div>
-        )}
 
-        {/* Timestamp - visible on hover (desktop) or click (mobile) */}
-        <div className={cn(
-          'text-[10px] mt-1 transition-opacity duration-200',
-          isUser ? 'text-white/60' : 'text-muted-foreground',
-          'sm:opacity-0 sm:group-hover:opacity-100',
-          showTimestamp ? 'opacity-100' : 'opacity-0 sm:opacity-0'
-        )}>
-          {formattedTime}
+          {/* Show more/less for long messages */}
+          {isLong && (
+            <button
+              className="text-xs mt-1 opacity-70 hover:opacity-100"
+              onClick={(e) => {
+                e.stopPropagation()
+                setExpanded(!expanded)
+              }}
+            >
+              {expanded ? 'Show less' : 'Show more'}
+            </button>
+          )}
+
+          {/* Meta info for assistant messages */}
+          {!isUser && (message.meta || message.source) && (
+            <div className="flex items-center gap-2 mt-1 text-xs opacity-60">
+              {message.source === 'cli' && (
+                <span className="px-1 py-0.5 bg-blue-500/20 text-blue-400 rounded text-[10px]">CLI</span>
+              )}
+              {message.meta?.duration && message.meta.duration > 0 && (
+                <span>{(message.meta.duration / 1000).toFixed(1)}s</span>
+              )}
+              {message.meta?.turns && message.meta.turns > 0 && (
+                <span>{message.meta.turns} turns</span>
+              )}
+            </div>
+          )}
+          
+          {/* Source indicator for user messages */}
+          {isUser && message.source === 'cli' && (
+            <div className="flex justify-end mt-1">
+              <span className="px-1 py-0.5 bg-white/20 rounded text-[10px]">CLI</span>
+            </div>
+          )}
+
+          {/* Timestamp - visible on hover (desktop) or click (mobile) */}
+          <div className={cn(
+            'text-[10px] mt-1 transition-opacity duration-200',
+            isUser ? 'text-white/60' : 'text-muted-foreground',
+            'sm:opacity-0 sm:group-hover:opacity-100',
+            showTimestamp ? 'opacity-100' : 'opacity-0 sm:opacity-0'
+          )}>
+            {formattedTime}
+          </div>
         </div>
       </div>
-    </div>
+      
+      {/* Lightbox Overlay */}
+      {lightboxUrl && (
+        <div 
+          className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4"
+          onClick={() => setLightboxUrl(null)}
+        >
+          <button
+            onClick={() => setLightboxUrl(null)}
+            className="absolute top-4 right-4 p-2 bg-white/10 hover:bg-white/20 rounded-full text-white transition-colors"
+            title="Close (Esc)"
+          >
+            <X className="h-6 w-6" />
+          </button>
+          
+          <div 
+            className="relative max-w-4xl max-h-[85vh] w-full flex items-center justify-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <Image
+              src={lightboxUrl}
+              alt="Full size"
+              width={1200}
+              height={900}
+              className="object-contain max-h-[85vh] w-auto h-auto rounded-lg"
+              sizes="(max-width: 768px) 100vw, 1200px"
+              priority
+            />
+          </div>
+        </div>
+      )}
+    </>
   )
 }
 

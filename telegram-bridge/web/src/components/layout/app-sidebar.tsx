@@ -3,11 +3,12 @@
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Terminal, Menu, Plus, ShieldCheck, Circle, X, Trash2, Pencil, Settings, LogOut } from 'lucide-react'
+import { Terminal, Menu, Plus, ShieldCheck, X, Trash2, Pencil, Settings, LogOut, Clock, ChevronDown, ChevronRight, Brain, AlertTriangle, CheckCircle, Cog } from 'lucide-react'
 import { cn, formatRelativeTime } from '@/lib/utils'
 import { getSocket } from '@/lib/socket'
 import { getAuthHeaders } from '@/lib/api'
 import { useAuth } from '@/contexts/auth-context'
+import { AddSessionModal } from '@/components/sessions/add-session-modal'
 import type { Session, ControlState } from '@/types'
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8765'
@@ -16,11 +17,11 @@ interface AppSidebarProps {
   currentPath: string
 }
 
-const STATUS_CONFIG: Record<ControlState, { color: string; label: string }> = {
-  remote_active: { color: 'bg-purple-500', label: 'Remote' },
-  cli_active: { color: 'bg-blue-500', label: 'CLI' },
-  cli_waiting: { color: 'bg-yellow-500', label: 'Waiting' },
-  released: { color: 'bg-gray-500', label: 'Released' },
+const STATUS_CONFIG: Record<ControlState, { color: string; label: string; description: string }> = {
+  remote_active: { color: 'bg-purple-500', label: 'Remote', description: 'Controlled by Web UI' },
+  cli_active: { color: 'bg-blue-500', label: 'CLI', description: 'Controlled by CLI directly' },
+  cli_waiting: { color: 'bg-yellow-500', label: 'Waiting', description: 'CLI waiting for user input' },
+  released: { color: 'bg-gray-500', label: 'Released', description: 'Not being controlled' },
 }
 
 export function AppSidebar({ currentPath }: AppSidebarProps) {
@@ -32,6 +33,15 @@ export function AppSidebar({ currentPath }: AppSidebarProps) {
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null)
   const [editingName, setEditingName] = useState('')
+  const [showAddModal, setShowAddModal] = useState(false)
+  const [settingsExpanded, setSettingsExpanded] = useState(false)
+  const [sessionNotifications, setSessionNotifications] = useState<Record<string, string[]>>({})
+  
+  // Auto-expand settings accordion when on settings pages
+  const isSettingsPage = currentPath.startsWith('/settings') || currentPath === '/models'
+  
+  // Check if on permissions history page (standalone, not settings)
+  const isPermissionsHistoryPage = currentPath === '/permissions'
   
   // Extract selected session ID from path
   const selectedSessionId = currentPath.startsWith('/session/') 
@@ -63,8 +73,34 @@ export function AppSidebar({ currentPath }: AppSidebarProps) {
       }
     }
 
+    const fetchNotifications = async () => {
+      try {
+        const response = await fetch(`${API_BASE}/notifications?unread_only=true`, {
+          headers: getAuthHeaders(),
+        })
+        if (response.ok) {
+          const data = await response.json()
+          // Group notification types by session
+          const bySession: Record<string, string[]> = {}
+          for (const n of data.notifications || []) {
+            const sessionId = n.session_id as string
+            if (!bySession[sessionId]) {
+              bySession[sessionId] = []
+            }
+            if (!bySession[sessionId].includes(n.type)) {
+              bySession[sessionId].push(n.type)
+            }
+          }
+          setSessionNotifications(bySession)
+        }
+      } catch (error) {
+        console.error('Failed to fetch notifications:', error)
+      }
+    }
+
     // Initial fetch
     fetchSessions()
+    fetchNotifications()
 
     // Listen for WebSocket events to update sessions
     const socket = getSocket()
@@ -76,6 +112,7 @@ export function AppSidebar({ currentPath }: AppSidebarProps) {
     const handleTaskCompleted = () => {
       // Refetch sessions when a task completes (updates last_activity)
       fetchSessions()
+      fetchNotifications()
     }
     
     const handleChatUpdated = () => {
@@ -83,15 +120,27 @@ export function AppSidebar({ currentPath }: AppSidebarProps) {
       fetchSessions()
     }
     
+    const handleQueueUpdated = () => {
+      // Refetch sessions when queue changes (updates queue_count)
+      fetchSessions()
+    }
+    
     const handleConnect = () => {
       // Re-fetch sessions on socket connect/reconnect to catch any missed updates
       fetchSessions()
+      fetchNotifications()
+    }
+
+    const handleNotification = () => {
+      fetchNotifications()
     }
     
     socket.on('sessions_update', handleSessionsUpdate)
     socket.on('task_completed', handleTaskCompleted)
     socket.on('chat_updated', handleChatUpdated)
+    socket.on('queue_updated', handleQueueUpdated)
     socket.on('connect', handleConnect)
+    socket.on('notification', handleNotification)
     
     // Also fetch on reconnect (socket.io fires 'connect' on reconnect too, but be explicit)
     socket.io.on('reconnect', handleConnect)
@@ -100,7 +149,9 @@ export function AppSidebar({ currentPath }: AppSidebarProps) {
       socket.off('sessions_update', handleSessionsUpdate)
       socket.off('task_completed', handleTaskCompleted)
       socket.off('chat_updated', handleChatUpdated)
+      socket.off('queue_updated', handleQueueUpdated)
       socket.off('connect', handleConnect)
+      socket.off('notification', handleNotification)
       socket.io.off('reconnect', handleConnect)
     }
   }, [sortSessions])
@@ -242,13 +293,100 @@ export function AppSidebar({ currentPath }: AppSidebarProps) {
             {!collapsed && <span>Custom Task</span>}
           </Link>
 
-          {/* Permissions */}
+          {/* Settings Accordion */}
+          {!collapsed && (
+            <div>
+              <button
+                onClick={() => setSettingsExpanded(!settingsExpanded)}
+                className={cn(
+                  'w-full flex items-center gap-2 p-3 rounded-md text-sm font-medium transition-colors',
+                  isSettingsPage
+                    ? 'text-white'
+                    : 'text-gray-400 hover:bg-gray-800/50 hover:text-white'
+                )}
+              >
+                <Settings className="h-4 w-4 flex-shrink-0" />
+                <span className="flex-1 text-left">Settings</span>
+                {settingsExpanded || isSettingsPage ? (
+                  <ChevronDown className="h-4 w-4" />
+                ) : (
+                  <ChevronRight className="h-4 w-4" />
+                )}
+              </button>
+              
+              {(settingsExpanded || isSettingsPage) && (
+                <div className="ml-4 border-l border-gray-700 pl-2">
+                  {/* Permissions Settings */}
+                  <Link
+                    href="/settings/permissions"
+                    onClick={() => setMobileOpen(false)}
+                    className={cn(
+                      'flex items-center gap-2 p-2 rounded-md text-sm transition-colors',
+                      currentPath === '/settings/permissions'
+                        ? 'bg-gray-800 text-white'
+                        : 'text-gray-400 hover:bg-gray-800/50 hover:text-white'
+                    )}
+                  >
+                    <ShieldCheck className="h-4 w-4 flex-shrink-0" />
+                    <span>Permissions</span>
+                  </Link>
+
+                  {/* Factory CLI */}
+                  <Link
+                    href="/settings/cli"
+                    onClick={() => setMobileOpen(false)}
+                    className={cn(
+                      'flex items-center gap-2 p-2 rounded-md text-sm transition-colors',
+                      currentPath === '/settings/cli'
+                        ? 'bg-gray-800 text-white'
+                        : 'text-gray-400 hover:bg-gray-800/50 hover:text-white'
+                    )}
+                  >
+                    <Terminal className="h-4 w-4 flex-shrink-0" />
+                    <span>Factory CLI</span>
+                  </Link>
+
+                  {/* Models */}
+                  <Link
+                    href="/models"
+                    onClick={() => setMobileOpen(false)}
+                    className={cn(
+                      'flex items-center gap-2 p-2 rounded-md text-sm transition-colors',
+                      currentPath === '/models'
+                        ? 'bg-gray-800 text-white'
+                        : 'text-gray-400 hover:bg-gray-800/50 hover:text-white'
+                    )}
+                  >
+                    <Brain className="h-4 w-4 flex-shrink-0" />
+                    <span>Models</span>
+                  </Link>
+
+                  {/* Environment */}
+                  <Link
+                    href="/settings/environment"
+                    onClick={() => setMobileOpen(false)}
+                    className={cn(
+                      'flex items-center gap-2 p-2 rounded-md text-sm transition-colors',
+                      currentPath === '/settings/environment'
+                        ? 'bg-gray-800 text-white'
+                        : 'text-gray-400 hover:bg-gray-800/50 hover:text-white'
+                    )}
+                  >
+                    <Cog className="h-4 w-4 flex-shrink-0" />
+                    <span>Environment</span>
+                  </Link>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Permissions History (standalone, below Settings) */}
           <Link
             href="/permissions"
             onClick={() => setMobileOpen(false)}
             className={cn(
               'flex items-center gap-2 p-3 rounded-md text-sm font-medium transition-colors',
-              currentPath === '/permissions'
+              isPermissionsHistoryPage
                 ? 'bg-gray-800 text-white'
                 : 'text-gray-400 hover:bg-gray-800/50 hover:text-white'
             )}
@@ -257,29 +395,38 @@ export function AppSidebar({ currentPath }: AppSidebarProps) {
             {!collapsed && <span>Permissions</span>}
           </Link>
 
-          {/* Settings */}
-          <Link
-            href="/settings"
-            onClick={() => setMobileOpen(false)}
-            className={cn(
-              'flex items-center gap-2 p-3 rounded-md text-sm font-medium transition-colors',
-              currentPath === '/settings'
-                ? 'bg-gray-800 text-white'
-                : 'text-gray-400 hover:bg-gray-800/50 hover:text-white'
-            )}
-          >
-            <Settings className="h-4 w-4 flex-shrink-0" />
-            {!collapsed && <span>Settings</span>}
-          </Link>
+          {/* Collapsed mode - just show settings icon */}
+          {collapsed && (
+            <Link
+              href="/settings/permissions"
+              onClick={() => setMobileOpen(false)}
+              className={cn(
+                'flex items-center justify-center p-3 rounded-md text-sm font-medium transition-colors',
+                isSettingsPage
+                  ? 'bg-gray-800 text-white'
+                  : 'text-gray-400 hover:bg-gray-800/50 hover:text-white'
+              )}
+              title="Settings"
+            >
+              <Settings className="h-4 w-4" />
+            </Link>
+          )}
 
         </div>
 
         {/* Sessions Section */}
         {!collapsed && (
-          <div className="px-3 py-2 border-b border-gray-800">
+          <div className="px-3 py-2 border-b border-gray-800 flex items-center justify-between">
             <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
               Sessions
             </h3>
+            <button
+              onClick={() => setShowAddModal(true)}
+              className="p-1 text-gray-500 hover:text-white hover:bg-gray-800 rounded transition-colors"
+              title="Add session manually"
+            >
+              <Plus className="h-3.5 w-3.5" />
+            </button>
           </div>
         )}
 
@@ -338,15 +485,45 @@ export function AppSidebar({ currentPath }: AppSidebarProps) {
                               autoFocus
                             />
                           ) : (
-                            <div className="font-medium text-sm truncate mb-1 pr-14">
-                              {session.name || session.project_dir?.split('/').pop() || 'Unnamed'}
+                            <div className="flex items-center gap-1 mb-1 pr-14">
+                              <span className="font-medium text-sm truncate">
+                                {session.name || session.project_dir?.split('/').pop() || 'Unnamed'}
+                              </span>
+                              {/* Notification badges */}
+                              {sessionNotifications[session.id]?.includes('permission_request') && (
+                                <span title="Permission request pending">
+                                  <ShieldCheck className="h-3.5 w-3.5 text-yellow-500 flex-shrink-0" />
+                                </span>
+                              )}
+                              {sessionNotifications[session.id]?.includes('task_completed') && (
+                                <span title="Task completed">
+                                  <CheckCircle className="h-3.5 w-3.5 text-green-500 flex-shrink-0" />
+                                </span>
+                              )}
+                              {sessionNotifications[session.id]?.includes('task_failed') && (
+                                <span title="Task failed">
+                                  <AlertTriangle className="h-3.5 w-3.5 text-red-500 flex-shrink-0" />
+                                </span>
+                              )}
                             </div>
                           )}
                           <div className="flex items-center gap-1 text-xs text-gray-500">
-                            <span className={cn('h-2 w-2 rounded-full', statusInfo.color)} />
+                            <span 
+                              className={cn('h-2 w-2 rounded-full', statusInfo.color)} 
+                              title={statusInfo.description}
+                            />
                             <span>{statusInfo.label}</span>
                             <span>•</span>
                             <SidebarActivityTime lastActivity={session.last_activity} />
+                            {(session.queue_count ?? 0) > 0 && (
+                              <>
+                                <span>•</span>
+                                <span className="flex items-center gap-0.5 text-yellow-500" title={`${session.queue_count} queued`}>
+                                  <Clock className="h-3 w-3" />
+                                  {session.queue_count}
+                                </span>
+                              </>
+                            )}
                           </div>
                         </div>
                       )}
@@ -446,6 +623,20 @@ export function AppSidebar({ currentPath }: AppSidebarProps) {
       >
         <Menu className="h-5 w-5" />
       </button>
+
+      {/* Add Session Modal */}
+      {showAddModal && (
+        <AddSessionModal
+          onClose={() => setShowAddModal(false)}
+          onSuccess={() => {
+            // Refetch sessions after adding
+            fetch(`${API_BASE}/sessions`, { headers: getAuthHeaders() })
+              .then(res => res.json())
+              .then(data => setSessions(sortSessions(data)))
+              .catch(console.error)
+          }}
+        />
+      )}
     </>
   )
 }

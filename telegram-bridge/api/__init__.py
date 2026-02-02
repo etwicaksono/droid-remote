@@ -1,4 +1,4 @@
 # API module
-from .routes import router
+from .routes import web_router, hooks_router
 
-__all__ = ["router"]
+__all__ = ["web_router", "hooks_router"]

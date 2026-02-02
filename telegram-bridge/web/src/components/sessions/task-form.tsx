@@ -1,17 +1,24 @@
 'use client'
 
-import { useState, useRef, useCallback, type FormEvent } from 'react'
+import { useState, useRef, useCallback, useEffect, type FormEvent } from 'react'
 import { Folder, Loader2 } from 'lucide-react'
+import CreatableSelect from 'react-select/creatable'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { useSessionActions } from '@/hooks/use-session-actions'
-import { InputBox, DEFAULT_MODEL, DEFAULT_REASONING, DEFAULT_AUTONOMY } from '@/components/chat/input-box'
+import { InputBox, DEFAULT_MODEL, DEFAULT_REASONING, DEFAULT_AUTONOMY, type UploadedImage } from '@/components/chat/input-box'
 import { DirectoryPickerModal } from '@/components/ui/directory-picker-modal'
+import { uploadImage, deleteImage } from '@/lib/api-client'
 import { cn } from '@/lib/utils'
 import type { ReasoningEffort } from '@/types'
-import modelsConfig from '@/config/models.json'
+import { useModels } from '@/hooks/use-models'
+import { getAuthHeaders } from '@/lib/api'
 
-const AVAILABLE_MODELS = modelsConfig.models as { id: string; name: string; reasoning: boolean }[]
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8765'
+
+interface DirOption {
+  value: string
+  label: string
+}
 
 function generateUUID(): string {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
@@ -69,12 +76,41 @@ export function TaskForm() {
   const [currentTaskId, setCurrentTaskId] = useState<string | null>(null)
   const [showPicker, setShowPicker] = useState(false)
   
+  // Config state
+  const [browserEnabled, setBrowserEnabled] = useState(true)
+  const [dirOptions, setDirOptions] = useState<DirOption[]>([])
+  
+  // Image upload state
+  const [uploadedImages, setUploadedImages] = useState<UploadedImage[]>([])
+  const [isUploading, setIsUploading] = useState(false)
+  
   const { executeTask, cancelTask } = useSessionActions()
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const chatContainerRef = useRef<HTMLDivElement | null>(null)
+  
+  // Fetch models from API
+  const { models, reasoningLevels, autonomyLevels, loading: modelsLoading } = useModels()
 
-  const currentModel = AVAILABLE_MODELS.find(m => m.id === selectedModel)
+  const currentModel = models.find(m => m.id === selectedModel)
   const supportsReasoning = currentModel?.reasoning ?? false
+  
+  // Fetch config on mount
+  useEffect(() => {
+    const fetchConfig = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/config/project-dirs`, { headers: getAuthHeaders() })
+        if (res.ok) {
+          const data = await res.json()
+          setBrowserEnabled(data.browser_enabled !== false)
+          const dirs = data.project_dirs || []
+          setDirOptions(dirs.map((d: string) => ({ value: d, label: d })))
+        }
+      } catch (err) {
+        console.error('Failed to fetch config:', err)
+      }
+    }
+    fetchConfig()
+  }, [])
 
   const scrollToBottom = useCallback(() => {
     if (chatContainerRef.current) {
@@ -103,6 +139,11 @@ export function TaskForm() {
     setTimeout(scrollToBottom, 100)
 
     try {
+      // Get local paths for droid exec (vision processing)
+      const localPaths = uploadedImages
+        .map(img => img.local_path)
+        .filter((p): p is string => p !== null)
+      
       const result = await executeTask({
         prompt,
         projectDir: projectDir.trim(),
@@ -110,7 +151,11 @@ export function TaskForm() {
         model: selectedModel,
         reasoningEffort: supportsReasoning ? reasoningEffort : undefined,
         autonomyLevel,
+        images: localPaths.length > 0 ? localPaths : undefined,
       })
+      
+      // Clear images after submission
+      setUploadedImages([])
       
       const responseContent = parseResultContent(result.result, result.error)
 
@@ -164,6 +209,49 @@ export function TaskForm() {
     }
   }
 
+  // Image upload handlers
+  const handleImageUpload = async (file: File) => {
+    setIsUploading(true)
+    try {
+      const result = await uploadImage(file, 'custom-task', projectDir)
+      const ref = `@${uploadedImages.length + 1}`
+      setUploadedImages(prev => [...prev, {
+        url: result.url,
+        local_path: result.local_path,
+        public_id: result.public_id,
+        name: file.name,
+        ref,
+      }])
+    } catch (error) {
+      console.error('Failed to upload image:', error)
+    } finally {
+      setIsUploading(false)
+    }
+  }
+
+  const handleImageRemove = async (index: number) => {
+    const imageToRemove = uploadedImages[index]
+    
+    // Remove from local state immediately
+    setUploadedImages(prev => {
+      const newImages = prev.filter((_, i) => i !== index)
+      return newImages.map((img, i) => ({ ...img, ref: `@${i + 1}` }))
+    })
+    
+    // Delete from Cloudinary in background
+    if (imageToRemove?.public_id) {
+      try {
+        await deleteImage(imageToRemove.public_id)
+      } catch (error) {
+        console.error('Failed to delete image from Cloudinary:', error)
+      }
+    }
+  }
+
+  const handleInsertRef = () => {
+    // Handled in InputBox
+  }
+
   const isDisabled = !projectDir.trim()
 
   return (
@@ -172,20 +260,49 @@ export function TaskForm() {
       <div className="shrink-0 pb-4 border-b border-border">
         <label className="text-sm font-medium mb-2 block">Project Directory</label>
         <div className="flex gap-2">
-          <Input
-            placeholder="/path/to/project"
-            value={projectDir}
-            onChange={(e) => setProjectDir(e.target.value)}
-            className="flex-1"
-          />
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => setShowPicker(true)}
-            title="Browse directories"
-          >
-            <Folder className="h-4 w-4" />
-          </Button>
+          {/* Creatable Select */}
+          <div className="flex-1">
+            <CreatableSelect<DirOption>
+              isClearable
+              options={dirOptions}
+              value={projectDir ? { value: projectDir, label: projectDir } : null}
+              onChange={(option) => setProjectDir(option?.value || '')}
+              onCreateOption={(inputValue) => setProjectDir(inputValue)}
+              placeholder="Select or type a path..."
+              formatCreateLabel={(inputValue) => `Use "${inputValue}"`}
+              classNames={{
+                control: () => '!bg-background !border-input !shadow-none !min-h-[40px]',
+                menu: () => '!bg-popover !border-border',
+                option: ({ isFocused, isSelected }) => 
+                  cn('!cursor-pointer', isFocused && '!bg-accent', isSelected && '!bg-accent'),
+                singleValue: () => '!text-foreground',
+                input: () => '!text-foreground',
+                placeholder: () => '!text-muted-foreground',
+                indicatorSeparator: () => '!bg-border',
+                dropdownIndicator: () => '!text-muted-foreground',
+                clearIndicator: () => '!text-muted-foreground',
+              }}
+              styles={{
+                control: (base) => ({ ...base, backgroundColor: 'hsl(var(--background))' }),
+                menu: (base) => ({ ...base, backgroundColor: 'hsl(var(--popover))' }),
+                option: (base) => ({ ...base, backgroundColor: 'transparent' }),
+                singleValue: (base) => ({ ...base, color: 'hsl(var(--foreground))' }),
+                input: (base) => ({ ...base, color: 'hsl(var(--foreground))' }),
+              }}
+            />
+          </div>
+          
+          {/* Browse button - only when directory browser is enabled */}
+          {browserEnabled && (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setShowPicker(true)}
+              title="Browse directories"
+            >
+              <Folder className="h-4 w-4" />
+            </Button>
+          )}
         </div>
       </div>
 
@@ -222,6 +339,14 @@ export function TaskForm() {
                 disabled={isDisabled}
                 textareaRef={textareaRef}
                 placeholder={isDisabled ? "Select a project directory first..." : "What would you like me to do?"}
+                images={uploadedImages}
+                onImageUpload={handleImageUpload}
+                onImageRemove={handleImageRemove}
+                onInsertRef={handleInsertRef}
+                isUploading={isUploading}
+                availableModels={models}
+                reasoningLevels={reasoningLevels}
+                autonomyLevels={autonomyLevels}
               />
             </div>
           </div>
@@ -259,6 +384,14 @@ export function TaskForm() {
                 disabled={isDisabled}
                 textareaRef={textareaRef}
                 compact
+                images={uploadedImages}
+                onImageUpload={handleImageUpload}
+                onImageRemove={handleImageRemove}
+                onInsertRef={handleInsertRef}
+                isUploading={isUploading}
+                availableModels={models}
+                reasoningLevels={reasoningLevels}
+                autonomyLevels={autonomyLevels}
               />
             </div>
           </>

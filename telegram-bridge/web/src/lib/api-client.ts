@@ -46,3 +46,62 @@ export function createApiClient(config: ApiClientConfig) {
 export const apiClient = createApiClient({
   baseUrl: process.env.NEXT_PUBLIC_API_URL ?? '/api/bridge',
 })
+
+// Image upload (multipart form data)
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8765'
+
+export interface UploadImageResponse {
+  success: boolean
+  url: string
+  local_path: string | null  // Local path for droid exec
+  public_id: string
+  width?: number
+  height?: number
+  format?: string
+  size?: number
+}
+
+function getAuthHeaders(): Record<string, string> {
+  const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null
+  return token ? { 'Authorization': `Bearer ${token}` } : {}
+}
+
+export async function uploadImage(
+  file: File, 
+  sessionId: string = 'unknown',
+  projectDir: string = ''
+): Promise<UploadImageResponse> {
+  const formData = new FormData()
+  formData.append('image', file)
+  formData.append('session_id', sessionId)
+  if (projectDir) {
+    formData.append('project_dir', projectDir)
+  }
+
+  const response = await fetch(`${API_BASE}/upload-image`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: formData,
+  })
+
+  if (!response.ok) {
+    const error = await response.text()
+    throw new ApiError(response.status, error)
+  }
+
+  return response.json()
+}
+
+export async function deleteImage(publicId: string): Promise<{ success: boolean }> {
+  const response = await fetch(`${API_BASE}/delete-image`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+    body: JSON.stringify({ public_id: publicId }),
+  })
+
+  if (!response.ok) {
+    throw new ApiError(response.status, await response.text())
+  }
+
+  return response.json()
+}

@@ -1,0 +1,52 @@
+# Git
+.git
+.gitignore
+
+# Environment (will be passed via docker-compose)
+.env
+.env.*
+!.env.example
+
+# Documentation
+docs/
+*.md
+
+# Python
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+.venv/
+*.egg-info/
+.eggs/
+
+# Node (web UI built separately)
+telegram-bridge/web/node_modules
+telegram-bridge/web/.next
+telegram-bridge/web/out
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs and data (mounted as volumes)
+telegram-bridge/logs/
+telegram-bridge/data/
+hooks/logs/
+*.log
+
+# Tests
+tests/
+.pytest_cache/
+.coverage
+
+# Hooks (not needed in Docker - run on host)
+hooks/

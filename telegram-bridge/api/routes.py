@@ -7,11 +7,11 @@ import uuid
 import asyncio
 import logging
 from typing import List, Optional
-from fastapi import APIRouter, HTTPException, Request, Depends, Header
+from fastapi import APIRouter, HTTPException, Request, Depends, Header, UploadFile, File, Form
 
-# Add hooks lib to path for config
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'hooks'))
-from lib.config import TELEGRAM_TASK_RESULT_MAX_LENGTH, WEB_UI_URL
+# Get config from environment
+TELEGRAM_TASK_RESULT_MAX_LENGTH = int(os.getenv("TELEGRAM_TASK_RESULT_MAX_LENGTH", "0"))
+WEB_UI_URL = os.getenv("WEB_UI_URL", "http://localhost:3000")
 
 from core.session_registry import session_registry
 from core.message_queue import message_queue
@@ -39,11 +39,19 @@ from api.auth import (
     verify_credentials,
     verify_api_key,
     require_auth,
+    require_bearer,
+    require_api_key,
     get_bridge_secret,
 )
 
 logger = logging.getLogger(__name__)
-router = APIRouter()
+
+# Two routers for organizational separation
+# web_router: General endpoints (Web UI and shared)
+# hooks_router: CLI hook endpoints (mounted at /hooks prefix)
+# Auth is handled by middleware (accepts both Bearer tokens and API keys)
+web_router = APIRouter()
+hooks_router = APIRouter(prefix="/hooks")
 
 # Track CLI thinking state per session (in-memory, ephemeral)
 cli_thinking_state: dict[str, bool] = {}
@@ -57,7 +65,7 @@ def verify_secret(x_bridge_secret: Optional[str] = Header(None)):
     return True
 
 
-@router.get("/health", response_model=HealthResponse)
+@web_router.get("/health", response_model=HealthResponse)
 async def health_check(request: Request):
     """Health check endpoint"""
     bot_manager = request.app.state.bot_manager()
@@ -68,9 +76,24 @@ async def health_check(request: Request):
     )
 
 
+@web_router.get("/config/project-dirs")
+async def get_project_dirs():
+    """Get directory browser setting and predefined project directories"""
+    browser_enabled = os.getenv("ENABLE_DIRECTORY_BROWSER", "true").lower() == "true"
+    project_dirs_str = os.getenv("PROJECT_DIRS", "")
+    
+    # Split by pipe delimiter, filter empty strings
+    project_dirs = [d.strip() for d in project_dirs_str.split("|") if d.strip()]
+    
+    return {
+        "browser_enabled": browser_enabled,
+        "project_dirs": project_dirs
+    }
+
+
 # ============ Auth Endpoints ============
 
-@router.post("/auth/login")
+@web_router.post("/auth/login")
 async def login(request: Request):
     """Login with username and password, returns JWT token"""
     try:
@@ -92,7 +115,7 @@ async def login(request: Request):
     }
 
 
-@router.get("/auth/verify")
+@web_router.get("/auth/verify")
 async def verify_auth(request: Request, user: str = Depends(require_auth)):
     """Verify if the current token is valid"""
     return {
@@ -102,7 +125,7 @@ async def verify_auth(request: Request, user: str = Depends(require_auth)):
     }
 
 
-@router.post("/auth/refresh")
+@web_router.post("/auth/refresh")
 async def refresh_token(request: Request, user: str = Depends(require_auth)):
     """Refresh the JWT token"""
     token = create_token(user)
@@ -113,7 +136,7 @@ async def refresh_token(request: Request, user: str = Depends(require_auth)):
     }
 
 
-@router.post("/sessions/register", dependencies=[Depends(verify_secret)])
+@hooks_router.post("/sessions/register")
 async def register_session(data: RegisterSessionRequest, request: Request):
     """Register or update a Droid session"""
     session = session_registry.register(
@@ -131,22 +154,31 @@ async def register_session(data: RegisterSessionRequest, request: Request):
     return {"success": True, "session": session.model_dump(mode='json')}
 
 
-@router.get("/sessions", response_model=List[Session])
+@web_router.get("/sessions")
 async def get_sessions():
-    """Get all sessions"""
-    return session_registry.get_all()
+    """Get all sessions with queue counts"""
+    sessions = session_registry.get_all()
+    result = []
+    for session in sessions:
+        data = session.model_dump(mode='json')
+        data['queue_count'] = session_registry.get_queue_count(session.id)
+        result.append(data)
+    return result
 
 
-@router.get("/sessions/{session_id}")
+@web_router.get("/sessions/{session_id}")
 async def get_session(session_id: str):
     """Get a single session by ID"""
     session = session_registry.get(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
-    return session.model_dump(mode='json')
+    result = session.model_dump(mode='json')
+    # Add queue count
+    result['queue_count'] = session_registry.get_queue_count(session_id)
+    return result
 
 
-@router.patch("/sessions/{session_id}", dependencies=[Depends(verify_secret)])
+@hooks_router.patch("/sessions/{session_id}")
 async def update_session(session_id: str, data: UpdateSessionRequest, request: Request):
     """Update session attributes"""
     session = session_registry.get(session_id)
@@ -154,18 +186,30 @@ async def update_session(session_id: str, data: UpdateSessionRequest, request: R
         raise HTTPException(status_code=404, detail="Session not found")
     
     update_data = data.model_dump(exclude_unset=True)
-    session = session_registry.update(session_id, **update_data)
+    
+    # Use update_status for status changes to sync control_state
+    if 'status' in update_data:
+        status = update_data.pop('status')
+        session = session_registry.update_status(session_id, status)
+    
+    # Update other fields if any
+    if update_data:
+        session = session_registry.update(session_id, **update_data)
     
     # Emit sessions_update
     sio = getattr(request.app.state, "sio", None)
     if sio:
         sessions = session_registry.get_all()
         await sio.emit("sessions_update", [s.model_dump(mode='json') for s in sessions])
+        
+        # Emit cli_thinking_done when status changes to waiting (CLI finished)
+        if data.status == 'waiting':
+            await sio.emit("cli_thinking_done", {"session_id": session_id})
     
     return {"success": True, "session": session.model_dump(mode='json')}
 
 
-@router.patch("/sessions/{session_id}/rename")
+@web_router.patch("/sessions/{session_id}/rename")
 async def rename_session(session_id: str, name: str, request: Request):
     """Rename a session"""
     session = session_registry.get(session_id)
@@ -192,13 +236,17 @@ async def rename_session(session_id: str, name: str, request: Request):
     return {"success": True, "session": session.model_dump(mode='json')}
 
 
-@router.delete("/sessions/{session_id}", dependencies=[Depends(verify_secret)])
+@web_router.delete("/sessions/{session_id}")
 async def delete_session(session_id: str, request: Request):
     """Delete a session"""
     # Get session before deleting to access project_dir
     session = session_registry.get(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
+    
+    # Delete images from Cloudinary
+    from .cloudinary_handler import delete_session_images
+    delete_session_images(session_id)
     
     # Clear droid exec session for this project (if any)
     task_executor.clear_session(session.project_dir)
@@ -220,7 +268,7 @@ async def delete_session(session_id: str, request: Request):
     return {"success": True}
 
 
-@router.post("/sessions/{session_id}/notify", dependencies=[Depends(verify_secret)])
+@hooks_router.post("/sessions/{session_id}/notify")
 async def notify_session(session_id: str, data: NotifyRequest, request: Request):
     """Send notification to Telegram for a session"""
     session = session_registry.get(session_id)
@@ -266,16 +314,31 @@ async def notify_session(session_id: str, data: NotifyRequest, request: Request)
         )
         await bot_manager.send_notification(notification)
     
+    # Create notification in database for permission requests
+    if data.type == NotificationType.PERMISSION:
+        from core.repositories import get_notification_repo
+        notification_data = get_notification_repo().create(
+            session_id=session_id,
+            notification_type="permission_request",
+            title=data.session_name or session_id[:8],
+            message=f"{data.tool_name}: {data.message[:100]}..." if len(data.message) > 100 else f"{data.tool_name}: {data.message}"
+        )
+    else:
+        notification_data = None
+    
     # Emit Socket.IO events
     sio = getattr(request.app.state, "sio", None)
     if sio:
-        await sio.emit("notification", {
+        emit_data = {
             "session_id": session_id,
             "session_name": data.session_name,
             "message": data.message,
             "type": data.type.value if hasattr(data.type, 'value') else data.type,
             "request_id": request_id
-        })
+        }
+        if notification_data:
+            emit_data["notification_id"] = notification_data.get("id")
+        await sio.emit("notification", emit_data)
         # Also emit sessions_update so Web UI refreshes
         sessions = session_registry.get_all()
         await sio.emit("sessions_update", [s.model_dump(mode='json') for s in sessions])
@@ -283,7 +346,7 @@ async def notify_session(session_id: str, data: NotifyRequest, request: Request)
     return {"success": True, "request_id": request_id}
 
 
-@router.post("/sessions/{session_id}/wait", dependencies=[Depends(verify_secret)])
+@hooks_router.post("/sessions/{session_id}/wait")
 async def wait_for_response(session_id: str, data: WaitRequest):
     """Wait for user response (blocking)"""
     session = session_registry.get(session_id)
@@ -309,7 +372,7 @@ async def wait_for_response(session_id: str, data: WaitRequest):
     return WaitResponse(response=response, timeout=False, has_response=True)
 
 
-@router.get("/sessions/{session_id}/response/{request_id}", dependencies=[Depends(verify_secret)])
+@hooks_router.get("/sessions/{session_id}/response/{request_id}")
 async def get_pending_response(session_id: str, request_id: str):
     """Check for pending response without blocking"""
     response = message_queue.get_pending_response(session_id, request_id)
@@ -320,7 +383,7 @@ async def get_pending_response(session_id: str, request_id: str):
     return WaitResponse(response=response, has_response=True)
 
 
-@router.post("/sessions/{session_id}/respond", dependencies=[Depends(verify_secret)])
+@hooks_router.post("/sessions/{session_id}/respond")
 async def respond_to_session(session_id: str, data: RespondRequest, request: Request):
     """Deliver a response to a waiting session"""
     session = session_registry.get(session_id)
@@ -350,7 +413,7 @@ async def respond_to_session(session_id: str, data: RespondRequest, request: Req
 
 # Task Execution Endpoints (droid exec)
 
-@router.post("/tasks/execute", response_model=TaskResponse)
+@web_router.post("/tasks/execute", response_model=TaskResponse)
 async def execute_task(data: TaskExecuteRequest, request: Request):
     """
     Execute a task using droid exec (headless mode).
@@ -425,7 +488,8 @@ async def execute_task(data: TaskExecuteRequest, request: Request):
                 session_id=droid_session_id,
                 autonomy_level=data.autonomy_level,
                 model=data.model,
-                reasoning_effort=data.reasoning_effort
+                reasoning_effort=data.reasoning_effort,
+                images=data.images
             ):
                 event_type = event.get("type")
                 
@@ -456,14 +520,44 @@ async def execute_task(data: TaskExecuteRequest, request: Request):
                 )
             
             # If we created a pending session with task_id, but droid returned a different session_id,
-            # delete the pending one (the real one was created by task_executor)
+            # delete the pending one and create/update the real one
             if created_pending and result.session_id and result.session_id != pending_session_id:
                 try:
                     session_repo = get_session_repo()
+                    # Delete pending session
                     session_repo.delete(pending_session_id)
+                    
+                    # Create or update the real session
+                    from pathlib import Path
+                    session_name = Path(data.project_dir).name or "custom-task"
+                    existing = session_repo.get(result.session_id)
+                    if not existing:
+                        session_repo.create(
+                            session_id=result.session_id,
+                            name=session_name,
+                            project_dir=data.project_dir,
+                            status="running",
+                            control_state="remote_active"
+                        )
+                        logger.info(f"Created real session {result.session_id} for {data.project_dir}")
+                    
                     logger.info(f"Deleted pending session {pending_session_id}, using real session {result.session_id}")
                 except Exception as e:
-                    logger.error(f"Failed to delete pending session: {e}")
+                    logger.error(f"Failed to handle session transition: {e}")
+            
+            # Create notification for task completion
+            notification_data = None
+            if result.session_id:
+                from core.repositories import get_notification_repo
+                notification_type = "task_completed" if result.success else "task_failed"
+                session_name = data.project_dir.replace("\\", "/").split("/")[-1]
+                message = data.prompt[:80] + "..." if len(data.prompt) > 80 else data.prompt
+                notification_data = get_notification_repo().create(
+                    session_id=result.session_id,
+                    notification_type=notification_type,
+                    title=session_name,
+                    message=message
+                )
             
             # Notify completion via WebSocket
             if sio:
@@ -476,6 +570,10 @@ async def execute_task(data: TaskExecuteRequest, request: Request):
                     "num_turns": result.num_turns,
                     "error": result.error
                 })
+                
+                # Emit notification event for the notification bell
+                if notification_data:
+                    await sio.emit("notification", notification_data)
                 
                 # Update sidebar with correct sessions
                 all_sessions = session_registry.get_all()
@@ -513,6 +611,17 @@ async def execute_task(data: TaskExecuteRequest, request: Request):
                     
         except Exception as e:
             logger.error(f"Background task failed: {e}")
+            # Create notification for task error
+            error_notification = None
+            if pending_session_id:
+                from core.repositories import get_notification_repo
+                session_name = data.project_dir.replace("\\", "/").split("/")[-1]
+                error_notification = get_notification_repo().create(
+                    session_id=pending_session_id,
+                    notification_type="task_failed",
+                    title=session_name,
+                    message=str(e)[:100]
+                )
             # Notify error via WebSocket
             if sio:
                 await sio.emit("task_completed", {
@@ -522,6 +631,8 @@ async def execute_task(data: TaskExecuteRequest, request: Request):
                     "session_id": pending_session_id,
                     "error": str(e)
                 })
+                if error_notification:
+                    await sio.emit("notification", error_notification)
     
     # Start background task and return immediately
     asyncio.create_task(run_task_in_background())
@@ -535,7 +646,7 @@ async def execute_task(data: TaskExecuteRequest, request: Request):
     )
 
 
-@router.post("/tasks/{task_id}/cancel")
+@web_router.post("/tasks/{task_id}/cancel")
 async def cancel_task(task_id: str, request: Request):
     """Cancel a running task."""
     success = task_executor.cancel_task(task_id)
@@ -553,14 +664,14 @@ async def cancel_task(task_id: str, request: Request):
     return {"success": True, "message": "Task cancelled"}
 
 
-@router.get("/tasks/{project_dir:path}/session")
+@web_router.get("/tasks/{project_dir:path}/session")
 async def get_project_session(project_dir: str):
     """Get the stored session ID for a project (for continuation)."""
     session_id = task_executor.get_session_id(project_dir)
     return {"session_id": session_id}
 
 
-@router.delete("/tasks/{project_dir:path}/session")
+@web_router.delete("/tasks/{project_dir:path}/session")
 async def clear_project_session(project_dir: str):
     """Clear the stored session for a project (start fresh)."""
     success = task_executor.clear_session(project_dir)
@@ -569,7 +680,7 @@ async def clear_project_session(project_dir: str):
 
 # Queue Management Endpoints
 
-@router.get("/sessions/{session_id}/queue")
+@web_router.get("/sessions/{session_id}/queue")
 async def get_session_queue(session_id: str):
     """Get queued messages for a session"""
     session = session_registry.get(session_id)
@@ -580,7 +691,7 @@ async def get_session_queue(session_id: str):
     return {"session_id": session_id, "messages": messages, "count": len(messages)}
 
 
-@router.post("/sessions/{session_id}/queue")
+@web_router.post("/sessions/{session_id}/queue")
 async def add_to_queue(session_id: str, content: str, source: str = "web", request: Request = None):
     """Add a message to the queue"""
     session = session_registry.get(session_id)
@@ -588,6 +699,9 @@ async def add_to_queue(session_id: str, content: str, source: str = "web", reque
         raise HTTPException(status_code=404, detail="Session not found")
     
     message = session_registry.queue_message(session_id, content, source)
+    
+    # Get queue count for notification
+    queue_count = session_registry.get_queue_count(session_id)
     
     # Emit queue update event
     sio = getattr(request.app.state, "sio", None) if request else None
@@ -598,10 +712,23 @@ async def add_to_queue(session_id: str, content: str, source: str = "web", reque
             "queue": messages
         })
     
+    # Send Telegram notification
+    from bot.telegram_bot import TelegramBotManager
+    bot = TelegramBotManager.get_instance()
+    if bot:
+        truncated = content[:50] + "..." if len(content) > 50 else content
+        truncated = truncated.replace("_", "\\_").replace("*", "\\*").replace("`", "\\`")
+        await bot.send_notification(
+            f"⏳ *Task Queued* \\(#{queue_count}\\)\n"
+            f"📁 `{session.name}`\n"
+            f"💬 _{truncated}_",
+            parse_mode="Markdown"
+        )
+    
     return {"success": True, "message": message}
 
 
-@router.delete("/sessions/{session_id}/queue/{message_id}")
+@web_router.delete("/sessions/{session_id}/queue/{message_id}")
 async def cancel_queued_message(session_id: str, message_id: int, request: Request):
     """Cancel a specific queued message"""
     success = session_registry.cancel_queued_message(message_id)
@@ -620,7 +747,7 @@ async def cancel_queued_message(session_id: str, message_id: int, request: Reque
     return {"success": True}
 
 
-@router.delete("/sessions/{session_id}/queue")
+@web_router.delete("/sessions/{session_id}/queue")
 async def clear_session_queue(session_id: str, request: Request):
     """Clear all queued messages for a session"""
     session = session_registry.get(session_id)
@@ -640,7 +767,7 @@ async def clear_session_queue(session_id: str, request: Request):
     return {"success": True, "cleared_count": count}
 
 
-@router.post("/sessions/{session_id}/queue/send-next")
+@web_router.post("/sessions/{session_id}/queue/send-next")
 async def send_next_queued(session_id: str, request: Request):
     """Send the next queued message"""
     session = session_registry.get(session_id)
@@ -692,9 +819,77 @@ async def send_next_queued(session_id: str, request: Request):
     }
 
 
+@web_router.post("/sessions/{session_id}/queue/process")
+async def process_queue_item(session_id: str, request: Request):
+    """Process next queued message (called by Stop hook when CLI finishes)"""
+    session = session_registry.get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    # Get next message
+    message = session_registry.get_next_queued_message(session_id)
+    if not message:
+        return {"success": False, "message": "No messages in queue"}
+    
+    # Mark as sent
+    session_registry.mark_message_sent(message['id'])
+    
+    # Execute the task in background
+    task_id = str(uuid.uuid4())
+    
+    # Get socket for emitting events
+    sio = getattr(request.app.state, "sio", None)
+    
+    async def run_task():
+        try:
+            result = await task_executor.execute_task(
+                task_id=task_id,
+                prompt=message['content'],
+                project_dir=session.project_dir,
+                session_id=session_id,
+                source="queue"
+            )
+            # Emit completion
+            if sio:
+                await sio.emit("task_completed", {
+                    "session_id": session_id,
+                    "task_id": task_id,
+                    "success": result.success,
+                    "result": result.result
+                })
+        except Exception as e:
+            logger.error(f"Queue task execution failed: {e}")
+            if sio:
+                await sio.emit("task_error", {
+                    "session_id": session_id,
+                    "task_id": task_id,
+                    "error": str(e)
+                })
+    
+    # Start task in background
+    asyncio.create_task(run_task())
+    
+    # Emit queue update event
+    if sio:
+        messages = session_registry.get_queued_messages(session_id)
+        await sio.emit("queue_updated", {
+            "session_id": session_id,
+            "queue": messages
+        })
+    
+    return {
+        "success": True,
+        "task": {
+            "id": task_id,
+            "prompt": message['content'],
+            "source": "queue"
+        }
+    }
+
+
 # Control State Endpoints
 
-@router.post("/sessions/{session_id}/handoff")
+@web_router.post("/sessions/{session_id}/handoff")
 async def handoff_session(session_id: str, request: Request):
     """Hand off control from CLI to remote"""
     session = session_registry.handoff_to_remote(session_id)
@@ -715,7 +910,7 @@ async def handoff_session(session_id: str, request: Request):
     return {"success": True, "session": session.model_dump(mode='json')}
 
 
-@router.post("/sessions/{session_id}/release")
+@web_router.post("/sessions/{session_id}/release")
 async def release_session(session_id: str, request: Request):
     """Release control back to CLI"""
     session = session_registry.release_to_cli(session_id)
@@ -738,7 +933,7 @@ async def release_session(session_id: str, request: Request):
 
 # History and Troubleshooting Endpoints
 
-@router.get("/sessions/{session_id}/permissions")
+@web_router.get("/sessions/{session_id}/permissions")
 async def get_permission_history(session_id: str, limit: int = 50):
     """Get permission request history for a session"""
     session = session_registry.get(session_id)
@@ -749,23 +944,72 @@ async def get_permission_history(session_id: str, limit: int = 50):
     return {"session_id": session_id, "permissions": permissions}
 
 
-@router.get("/permissions")
+@web_router.get("/permissions")
 async def get_all_permissions(limit: int = 50):
     """Get all permission requests (for troubleshooting)"""
     permissions = get_permission_repo().get_history(limit=limit)
     return {"permissions": permissions}
 
 
-@router.post("/sessions/{session_id}/permissions/{request_id}/resolve")
-async def resolve_permission(session_id: str, request_id: str, decision: str, request: Request):
-    """Resolve a permission request from Web UI"""
+@web_router.post("/sessions/{session_id}/permissions/{request_id}/resolve")
+async def resolve_permission(
+    session_id: str, 
+    request_id: str, 
+    decision: str, 
+    request: Request,
+    scope: Optional[str] = None
+):
+    """
+    Resolve a permission request from Web UI.
+    
+    Args:
+        decision: "approved" or "denied"
+        scope: Optional - "session" or "global" to also create a rule for future requests
+    """
     if decision not in ["approved", "denied"]:
         raise HTTPException(status_code=400, detail="Decision must be 'approved' or 'denied'")
+    
+    if scope and scope not in ["session", "global"]:
+        raise HTTPException(status_code=400, detail="scope must be 'session' or 'global'")
+    
+    # Get the permission request to extract tool info
+    perm_request = get_permission_repo().get_pending(session_id)
     
     # Resolve in database
     perm = get_permission_repo().resolve(request_id, decision, "web")
     if not perm:
         raise HTTPException(status_code=404, detail="Permission request not found")
+    
+    # If scope provided, create a rule for future requests
+    rule = None
+    if scope and perm_request and perm_request.get('id') == request_id:
+        from core.repositories import get_permission_rules_repo
+        import json
+        
+        tool_name = perm_request.get('tool_name', '')
+        tool_input = perm_request.get('tool_input', '{}')
+        
+        try:
+            input_dict = json.loads(tool_input) if isinstance(tool_input, str) else tool_input
+        except:
+            input_dict = {}
+        
+        # Determine pattern based on tool type
+        if tool_name == 'Execute':
+            pattern = input_dict.get('command', '*')
+        elif tool_name in ('Read', 'Edit', 'Create', 'MultiEdit'):
+            pattern = input_dict.get('file_path', '*')
+        else:
+            pattern = '*'
+        
+        rule_type = 'allow' if decision == 'approved' else 'deny'
+        rule = get_permission_rules_repo().add(
+            tool_name=tool_name,
+            pattern=pattern,
+            rule_type=rule_type,
+            scope=scope,
+            session_id=session_id if scope == 'session' else None
+        )
     
     # Deliver response to waiting session
     response = "approve" if decision == "approved" else "deny"
@@ -780,10 +1024,10 @@ async def resolve_permission(session_id: str, request_id: str, decision: str, re
             "decision": decision
         })
     
-    return {"success": True, "permission": perm}
+    return {"success": True, "permission": perm, "rule": rule}
 
 
-@router.get("/sessions/{session_id}/events")
+@web_router.get("/sessions/{session_id}/events")
 async def get_session_events(session_id: str, limit: int = 100):
     """Get session events for troubleshooting"""
     session = session_registry.get(session_id)
@@ -794,7 +1038,7 @@ async def get_session_events(session_id: str, limit: int = 100):
     return {"session_id": session_id, "events": events}
 
 
-@router.get("/sessions/{session_id}/timeline")
+@web_router.get("/sessions/{session_id}/timeline")
 async def get_session_timeline(session_id: str, limit: int = 50):
     """Get unified timeline for a session (events, permissions, tasks)"""
     session = session_registry.get(session_id)
@@ -805,7 +1049,7 @@ async def get_session_timeline(session_id: str, limit: int = 50):
     return {"session_id": session_id, "timeline": timeline}
 
 
-@router.get("/tasks")
+@web_router.get("/tasks")
 async def get_task_history(
     session_id: Optional[str] = None,
     source: Optional[str] = None,
@@ -822,7 +1066,7 @@ async def get_task_history(
     return {"tasks": tasks}
 
 
-@router.get("/tasks/failed")
+@web_router.get("/tasks/failed")
 async def get_failed_tasks(limit: int = 20):
     """Get failed tasks for troubleshooting"""
     tasks = get_task_repo().get_failed(limit=limit)
@@ -830,7 +1074,7 @@ async def get_failed_tasks(limit: int = 20):
 
 
 # Chat History Endpoints
-@router.get("/sessions/{session_id}/chat")
+@web_router.get("/sessions/{session_id}/chat")
 async def get_chat_history(session_id: str, limit: int = 30, offset: int = 0):
     """Get chat messages for a session (newest first for pagination)"""
     repo = get_chat_repo()
@@ -847,7 +1091,7 @@ async def get_chat_history(session_id: str, limit: int = 30, offset: int = 0):
     }
 
 
-@router.post("/sessions/{session_id}/chat")
+@web_router.post("/sessions/{session_id}/chat")
 async def add_chat_message(
     session_id: str,
     msg_type: str,
@@ -856,9 +1100,18 @@ async def add_chat_message(
     status: Optional[str] = None,
     duration_ms: Optional[int] = None,
     num_turns: Optional[int] = None,
-    source: str = 'web'
+    source: str = 'web',
+    images: Optional[str] = None  # JSON array of image URLs
 ):
     """Add a chat message"""
+    import json
+    images_list = None
+    if images:
+        try:
+            images_list = json.loads(images)
+        except json.JSONDecodeError:
+            pass
+    
     message = get_chat_repo().create(
         session_id=session_id,
         msg_type=msg_type,
@@ -866,7 +1119,8 @@ async def add_chat_message(
         status=status,
         duration_ms=duration_ms,
         num_turns=num_turns,
-        source=source
+        source=source,
+        images=images_list
     )
     
     # Clear thinking state when assistant message is added from CLI
@@ -889,14 +1143,14 @@ async def add_chat_message(
     return {"success": True, "message": message}
 
 
-@router.delete("/sessions/{session_id}/chat")
+@web_router.delete("/sessions/{session_id}/chat")
 async def clear_chat_history(session_id: str):
     """Clear all chat messages for a session"""
     count = get_chat_repo().clear_session(session_id)
     return {"success": True, "deleted": count}
 
 
-@router.post("/sessions/{session_id}/cli-thinking")
+@hooks_router.post("/sessions/{session_id}/cli-thinking")
 async def cli_thinking(session_id: str, request: Request):
     """Notify Web UI that CLI is processing a prompt (show thinking indicator)"""
     body = await request.json()
@@ -916,14 +1170,14 @@ async def cli_thinking(session_id: str, request: Request):
     return {"success": True}
 
 
-@router.get("/sessions/{session_id}/cli-thinking")
+@web_router.get("/sessions/{session_id}/cli-thinking")
 async def get_cli_thinking(session_id: str):
     """Check if CLI is currently thinking for this session"""
     return {"thinking": cli_thinking_state.get(session_id, False)}
 
 
 # Session Settings Endpoints
-@router.get("/sessions/{session_id}/settings")
+@web_router.get("/sessions/{session_id}/settings")
 async def get_session_settings(session_id: str):
     """Get settings for a session"""
     settings = get_settings_repo().get(session_id)
@@ -938,7 +1192,7 @@ async def get_session_settings(session_id: str):
     return settings
 
 
-@router.put("/sessions/{session_id}/settings")
+@web_router.put("/sessions/{session_id}/settings")
 async def update_session_settings(
     session_id: str,
     model: Optional[str] = None,
@@ -955,8 +1209,81 @@ async def update_session_settings(
     return {"success": True, "settings": settings}
 
 
+# Image Upload Endpoints
+@web_router.post("/upload-image")
+async def upload_image(
+    image: UploadFile = File(...),
+    session_id: str = Form("unknown"),
+    project_dir: str = Form("")
+):
+    """
+    Upload image: save locally for droid exec + upload to Cloudinary for chat history.
+    
+    Returns:
+        local_path: Relative path for droid exec (e.g., ./reference/image.png)
+        url: Cloudinary URL for chat history display
+    """
+    from .cloudinary_handler import upload_to_cloudinary, save_image_record, save_to_local
+    
+    try:
+        content = await image.read()
+        filename = image.filename or "image.png"
+        
+        # Upload to Cloudinary (for chat history)
+        cloudinary_result = upload_to_cloudinary(content, filename, session_id)
+        
+        # Save locally (for droid exec) if project_dir provided
+        local_path = None
+        if project_dir:
+            try:
+                local_path = save_to_local(content, filename, project_dir)
+            except Exception as e:
+                logger.warning(f"Failed to save locally: {e}")
+        
+        # Save image record for tracking (cleanup on session delete)
+        if session_id != "unknown":
+            save_image_record(session_id, cloudinary_result['public_id'], cloudinary_result['url'])
+        
+        return {
+            'success': True,
+            'url': cloudinary_result['url'],
+            'local_path': local_path,
+            'public_id': cloudinary_result['public_id'],
+            'width': cloudinary_result.get('width'),
+            'height': cloudinary_result.get('height'),
+            'format': cloudinary_result.get('format'),
+            'size': cloudinary_result.get('size')
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Upload error: {e}")
+        raise HTTPException(status_code=500, detail="Upload failed")
+
+
+@web_router.post("/delete-image")
+async def delete_image(request: Request):
+    """Delete image from Cloudinary"""
+    from .cloudinary_handler import delete_from_cloudinary
+    
+    try:
+        data = await request.json()
+        public_id = data.get('public_id')
+        
+        if not public_id:
+            raise HTTPException(status_code=400, detail='public_id required')
+        
+        success = delete_from_cloudinary(public_id)
+        return {'success': success}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Delete error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # Filesystem Browser Endpoint
-@router.get("/filesystem/browse")
+@web_router.get("/filesystem/browse")
 async def browse_filesystem(path: Optional[str] = None):
     """Browse filesystem directories for project selection"""
     import os
@@ -1025,52 +1352,456 @@ async def browse_filesystem(path: Optional[str] = None):
     return result
 
 
-# Permission Allowlist Endpoints
+# Permission Rules Endpoints
 
-@router.get("/allowlist")
-async def get_allowlist():
-    """Get all permission allowlist rules"""
-    from core.repositories import get_allowlist_repo
-    rules = get_allowlist_repo().get_all()
+@web_router.get("/permissions/rules")
+async def get_permission_rules(scope: Optional[str] = None, session_id: Optional[str] = None):
+    """Get permission rules, optionally filtered by scope or session"""
+    from core.repositories import get_permission_rules_repo
+    repo = get_permission_rules_repo()
+    
+    if session_id:
+        # Get merged rules for a session (global + session-specific)
+        rules = repo.get_merged_rules(session_id)
+    elif scope == 'global':
+        rules = repo.get_global_rules()
+    elif scope == 'session' and session_id:
+        rules = repo.get_session_rules(session_id)
+    else:
+        rules = repo.get_all(scope)
+    
     return {"rules": rules}
 
 
-@router.post("/allowlist")
-async def add_allowlist_rule(tool_name: str, pattern: str, description: Optional[str] = None):
-    """Add a permission allowlist rule"""
-    from core.repositories import get_allowlist_repo
-    rule = get_allowlist_repo().add(tool_name, pattern, description)
+@web_router.post("/permissions/rules")
+async def add_permission_rule(
+    tool_name: str, 
+    pattern: str, 
+    rule_type: str = 'allow',
+    scope: str = 'global',
+    session_id: Optional[str] = None,
+    description: Optional[str] = None
+):
+    """Add a permission rule"""
+    from core.repositories import get_permission_rules_repo
+    
+    if rule_type not in ['allow', 'deny']:
+        raise HTTPException(status_code=400, detail="rule_type must be 'allow' or 'deny'")
+    if scope not in ['global', 'session']:
+        raise HTTPException(status_code=400, detail="scope must be 'global' or 'session'")
+    if scope == 'session' and not session_id:
+        raise HTTPException(status_code=400, detail="session_id required for session scope")
+    
+    rule = get_permission_rules_repo().add(
+        tool_name=tool_name,
+        pattern=pattern,
+        rule_type=rule_type,
+        scope=scope,
+        session_id=session_id if scope == 'session' else None,
+        description=description
+    )
     if rule:
         return {"success": True, "rule": rule}
     else:
         raise HTTPException(status_code=400, detail="Failed to add rule (may already exist)")
 
 
-@router.delete("/allowlist/{rule_id}")
-async def remove_allowlist_rule(rule_id: int):
-    """Remove a permission allowlist rule"""
-    from core.repositories import get_allowlist_repo
-    success = get_allowlist_repo().remove(rule_id)
+@web_router.delete("/permissions/rules/{rule_id}")
+async def remove_permission_rule(rule_id: int):
+    """Remove a permission rule"""
+    from core.repositories import get_permission_rules_repo
+    success = get_permission_rules_repo().remove(rule_id)
     if success:
         return {"success": True}
     else:
         raise HTTPException(status_code=404, detail="Rule not found")
 
 
-@router.get("/allowlist/check")
-async def check_allowlist(tool_name: str, tool_input: str = "{}"):
+@web_router.get("/sessions/{session_id}/permissions/rules")
+async def get_session_permission_rules(session_id: str):
+    """Get all permission rules for a session (merged global + session)"""
+    from core.repositories import get_permission_rules_repo
+    rules = get_permission_rules_repo().get_merged_rules(session_id)
+    return {"session_id": session_id, "rules": rules}
+
+
+@web_router.delete("/sessions/{session_id}/permissions/rules")
+async def clear_session_permission_rules(session_id: str):
+    """Clear all session-specific permission rules for a session"""
+    from core.repositories import get_permission_rules_repo
+    count = get_permission_rules_repo().clear_session_rules(session_id)
+    return {"success": True, "deleted": count}
+
+
+# Legacy Allowlist Endpoints (backward compatibility)
+
+@web_router.get("/allowlist")
+async def get_allowlist():
+    """Get all permission rules (legacy endpoint)"""
+    from core.repositories import get_permission_rules_repo
+    rules = get_permission_rules_repo().get_global_rules()
+    return {"rules": rules}
+
+
+@web_router.post("/allowlist")
+async def add_allowlist_rule(tool_name: str, pattern: str, description: Optional[str] = None):
+    """Add a global allow rule (legacy endpoint)"""
+    from core.repositories import get_permission_rules_repo
+    rule = get_permission_rules_repo().add(tool_name, pattern, 'allow', 'global', None, description)
+    if rule:
+        return {"success": True, "rule": rule}
+    else:
+        raise HTTPException(status_code=400, detail="Failed to add rule (may already exist)")
+
+
+@web_router.delete("/allowlist/{rule_id}")
+async def remove_allowlist_rule(rule_id: int):
+    """Remove a permission rule (legacy endpoint)"""
+    from core.repositories import get_permission_rules_repo
+    success = get_permission_rules_repo().remove(rule_id)
+    if success:
+        return {"success": True}
+    else:
+        raise HTTPException(status_code=404, detail="Rule not found")
+
+
+# ============ Factory CLI Settings Endpoints ============
+
+@web_router.get("/factory-settings")
+async def get_factory_settings():
+    """Get Factory CLI settings.json"""
+    from api.settings_handler import get_settings_summary
+    try:
+        return get_settings_summary()
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Settings file not found")
+    except Exception as e:
+        logger.error(f"Failed to read factory settings: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@web_router.put("/factory-settings")
+async def update_factory_settings(request: Request):
+    """Update Factory CLI settings.json"""
+    from api.settings_handler import read_settings, write_settings, validate_settings
+    
+    try:
+        new_settings = await request.json()
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid JSON: {e}")
+    
+    # Validate settings
+    errors = validate_settings(new_settings)
+    if errors:
+        raise HTTPException(status_code=400, detail={"errors": errors})
+    
+    try:
+        write_settings(new_settings)
+        return {"success": True, "settings": new_settings}
+    except Exception as e:
+        logger.error(f"Failed to write factory settings: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============ Models Configuration Endpoints ============
+
+@web_router.get("/config/models")
+async def get_models_config():
+    """Get all models (default + custom)"""
+    from api.models_handler import get_all_models
+    try:
+        return get_all_models()
+    except Exception as e:
+        logger.error(f"Failed to get models config: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@web_router.post("/config/models/default")
+async def add_default_model_endpoint(request: Request):
+    """Add a new default model"""
+    from api.models_handler import add_default_model
+    try:
+        data = await request.json()
+        if not data.get("id") or not data.get("name"):
+            raise HTTPException(status_code=400, detail="Model ID and name are required")
+        
+        if add_default_model(data):
+            return {"success": True}
+        else:
+            raise HTTPException(status_code=409, detail="Model already exists")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to add default model: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@web_router.put("/config/models/default/{model_id}")
+async def update_default_model_endpoint(model_id: str, request: Request):
+    """Update a default model"""
+    from api.models_handler import update_default_model
+    try:
+        data = await request.json()
+        if update_default_model(model_id, data):
+            return {"success": True}
+        else:
+            raise HTTPException(status_code=404, detail="Model not found")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to update default model: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@web_router.delete("/config/models/default/{model_id}")
+async def delete_default_model_endpoint(model_id: str):
+    """Delete a default model"""
+    from api.models_handler import delete_default_model
+    try:
+        if delete_default_model(model_id):
+            return {"success": True}
+        else:
+            raise HTTPException(status_code=404, detail="Model not found")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to delete default model: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@web_router.put("/config/models/default-selection")
+async def set_default_model_endpoint(request: Request):
+    """Set the default model selection"""
+    from api.models_handler import set_default_model_selection
+    try:
+        data = await request.json()
+        model_id = data.get("modelId")
+        if not model_id:
+            raise HTTPException(status_code=400, detail="modelId is required")
+        
+        if set_default_model_selection(model_id):
+            return {"success": True}
+        else:
+            raise HTTPException(status_code=500, detail="Failed to update default model")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to set default model: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@web_router.post("/config/models/custom")
+async def add_custom_model_endpoint(request: Request):
+    """Add a new custom model (writes to Factory CLI config)"""
+    from api.models_handler import add_custom_model, get_factory_config_path
+    try:
+        if not get_factory_config_path():
+            raise HTTPException(status_code=400, detail="FACTORY_CUSTOM_MODEL_CONFIG_PATH not configured")
+        
+        data = await request.json()
+        if not data.get("model") or not data.get("base_url") or not data.get("api_key"):
+            raise HTTPException(status_code=400, detail="Model ID, base_url, and api_key are required")
+        
+        if add_custom_model(data):
+            return {"success": True}
+        else:
+            raise HTTPException(status_code=409, detail="Model already exists")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to add custom model: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@web_router.put("/config/models/custom/{model_id}")
+async def update_custom_model_endpoint(model_id: str, request: Request):
+    """Update a custom model"""
+    from api.models_handler import update_custom_model, get_factory_config_path
+    try:
+        if not get_factory_config_path():
+            raise HTTPException(status_code=400, detail="FACTORY_CUSTOM_MODEL_CONFIG_PATH not configured")
+        
+        data = await request.json()
+        if update_custom_model(model_id, data):
+            return {"success": True}
+        else:
+            raise HTTPException(status_code=404, detail="Model not found")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to update custom model: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@web_router.delete("/config/models/custom/{model_id}")
+async def delete_custom_model_endpoint(model_id: str):
+    """Delete a custom model"""
+    from api.models_handler import delete_custom_model, get_factory_config_path
+    try:
+        if not get_factory_config_path():
+            raise HTTPException(status_code=400, detail="FACTORY_CUSTOM_MODEL_CONFIG_PATH not configured")
+        
+        if delete_custom_model(model_id):
+            return {"success": True}
+        else:
+            raise HTTPException(status_code=404, detail="Model not found")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to delete custom model: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@hooks_router.get("/allowlist/check")
+async def check_allowlist(tool_name: str, tool_input: str = "{}", session_id: Optional[str] = None):
     """
-    Check if a tool call is allowed by the allowlist.
+    Check if a tool call is allowed/denied by permission rules.
     tool_input should be JSON-encoded.
+    session_id is optional - if provided, also checks session-specific rules.
     Used by PreToolUse hook for quick check.
+    
+    Returns:
+        - decision: "allow", "deny", or "ask" (no matching rule)
+        - allowed: boolean for backward compatibility
     """
     import json
-    from core.repositories import get_allowlist_repo
+    from core.repositories import get_permission_rules_repo
     
     try:
         input_dict = json.loads(tool_input)
     except json.JSONDecodeError:
         input_dict = {"raw": tool_input}
     
-    allowed = get_allowlist_repo().is_allowed(tool_name, input_dict)
-    return {"allowed": allowed, "tool_name": tool_name}
+    result = get_permission_rules_repo().check_permission(tool_name, input_dict, session_id)
+    
+    return {
+        "decision": result or "ask",
+        "allowed": result == "allow",  # Backward compatibility
+        "tool_name": tool_name,
+        "session_id": session_id
+    }
+
+
+# Notification Endpoints
+
+@web_router.get("/notifications")
+async def get_notifications(unread_only: bool = False, limit: int = 50):
+    """Get all notifications, optionally filtered to unread only"""
+    from core.repositories import get_notification_repo
+    notifications = get_notification_repo().get_all(unread_only=unread_only, limit=limit)
+    unread_count = get_notification_repo().get_unread_count()
+    return {"notifications": notifications, "unread_count": unread_count}
+
+
+@web_router.get("/notifications/count")
+async def get_notification_count():
+    """Get unread notification count"""
+    from core.repositories import get_notification_repo
+    count = get_notification_repo().get_unread_count()
+    return {"unread_count": count}
+
+
+@web_router.get("/notifications/session/{session_id}")
+async def get_session_notifications(session_id: str):
+    """Get notifications for a specific session"""
+    from core.repositories import get_notification_repo
+    notifications = get_notification_repo().get_by_session(session_id)
+    unread_count = get_notification_repo().get_session_unread_count(session_id)
+    return {"notifications": notifications, "unread_count": unread_count}
+
+
+@web_router.put("/notifications/{notification_id}/read")
+async def mark_notification_read(notification_id: int):
+    """Mark a notification as read"""
+    from core.repositories import get_notification_repo
+    success = get_notification_repo().mark_read(notification_id)
+    if success:
+        return {"success": True}
+    else:
+        raise HTTPException(status_code=404, detail="Notification not found")
+
+
+@web_router.put("/notifications/read-all")
+async def mark_all_notifications_read():
+    """Mark all notifications as read"""
+    from core.repositories import get_notification_repo
+    count = get_notification_repo().mark_all_read()
+    return {"success": True, "count": count}
+
+
+@web_router.delete("/notifications/{notification_id}")
+async def delete_notification(notification_id: int):
+    """Delete a notification"""
+    from core.repositories import get_notification_repo
+    success = get_notification_repo().delete(notification_id)
+    if success:
+        return {"success": True}
+    else:
+        raise HTTPException(status_code=404, detail="Notification not found")
+
+
+@web_router.delete("/notifications")
+async def clear_all_notifications():
+    """Clear all notifications"""
+    from core.repositories import get_notification_repo
+    count = get_notification_repo().clear_all()
+    return {"success": True, "count": count}
+
+
+# Environment Settings Endpoints
+
+@web_router.get("/config/env")
+async def get_environment_settings():
+    """Get managed environment variables"""
+    from api.env_handler import get_managed_env, get_env_defaults, get_env_dirty, MANAGED_VARS, SENSITIVE_VARS
+    
+    current = get_managed_env()
+    defaults = get_env_defaults()
+    
+    return {
+        "variables": current,
+        "defaults": defaults,
+        "managed_vars": MANAGED_VARS,
+        "sensitive_vars": SENSITIVE_VARS,
+        "dirty": get_env_dirty()
+    }
+
+
+@web_router.put("/config/env")
+async def update_environment_settings(request: Request):
+    """Update managed environment variables"""
+    from api.env_handler import update_env_file, MANAGED_VARS
+    
+    try:
+        data = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON")
+    
+    # Filter to only managed variables
+    updates = {k: v for k, v in data.items() if k in MANAGED_VARS}
+    
+    if not updates:
+        raise HTTPException(status_code=400, detail="No valid variables to update")
+    
+    success = update_env_file(updates)
+    if success:
+        return {"success": True, "updated": list(updates.keys())}
+    else:
+        raise HTTPException(status_code=500, detail="Failed to update .env file")
+
+
+@web_router.get("/config/env/dirty")
+async def check_env_dirty():
+    """Check if environment has been modified since server start"""
+    from api.env_handler import get_env_dirty
+    return {"dirty": get_env_dirty()}
+
+
+@web_router.post("/config/env/dismiss")
+async def dismiss_env_dirty():
+    """Dismiss the restart notification (clears dirty flag)"""
+    from api.env_handler import set_env_dirty
+    set_env_dirty(False)
+    return {"success": True}

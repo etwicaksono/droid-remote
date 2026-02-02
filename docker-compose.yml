@@ -1,0 +1,72 @@
+services:
+  # Bridge Server (FastAPI + Socket.IO)
+  bridge:
+    build:
+      context: .
+      dockerfile: telegram-bridge/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "${BRIDGE_PORT:-8765}:8765"
+    environment:
+      # Telegram
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
+      - TELEGRAM_ALLOWED_USERS=${TELEGRAM_ALLOWED_USERS}
+      # Bridge
+      - BRIDGE_SECRET=${BRIDGE_SECRET}
+      - BRIDGE_HOST=0.0.0.0
+      - BRIDGE_PORT=8765
+      - BRIDGE_URL=http://bridge:8765
+      # Auth
+      - AUTH_USERNAME=${AUTH_USERNAME:-admin}
+      - AUTH_PASSWORD=${AUTH_PASSWORD}
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_EXPIRY_HOURS=${JWT_EXPIRY_HOURS:-24}
+      # Other
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - TELEGRAM_TASK_RESULT_MAX_LENGTH=${TELEGRAM_TASK_RESULT_MAX_LENGTH:-0}
+      # Directory browser (disabled in Docker since it can't access host filesystem)
+      - ENABLE_DIRECTORY_BROWSER=false
+      - PROJECT_DIRS=${PROJECT_DIRS:-}
+      # Factory CLI config for custom models (mount volume if using)
+      - FACTORY_CUSTOM_MODEL_CONFIG_PATH=${FACTORY_CUSTOM_MODEL_CONFIG_PATH:-}
+      # Cloudinary (for image upload)
+      - CLOUDINARY_CLOUD_NAME=${CLOUDINARY_CLOUD_NAME:-}
+      - CLOUDINARY_API_KEY=${CLOUDINARY_API_KEY:-}
+      - CLOUDINARY_API_SECRET=${CLOUDINARY_API_SECRET:-}
+      - MAX_UPLOAD_SIZE_MB=${MAX_UPLOAD_SIZE_MB:-10}
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./hooks:/app/hooks:ro
+      - ./telegram-bridge/config:/app/config
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8765/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - droid-network
+
+  # Web UI (Next.js)
+  web:
+    build:
+      context: ./telegram-bridge/web
+      dockerfile: Dockerfile
+      args:
+        - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8765}
+        - NEXT_PUBLIC_WS_URL=${NEXT_PUBLIC_WS_URL:-http://localhost:8765}
+    restart: unless-stopped
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    depends_on:
+      bridge:
+        condition: service_healthy
+    networks:
+      - droid-network
+
+networks:
+  droid-network:
+    name: droid-network
+    driver: bridge

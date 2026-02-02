@@ -97,7 +97,7 @@ def register_session(
     if not session_name:
         session_name = os.path.basename(project_dir)
     
-    result = _make_request("POST", "/sessions/register", {
+    result = _make_request("POST", "/hooks/sessions/register", {
         "session_id": session_id,
         "project_dir": project_dir,
         "session_name": session_name
@@ -107,7 +107,7 @@ def register_session(
 
 def update_session_status(session_id: str, status: str) -> bool:
     """Update session status"""
-    result = _make_request("PATCH", f"/sessions/{session_id}", {
+    result = _make_request("PATCH", f"/hooks/sessions/{session_id}", {
         "status": status
     })
     return result.get("success", False)
@@ -136,7 +136,7 @@ def notify(
     
     result = _make_request(
         "POST",
-        f"/sessions/{session_id}/notify",
+        f"/hooks/sessions/{session_id}/notify",
         data,
         timeout=NOTIFY_TIMEOUT
     )
@@ -151,7 +151,7 @@ def wait_for_response(
     """Wait for user response from Telegram (blocking)"""
     result = _make_request(
         "POST",
-        f"/sessions/{session_id}/wait",
+        f"/hooks/sessions/{session_id}/wait",
         {
             "request_id": request_id,
             "timeout": timeout
@@ -168,7 +168,7 @@ def get_pending_response(session_id: str, request_id: str) -> Optional[str]:
     """Check for pending response without blocking"""
     result = _make_request(
         "GET",
-        f"/sessions/{session_id}/response/{request_id}",
+        f"/hooks/sessions/{session_id}/response/{request_id}",
         timeout=5
     )
     
@@ -226,8 +226,30 @@ def emit_cli_thinking(session_id: str, prompt: str) -> bool:
     """Notify Web UI that CLI is processing a prompt (show thinking indicator)"""
     result = _make_request(
         "POST",
-        f"/sessions/{session_id}/cli-thinking",
+        f"/hooks/sessions/{session_id}/cli-thinking",
         {"prompt": prompt},
         timeout=5
     )
     return result.get("success", False)
+
+
+def get_queue_count(session_id: str) -> int:
+    """Get number of pending messages in queue"""
+    result = _make_request(
+        "GET",
+        f"/sessions/{session_id}/queue",
+        timeout=5
+    )
+    return result.get("count", 0)
+
+
+def process_next_queue_item(session_id: str) -> Optional[Dict[str, Any]]:
+    """Get and execute next queued message. Returns task info if started."""
+    result = _make_request(
+        "POST",
+        f"/sessions/{session_id}/queue/process",
+        timeout=30
+    )
+    if result.get("success") and result.get("task"):
+        return result.get("task")
+    return None

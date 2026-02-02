@@ -5,6 +5,15 @@ const nextConfig: NextConfig = {
   reactStrictMode: false,
   poweredByHeader: false,
 
+  images: {
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: 'res.cloudinary.com',
+      },
+    ],
+  },
+
   typescript: {
     ignoreBuildErrors: false,
   },

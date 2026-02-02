@@ -16,7 +16,7 @@ import logging
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "lib"))
 
-from bridge_client import register_session, notify, update_session_status, add_chat_message, is_bridge_available
+from bridge_client import register_session, notify, update_session_status, add_chat_message, is_bridge_available, get_queue_count, process_next_queue_item
 from formatters import format_session_name
 from config import WEB_UI_URL, TELEGRAM_TASK_RESULT_MAX_LENGTH
 
@@ -304,6 +304,16 @@ def main():
         logger.info("Updating session status...")
         update_session_status(session_id, "waiting")
         logger.info("Session status updated")
+        
+        # Check for queued tasks and process next one
+        queue_count = get_queue_count(session_id)
+        if queue_count > 0:
+            logger.info(f"Found {queue_count} queued task(s), processing next...")
+            task = process_next_queue_item(session_id)
+            if task:
+                logger.info(f"Started queued task: {task.get('id')}")
+            else:
+                logger.warning("Failed to process queued task")
     except Exception as e:
         logger.error(f"Error in notification/status update: {e}")
     finally:

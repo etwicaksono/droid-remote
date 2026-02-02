@@ -15,6 +15,7 @@ interface RespondParams {
 interface ApproveParams {
   sessionId: string
   requestId?: string
+  scope?: 'session' | 'global'  // If provided, creates a rule
 }
 
 interface SessionIdParam {
@@ -33,22 +34,26 @@ export function useSessionActions() {
   )
 
   const approve = useCallback(
-    ({ sessionId }: ApproveParams) => {
-      socket.emit('approve', { sessionId })
+    ({ sessionId, scope }: ApproveParams) => {
+      // @ts-expect-error socket emit allows any data
+      socket.emit('approve', { sessionId, scope })
     },
     [socket]
   )
 
   const deny = useCallback(
-    ({ sessionId }: ApproveParams) => {
-      socket.emit('deny', { sessionId })
+    ({ sessionId, scope }: ApproveParams) => {
+      // @ts-expect-error socket emit allows any data
+      socket.emit('deny', { sessionId, scope })
     },
     [socket]
   )
 
+  // Legacy - use approve/deny with scope='global' instead
   const alwaysAllow = useCallback(
     ({ sessionId }: ApproveParams) => {
-      socket.emit('always_allow', { sessionId })
+      // @ts-expect-error socket emit allows any data
+      socket.emit('approve', { sessionId, scope: 'global' })
     },
     [socket]
   )
@@ -99,6 +104,7 @@ export function useSessionActions() {
       model?: string
       reasoningEffort?: string
       autonomyLevel?: string
+      images?: string[]
     }) => {
       setLoading(true)
       try {
@@ -113,6 +119,7 @@ export function useSessionActions() {
             model: params.model,
             reasoning_effort: params.reasoningEffort,
             autonomy_level: params.autonomyLevel,
+            images: params.images,
           }),
         })
         if (!res.ok) {
@@ -174,6 +181,18 @@ export function useSessionActions() {
     []
   )
 
+  const cancelQueuedMessage = useCallback(
+    async ({ sessionId, messageId }: { sessionId: string; messageId: number }) => {
+      const res = await fetch(`${API_BASE}/sessions/${sessionId}/queue/${messageId}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders(),
+      })
+      if (!res.ok) throw new Error('Failed to cancel queued message')
+      return await res.json()
+    },
+    []
+  )
+
   const getChatHistory = useCallback(
     async (sessionId: string) => {
       const res = await fetch(`${API_BASE}/sessions/${sessionId}/chat`, {
@@ -193,6 +212,7 @@ export function useSessionActions() {
       status?: 'success' | 'error'
       durationMs?: number
       numTurns?: number
+      images?: string[]  // Array of image URLs
     }) => {
       const searchParams = new URLSearchParams({
         msg_type: params.type,
@@ -201,6 +221,9 @@ export function useSessionActions() {
       if (params.status) searchParams.append('status', params.status)
       if (params.durationMs) searchParams.append('duration_ms', String(params.durationMs))
       if (params.numTurns) searchParams.append('num_turns', String(params.numTurns))
+      if (params.images && params.images.length > 0) {
+        searchParams.append('images', JSON.stringify(params.images))
+      }
       
       const res = await fetch(`${API_BASE}/sessions/${params.sessionId}/chat?${searchParams}`, {
         method: 'POST',
@@ -263,6 +286,7 @@ export function useSessionActions() {
     getQueue,
     addToQueue,
     clearQueue,
+    cancelQueuedMessage,
     getChatHistory,
     addChatMessage,
     getSettings,

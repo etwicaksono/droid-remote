@@ -61,7 +61,14 @@ def setup_logging(
     logging.getLogger("httpx").setLevel(logging.WARNING)
     logging.getLogger("httpcore").setLevel(logging.WARNING)
     logging.getLogger("telegram").setLevel(logging.WARNING)
-    logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
+    
+    # Configure uvicorn loggers to use our formatter with timestamps
+    for uvicorn_logger_name in ["uvicorn", "uvicorn.error", "uvicorn.access"]:
+        uvicorn_logger = logging.getLogger(uvicorn_logger_name)
+        uvicorn_logger.handlers.clear()
+        uvicorn_logger.addHandler(console_handler)
+        if file_path:
+            uvicorn_logger.addHandler(file_handler)
     
     logging.info(f"Logging configured: level={level}, file={file_path or 'None'}")
 

@@ -15,6 +15,7 @@ Control Factory.ai Droid CLI remotely via Telegram and Web UI.
 - **Cross-Device Sync**: "Droid is thinking" state syncs across all devices
 - **Configurable Models**: Edit JSON file to add/remove AI models
 - **Session Rename**: Rename sessions inline with hover edit button
+- **Docker Support**: Run everything with Docker, no Python/Node.js required
 
 ## Architecture
 
@@ -36,25 +37,93 @@ Control Factory.ai Droid CLI remotely via Telegram and Web UI.
 
 ## Quick Start
 
-### 1. Create Telegram Bot
-
-1. Open Telegram, search for @BotFather
-2. Send `/newbot` and follow instructions
-3. Save the bot token
-4. Get your chat ID from @userinfobot
-
-### 2. Configure Environment
-
-Copy `.env.example` to `.env` at project root and edit:
-
 ```bash
-cp .env.example .env
+git clone https://github.com/user/droid-remote.git
+cd droid-remote
+./setup.sh
 ```
 
-Edit `.env` with your settings:
+The setup script will:
+1. Prompt for your Telegram credentials
+2. Generate `.env` configuration
+3. Configure Factory CLI hooks automatically
+4. Start Docker services
+
+That's it! Access Web UI at http://localhost:3000
+
+---
+
+## Manual Installation
+
+If you prefer manual setup or the script doesn't work on your system:
+
+### Option A: Docker (Recommended)
 
 ```bash
-# Telegram Bot
+# 1. Clone repository
+git clone https://github.com/user/droid-remote.git
+cd droid-remote
+
+# 2. Configure environment
+cp .env.example .env
+# Edit .env with your Telegram credentials
+
+# 3. Start services
+docker-compose up -d
+
+# 4. Configure Factory hooks
+cp config/settings.docker.json ~/.factory/settings.json
+# Edit ~/.factory/settings.json - replace /path/to/droid-remote with actual path
+
+# 5. Start Droid
+droid
+```
+
+**Docker Limitations:**
+- ✅ View CLI sessions in Web UI
+- ✅ Respond to permission requests
+- ✅ Receive Telegram notifications
+- ❌ **Create new tasks via Web UI** - The `droid` CLI runs on the host, not in Docker. Web UI "Custom Task" requires the bridge to execute `droid exec`, which isn't available inside the container.
+
+For full Web UI task creation, use Native installation or run the bridge directly on the host.
+
+### Option B: Native (Development)
+
+Requires Python 3.11+ and Node.js 20+.
+
+```bash
+# 1. Clone and configure
+git clone https://github.com/user/droid-remote.git
+cd droid-remote
+cp .env.example .env
+# Edit .env with your settings
+
+# 2. Start Bridge Server (Terminal 1)
+cd telegram-bridge
+pip install -r requirements.txt
+python server.py
+
+# 3. Start Web UI (Terminal 2)
+cd telegram-bridge/web
+npm install
+npm run dev
+
+# 4. Configure Factory hooks
+cp config/settings.native.json ~/.factory/settings.json
+# Edit ~/.factory/settings.json - replace /path/to/droid-remote with actual path
+
+# 5. Start Droid
+droid
+```
+
+---
+
+## Configuration
+
+### Environment Variables (.env)
+
+```bash
+# Telegram Bot (get from @BotFather and @userinfobot)
 TELEGRAM_BOT_TOKEN=your-bot-token
 TELEGRAM_CHAT_ID=your-chat-id
 TELEGRAM_ALLOWED_USERS=your-user-id
@@ -67,145 +136,18 @@ BRIDGE_SECRET=your-secret-here
 AUTH_USERNAME=admin
 AUTH_PASSWORD=your-password
 JWT_SECRET=change-this-to-random-string
-JWT_EXPIRY_HOURS=24
 
-# Web UI URLs (use your local IP for mobile access)
+# Web UI URL (use local IP for mobile access)
 WEB_UI_URL=http://192.168.x.x:3000
-
-# Timeouts (seconds)
-DEFAULT_TIMEOUT=300
-PERMISSION_TIMEOUT=120
-NOTIFY_TIMEOUT=10
-
-# Telegram Notifications (0 = no truncation)
-TELEGRAM_TASK_RESULT_MAX_LENGTH=500
 ```
 
-**Note:** All configuration is centralized in this single `.env` file.
-
-### 3. Configure Factory Settings
-
-Add hooks to your Factory.ai settings (`~/.factory/settings.json`):
-
-```json
-{
-  "hooks": {
-    "PreToolUse": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python D:/path/to/droid-remote/hooks/telegram_pre_tool.py",
-            "timeout": 30
-          }
-        ]
-      }
-    ],
-    "UserPromptSubmit": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python D:/path/to/droid-remote/hooks/telegram_user_prompt.py",
-            "timeout": 10
-          }
-        ]
-      }
-    ],
-    "Notification": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python D:/path/to/droid-remote/hooks/telegram_notify.py",
-            "timeout": 10
-          }
-        ]
-      }
-    ],
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python D:/path/to/droid-remote/hooks/telegram_stop.py",
-            "timeout": 300
-          }
-        ]
-      }
-    ],
-    "SubagentStop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python D:/path/to/droid-remote/hooks/telegram_subagent_stop.py",
-            "timeout": 300
-          }
-        ]
-      }
-    ],
-    "SessionStart": [
-      {
-        "matcher": "startup",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python D:/path/to/droid-remote/hooks/telegram_session_start.py",
-            "timeout": 10
-          }
-        ]
-      }
-    ],
-    "SessionEnd": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python D:/path/to/droid-remote/hooks/telegram_session_end.py",
-            "timeout": 10
-          }
-        ]
-      }
-    ]
-  }
-}
-```
-
-**Note:** Replace `D:/path/to/droid-remote` with your actual project path.
-
-### 4. Start Bridge Server
+### Docker Commands
 
 ```bash
-cd telegram-bridge
-
-# Option A: Docker (recommended)
-docker-compose up -d
-
-# Option B: Native Python
-pip install -r requirements.txt
-python server.py
-```
-
-### 5. Start Web UI
-
-```bash
-cd telegram-bridge/web
-npm install
-npm run build
-npm run start
-```
-
-For development:
-```bash
-npm run dev
-```
-
-### 6. Start Droid
-
-```bash
-droid
-# You should receive a Telegram notification with a link to Web UI!
+docker-compose up -d        # Start services
+docker-compose logs -f      # View logs
+docker-compose down         # Stop services
+docker-compose up -d --build  # Rebuild after changes
 ```
 
 ## Project Structure
@@ -215,11 +157,14 @@ droid-remote/
 ├── .env                        # Centralized configuration (all settings)
 ├── .env.example                # Configuration template
 │
-├── config/                     # Python config module
-│   ├── settings.py             # Loads .env and exports settings
-│   └── settings.json           # Factory CLI settings template
+├── config/                     # Configuration templates
+│   ├── settings.py             # Python config loader
+│   ├── settings.docker.json    # Factory hooks config (Docker)
+│   └── settings.native.json    # Factory hooks config (Native)
 │
 ├── hooks/                      # Hook scripts for Droid
+│   ├── docker/                 # Docker wrapper scripts (bash)
+│   │   └── *.sh                # Wrapper scripts for docker exec
 │   ├── lib/                    # Shared library
 │   │   ├── bridge_client.py    # HTTP client for bridge
 │   │   ├── config.py           # Imports from config/settings.py
